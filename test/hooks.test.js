@@ -43,7 +43,17 @@ test("agentSessionId prefers FOLIO_SESSION_ID and rejects unsafe values", () => 
 
 test("isInsideDirectory keeps sibling directories out", () => {
   assert.equal(isInsideDirectory(path.join(cwd, "a.html"), cwd), true);
+  assert.equal(isInsideDirectory(path.join(cwd, "..draft", "a.html"), cwd), true);
+  assert.equal(isInsideDirectory(path.dirname(cwd), cwd), false);
+  assert.equal(isInsideDirectory(path.join(path.dirname(cwd), "a.html"), cwd), false);
   assert.equal(isInsideDirectory(`${cwd}-other${path.sep}a.html`, cwd), false);
+});
+
+test("SessionStart includes child directories whose names start with two dots", () => {
+  const session = page("a", { file: path.join(cwd, "..draft", "a.html") });
+  const context = createSessionStartContext({ sessions: [session], cwd, sessionId: "s1" });
+  assert.match(context, /1 review page/);
+  assert.ok(context.includes(path.join("..draft", "a.html")));
 });
 
 test("SessionStart context is empty when this directory has no pages", () => {
@@ -69,10 +79,25 @@ test("formatHookFeedback marks a batch that does not fit as incomplete", () => {
   const response = { status: "feedback", prompts: [{ prompt: "y".repeat(1500), tag: "message" }] };
   const whole = formatHookFeedback("/a.html", response, 5000);
   assert.equal(whole.complete, true);
-  assert.match(whole.text, /folio-axi reply \/a\.html/);
+  assert.match(whole.text, /folio-axi reply "\/a\.html"/);
   const cut = formatHookFeedback("/a.html", response, 600);
   assert.equal(cut.complete, false);
-  assert.match(cut.text, /folio-axi poll \/a\.html/);
+  assert.match(cut.text, /folio-axi poll "\/a\.html"/);
+});
+
+test("hook commands quote paths and retain the complete recovery line", () => {
+  const file = `C:\\work\\${"long directory ".repeat(20)}my page.html`;
+  const quoted = `"${file.replaceAll("\\", "\\\\")}"`;
+  const response = { status: "feedback", prompts: [{ prompt: "y".repeat(3000) }] };
+  const whole = formatHookFeedback(file, response, 6000);
+  assert.ok(whole.text.includes(`folio-axi reply ${quoted} --agent-reply`));
+  const cut = formatHookFeedback(file, response, 600);
+  assert.equal(cut.complete, false);
+  assert.ok(cut.text.length <= 600);
+  assert.ok(cut.text.endsWith(`[cut] Run \`folio-axi poll ${quoted}\` to read the whole batch.`));
+  const tooSmall = formatHookFeedback(file, response, 100);
+  assert.equal(tooSmall.complete, false);
+  assert.ok(tooSmall.text.length <= 100);
 });
 
 test("Stop blocks with the owner's waiting feedback and acks only complete batches", async () => {

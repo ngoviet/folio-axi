@@ -44,7 +44,7 @@ function comparable(file) {
 export function isInsideDirectory(file, directory) {
   if (!file || !directory) return false;
   const relative = path.relative(comparable(directory), comparable(file));
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+  return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
 }
 
 function pendingCount(session) {
@@ -100,6 +100,7 @@ export function createSessionStartContext({ sessions, cwd, sessionId }) {
  * @param {number} budget
  */
 export function formatHookFeedback(file, response, budget = HOOK_FEEDBACK_LIMIT) {
+  const quotedFile = `"${file.replace(/[\\"$`]/g, "\\$&")}"`;
   const prompts = Array.isArray(response?.prompts) ? response.prompts : [];
   const failures = Array.isArray(response?.artifact_failures) ? response.artifact_failures : [];
   const lines = [`Feedback from the folio-axi review page ${file}:`];
@@ -112,18 +113,15 @@ export function formatHookFeedback(file, response, budget = HOOK_FEEDBACK_LIMIT)
     );
   } else {
     lines.push(
-      `Apply it to ${file}, then answer on the page with \`folio-axi reply ${file} --agent-reply "<message>"\`.`,
+      `Apply it to ${file}, then answer on the page with \`folio-axi reply ${quotedFile} --agent-reply "<message>"\`.`,
     );
   }
   const text = lines.join("\n");
   if (text.length <= budget) return { text, complete: true };
-  return {
-    text: `${text.slice(0, Math.max(0, budget - 160))}\n[cut] Run \`folio-axi poll ${file}\` to read the whole batch.`.slice(
-      0,
-      budget,
-    ),
-    complete: false,
-  };
+  const recovery = `[cut] Run \`folio-axi poll ${quotedFile}\` to read the whole batch.`;
+  if (recovery.length > budget) return { text: "[cut] Feedback remains queued.".slice(0, budget), complete: false };
+  const prefix = text.slice(0, Math.max(0, budget - recovery.length - 1));
+  return { text: prefix ? `${prefix}\n${recovery}` : recovery, complete: false };
 }
 
 function stopCounterFile(stateDirectory) {
