@@ -171,6 +171,11 @@ const layoutGateCopy = /** @type {HTMLParagraphElement} */ (document.getElementB
 const layoutGateAction = /** @type {HTMLButtonElement} */ (document.getElementById("layoutGateAction"));
 const layoutGateBypass = /** @type {HTMLButtonElement} */ (document.getElementById("layoutGateBypass"));
 const layoutGateEscape = /** @type {any} */ (window).__lavishLayoutGateEscape;
+const artifactSilentNotice = /** @type {HTMLDivElement} */ (document.getElementById("artifactSilentNotice"));
+const artifactSilentCopy = /** @type {HTMLParagraphElement} */ (document.getElementById("artifactSilentCopy"));
+const artifactSilentUrl = /** @type {HTMLElement} */ (document.getElementById("artifactSilentUrl"));
+const artifactSilentCopyLink = /** @type {HTMLButtonElement} */ (document.getElementById("artifactSilentCopyLink"));
+const artifactSilentDismiss = /** @type {HTMLButtonElement} */ (document.getElementById("artifactSilentDismiss"));
 const warningsWrap = /** @type {HTMLDivElement} */ (document.getElementById("warningsWrap"));
 const warningsButton = /** @type {HTMLButtonElement} */ (document.getElementById("warningsButton"));
 const warningsCount = /** @type {HTMLSpanElement} */ (document.getElementById("warningsCount"));
@@ -2576,7 +2581,10 @@ async function probeArtifactAvailability(loadToken) {
     const response = await fetch(artifactProbeSrc(), { cache: "no-store" });
     if (loadToken !== artifactLoadToken) return;
     if (response.status === 409) return;
-    if (response.ok) return;
+    if (response.ok) {
+      showArtifactSilentNotice(loadToken);
+      return;
+    }
     await reportArtifactFailures(
       [{ kind: "artifact-unavailable", detail: "the artifact document responded with HTTP " + response.status }],
       loadToken,
@@ -2584,6 +2592,27 @@ async function probeArtifactAvailability(loadToken) {
   } catch {
     // A transient fetch failure is uncertainty, not proof - stay silent.
   }
+}
+
+// The server has the document but the frame never spoke, so the browser refused or stalled it.
+// Claude's built-in browser does this: its loopback guard cancels every request from an opaque
+// origin, including the sandboxed frame itself. This is local to the reviewer, so it must not go
+// through artifact-failures and wake poll. It lives in the frame, not on the layout gate, because
+// the gate's bounded hold would retire the card and leave the empty frame unexplained.
+function showArtifactSilentNotice(loadToken) {
+  if (ended || loadToken !== artifactLoadToken || artifactSpokeToken === loadToken) return;
+  if (artifactSilentCopy) {
+    artifactSilentCopy.textContent = String(navigator.userAgent || "").includes("Claude/")
+      ? "Claude's built-in browser blocks the sandboxed frame Folio uses. Open this link in Chrome or another browser."
+      : "The server has this page, but this browser did not load it. Open this link in another browser, or check extensions that block local pages.";
+  }
+  if (artifactSilentUrl) artifactSilentUrl.textContent = location.href;
+  if (artifactSilentNotice) artifactSilentNotice.hidden = false;
+  if (!layoutGateFailureActive) revealLayoutGate();
+}
+
+function hideArtifactSilentNotice() {
+  if (artifactSilentNotice) artifactSilentNotice.hidden = true;
 }
 
 function activeWarnings() {
@@ -3179,6 +3208,7 @@ function markSessionEnded() {
   if (presenceBanner) presenceBanner.hidden = true;
   if (handoffBanner) handoffBanner.hidden = true;
   if (outdatedBanner) outdatedBanner.hidden = true;
+  hideArtifactSilentNotice();
   layoutGateManuallyBypassed = true;
   layoutGateFailureSticky = false;
   revealLayoutGate();
@@ -3475,6 +3505,7 @@ async function replaceArtifactFrame({ recoveryRetry = false } = {}) {
   cancelArtifactLoadRecovery();
   if (!recoveryRetry) artifactLoadRecoveryAttempt = 0;
   clearTimeout(artifactSilenceTimer);
+  hideArtifactSilentNotice();
   // The iframe is sandboxed, so reload by resetting the iframe URL from chrome.
   if (!artifactSrc) {
     // The next document reports its own registry once it loads; until then the
@@ -4347,6 +4378,7 @@ window.addEventListener("message", (event) => {
   const messageSequence = ++artifactMessageSequence;
   artifactSpokeToken = messageToken;
   clearTimeout(artifactSilenceTimer);
+  hideArtifactSilentNotice();
   if (msg.type === "lavish:layoutDiagnostics") {
     const diagnosticSequence = ++layoutDiagnosticSequence;
     const complete = msg.complete !== false;
@@ -4665,6 +4697,10 @@ chatInput.addEventListener("keydown", (event) => {
 chatInput.addEventListener("input", () => hideSendHint());
 copyPathButton.onclick = copyFilePath;
 reloadArtifactButton.onclick = reloadArtifact;
+if (artifactSilentCopyLink) {
+  artifactSilentCopyLink.onclick = () => copyToButton(location.href, artifactSilentCopyLink, "Copy link");
+}
+if (artifactSilentDismiss) artifactSilentDismiss.onclick = hideArtifactSilentNotice;
 copySnapshotButton.onclick = copyDomSnapshot;
 exportArtifactButton.onclick = exportArtifact;
 shareArtifactButton.onclick = openShareDialog;
