@@ -18,7 +18,7 @@ Every state below is a fact the server records anyway. None of them asks the age
 | ------------------------ | -------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | `/api/:key/prompts` 200  | `SessionStore.queuePrompts` appends the note to `session.chat`                         | **Sent** - the server holds it for the next poll |
 | no poll in `activePolls` | `computePresence` is `waiting`; the chrome already shows "Your agent is not listening" | nobody is there to receive it                    |
-| `takeFeedback` succeeded | the store drained the batch for a poll; a poll that closed before the write undoes it  | **Seen** - the batch was handed to a poll        |
+| delivery confirmed       | `POST /api/:key/ack` for an ackable take, or a raw `takeFeedback` that was not undone  | **Seen** - the batch reached a poll              |
 | artifact file changed    | chokidar `reload` for the session key after a delivery                                 | **Working** - the agent is editing the artifact  |
 | `addAgentReply`          | `folio-axi reply` / `poll --agent-reply`, or `/api/:key/agent-reply`                   | **Done** - the agent handed something back       |
 
@@ -39,7 +39,7 @@ queued ──send──> sent ──poll takes it──> seen ──artifact cha
   seen, from the live presence the chrome already holds: "No agent is listening" (`waiting`),
   "Agent is busy; delivered on its next poll" (`working` / external listener), or "Delivering"
   while a poll is attached, which lasts milliseconds.
-- **seen**: `delivered_at` set by `takeFeedback`.
+- **seen**: `delivered_at` set by the matching ack, or by a raw `takeFeedback`.
 - **working**: `working_at` set by the first artifact `reload` after delivery. Optional evidence.
 - **done**: `done_at` set by the next agent reply.
 
@@ -54,7 +54,11 @@ the stamps with no new wire shape.
   pending prompt, and `queuePrompts` runs under the same store lock, so inside `takeFeedback` the
   set "user entries with no `delivered_at`" is exactly the batch being delivered. Each take increments
   `session.delivery_seq` and writes it as `delivered_seq` on the entries it stamps.
-- **A disconnected poll un-stamps its own take only.** `restoreClosedFeedback` passes the take's
+- **An ackable take reserves, its ack stamps.** The take writes only `delivered_seq` and keeps that
+  sequence on `unacked_delivery.seq`; `ackDelivery` then stamps exactly those entries. A note queued
+  before the ack has no sequence and waits for its own take. A closed poll or a CLI that died before
+  acking leaves the batch unstamped, and redelivery reuses the same sequence.
+- **A disconnected raw poll un-stamps its own take only.** `restoreClosedFeedback` passes the take's
   `delivery_seq` back; `queuePrompts` in `restore` mode deletes the stamps on entries carrying that
   sequence (delete, not null - the restore tests assert `chat` deep-equals its pre-take shape). Notes
   queued in the window keep no stamp and are delivered, and stamped, by the next take. A restore that
@@ -73,9 +77,9 @@ the stamps with no new wire shape.
   authoritative replacement.
 - `delivery_seq` is a session field, so `#upsertSessionLocked` carries it across a reopen like
   `chat_revision`. Stamps on `chat` entries survive because `chat` is carried verbatim.
-- The server publishes `chat-sync` on the success path of a delivery (`finishFeedbackDelivery`) and
-  after a restore, never on the destructive take itself, so a tab is not told Seen for a batch that
-  is about to be put back.
+- The server publishes `chat-sync` on the raw success path of a delivery (`finishFeedbackDelivery`),
+  after a restore and after an ack, never on the destructive take itself, so a tab is not told Seen
+  for a batch that is about to be put back.
 
 ## UI
 

@@ -19,8 +19,10 @@ import {
   boundStoredChat,
   chatEntryForPrompt,
   collectChatAckIds,
+  confirmDelivery,
   markPreReceipt,
   normalizePromptId,
+  reserveDelivery,
   stampDelivered,
   stampDone,
   stampWorking,
@@ -662,7 +664,8 @@ export class SessionStore {
       }
       // Seen (docs/delivery-acks.md): this take drains every pending prompt and `queuePrompts`
       // shares this lock, so the user entries with no stamp are exactly this batch. The sequence
-      // rides on the result so a closed-poll restore can undo only this take's stamps.
+      // rides on the result so a closed-poll restore can undo only this take's stamps. An ackable
+      // take only reserves the entries: the matching ack stamps them Seen.
       const deliverySeq = normalizeRevision(session.delivery_seq) + 1;
       const domSnapshot = session.dom_snapshot || "";
       const deliveryId = ackable ? crypto.randomBytes(8).toString("hex") : "";
@@ -672,12 +675,13 @@ export class SessionStore {
         prompts,
         ...(artifactFailures.length > 0 ? { artifact_failures: artifactFailures } : {}),
         ...(alreadyEnded ? { session_ended: true, ended_by: session.ended_by } : {}),
-        ...(freshPrompts.length > 0 ? { delivery_seq: deliverySeq } : {}),
+        ...(freshPrompts.length > 0 && !deliveryId ? { delivery_seq: deliverySeq } : {}),
         ...(deliveryId ? { delivery_id: deliveryId } : {}),
       };
       if (deliveryId) {
         session.unacked_delivery = {
           id: deliveryId,
+          seq: freshPrompts.length > 0 ? deliverySeq : 0,
           at: new Date().toISOString(),
           prompts,
           artifact_failures: artifactFailures,
@@ -690,7 +694,9 @@ export class SessionStore {
       retainDeliveredAttachments(session, prompts, deliveredNow);
       if (freshPrompts.length > 0) {
         session.delivery_seq = deliverySeq;
-        if (stampDelivered(session.chat, deliverySeq, new Date(deliveredNow).toISOString())) {
+        if (deliveryId) {
+          reserveDelivery(session.chat, deliverySeq);
+        } else if (stampDelivered(session.chat, deliverySeq, new Date(deliveredNow).toISOString())) {
           session.chat_revision = normalizeRevision(session.chat_revision) + 1;
         }
       }
@@ -717,7 +723,11 @@ export class SessionStore {
       const unacked = isUnackedDelivery(session.unacked_delivery) ? session.unacked_delivery : null;
       if (!unacked || unacked.id !== String(deliveryId || "")) return { status: "stale" };
       delete session.unacked_delivery;
-      session.updated_at = new Date().toISOString();
+      const at = new Date().toISOString();
+      if (confirmDelivery(session.chat, normalizeRevision(unacked.seq), at)) {
+        session.chat_revision = normalizeRevision(session.chat_revision) + 1;
+      }
+      session.updated_at = at;
       await this.writeState(state);
       return { status: "acked" };
     });
@@ -922,6 +932,11 @@ export class SessionStore {
 export async function canonicalFile(file) {
   const absolute = path.resolve(file);
   return realpath(absolute);
+}
+
+export async function canonicalDirectory(directory) {
+  const absolute = path.resolve(directory);
+  return realpath(absolute).catch(() => absolute);
 }
 
 export async function canonicalMissingPath(file) {

@@ -12,7 +12,7 @@ import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises
 import os from "node:os";
 import path from "node:path";
 
-import { normalizeOwnerSessionId } from "./session-store.js";
+import { canonicalDirectory, normalizeOwnerSessionId } from "./session-store.js";
 
 export const HOOK_EVENTS = Object.freeze({
   "session-start": "SessionStart",
@@ -177,7 +177,11 @@ export async function runHookEvent(event, { input, env = process.env, stateDirec
         // Without the env file, `open`/`poll` still work; they just carry no session id.
       }
     }
-    const context = createSessionStartContext({ sessions: await readSessions(), cwd, sessionId });
+    const context = createSessionStartContext({
+      sessions: await readSessions(),
+      cwd: await canonicalDirectory(cwd),
+      sessionId,
+    });
     if (!context) return none;
     return {
       output: JSON.stringify({ hookSpecificOutput: { hookEventName, additionalContext: context } }),

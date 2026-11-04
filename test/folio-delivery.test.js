@@ -70,6 +70,71 @@ test("a disconnected raw poll restores fresh feedback while preserving the unack
   });
 });
 
+test("an ackable batch stays unseen through a closed poll and reads Seen after its ack", async () => {
+  await withServer(async ({ base, artifact, stateFile }) => {
+    const { key } = await open(base, artifact, "sess-a");
+    const store = new SessionStore(stateFile);
+    const seen = async () => (await store.findByKey(key)).chat.map((entry) => Boolean(entry.delivered_at));
+    await sendPrompt(base, key, "delivered");
+    const original = SessionStore.prototype.takeFeedback;
+    let release = () => {};
+    let started;
+    const taken = new Promise((resolve) => {
+      started = resolve;
+    });
+    /** @type {Promise<void>} */
+    const resume = new Promise((resolve) => {
+      release = resolve;
+    });
+    SessionStore.prototype.takeFeedback = async function (sessionKey, options) {
+      const result = await original.call(this, sessionKey, options);
+      if (sessionKey === key && options?.ackable && result.status === "feedback") {
+        started();
+        await resume;
+      }
+      return result;
+    };
+    try {
+      const query = new URLSearchParams({ file: artifact, ack: "1", session_id: "sess-a" });
+      const socket = await new Promise((resolve, reject) => {
+        const client = netConnect(Number(new URL(base).port), "127.0.0.1", () => {
+          client.write(`GET /api/poll?${query} HTTP/1.1\r\nHost: ${new URL(base).host}\r\n\r\n`);
+          resolve(client);
+        });
+        client.on("error", reject);
+      });
+      await taken;
+      socket.destroy();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    } finally {
+      release();
+      SessionStore.prototype.takeFeedback = original;
+    }
+    assert.deepEqual(await seen(), [false]);
+
+    const redelivered = await poll(base, artifact, { ack: "1", session_id: "sess-a" }).then((r) => r.json());
+    assert.equal(redelivered.redelivered, true);
+    assert.deepEqual(await seen(), [false]);
+
+    await sendPrompt(base, key, "queued before the ack");
+    const before = (await store.findByKey(key)).chat_revision;
+    const acked = await fetch(`${base}/api/${key}/ack`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ delivery_id: redelivered.delivery_id }),
+    }).then((r) => r.json());
+    assert.equal(acked.status, "acked");
+    assert.deepEqual(await seen(), [true, false]);
+    assert.equal((await store.findByKey(key)).chat_revision, before + 1);
+
+    const next = await poll(base, artifact, { ack: "1", session_id: "sess-a" }).then((r) => r.json());
+    assert.equal(next.prompts[0].prompt, "queued before the ack");
+    assert.deepEqual(await seen(), [true, false]);
+  });
+});
+
 test("raw polls consume only fresh feedback and preserve unacknowledged batches", async () => {
   await withServer(async ({ base, artifact, stateFile }) => {
     const { key } = await open(base, artifact, "sess-a");

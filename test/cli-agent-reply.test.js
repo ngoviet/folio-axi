@@ -350,6 +350,46 @@ test("deleted paths through a symlink resolve for polls and ends", { skip: NO_SY
   }
 });
 
+test("bare folio-axi lists this project's pages from a linked cwd", { skip: NO_SYMLINKS }, async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "folio-linked-cwd-"));
+  const stateDir = path.join(dir, "state");
+  const realDir = path.join(dir, "real");
+  const linkDir = path.join(dir, "link");
+  await mkdir(stateDir);
+  await mkdir(realDir);
+  await symlink(realDir, linkDir, "dir");
+  const artifact = path.join(realDir, "page.html");
+  await writeFile(artifact, "<html></html>");
+  const server = await serve({
+    port: 0,
+    host: "127.0.0.1",
+    stateFile: path.join(stateDir, "state.json"),
+    version: VERSION,
+  });
+  const env = {
+    ...process.env,
+    FOLIO_AXI_STATE_DIR: stateDir,
+    FOLIO_AXI_PORT: String(server.port),
+    FOLIO_AXI_HOST: "127.0.0.1",
+    FOLIO_AXI_LINK_HOST: "127.0.0.1",
+  };
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.port}/api/sessions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ file: artifact }),
+    });
+    assert.equal(response.status, 200);
+    const home = await runCli([], { cwd: linkDir, env });
+    assert.equal(home.status, 0, home.stderr || home.stdout);
+    assert.match(home.stdout, /page\.html/);
+    assert.doesNotMatch(home.stdout, /sessions_elsewhere/);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("poll --agent-reply-file and stdin land multiline Markdown in the transcript and chrome html", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "lavish-agent-reply-e2e-"));
   const stateDir = path.join(dir, "state");

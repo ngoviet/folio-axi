@@ -61,7 +61,7 @@ import { findPlaybook, listPlaybooks, playbookIds, PLAYBOOK_ROUTER_HELP } from "
 import { analyzeSelfPaint, SELF_PAINT_WARNING } from "./self-paint.js";
 import { resolveDesignAssetPath, serve } from "./server.js";
 import { isHtmlPath } from "./artifact-path.js";
-import { canonicalFile, canonicalMissingPath, sessionKey, SessionStore } from "./session-store.js";
+import { canonicalDirectory, canonicalFile, canonicalMissingPath, sessionKey, SessionStore } from "./session-store.js";
 import { generateSharePassword } from "./share-password.js";
 import { excalidrawLibrariesDir, loadExcalidrawLibraries } from "./whiteboard-library-store.js";
 
@@ -299,7 +299,7 @@ export function createHomeOutput({ bin, sessions, includeSessions = true, elsewh
     playbooks: listPlaybooks(),
     help: [
       "Run `folio-axi <html-file>` to open or resume a Folio session. While the user-ended record exists, this refuses to reopen it and explains why - pass `--reopen` only when the user asks for further review or something important needs their visual attention. Eligible records are pruned at startup after FOLIO_AXI_ENDED_RETENTION_DAYS (default 7 days), after which a plain open starts a fresh session",
-      "Unless the user specifies another location, create HTML artifacts in the current working directory under `.lavish/`",
+      "Unless the user specifies another location, create HTML artifacts in the current working directory under `.folio/`",
       "Folio serves the html file through a local express.js server. If your html needs to reference other filesystem assets such as images, CSS, fonts, and local scripts, copy them into the same directory as the HTML file, then reference them with relative paths from that directory. Never prepend `/` to those asset paths - root paths won't work",
       `Run \`folio-axi poll <html-file>\` to wait for user feedback. It long-polls and stays silent until the user sends feedback, ends the session, or leaves every review window disconnected past the reconnect grace period, so leave it running - never kill it. Detected layout issues never return this poll: the browser files them in the user's Layout issues inbox in the Folio top bar, and they arrive as an ordinary tag "layout-warnings" prompt only when the user selects them and queues the fixes. Never edit the artifact to chase a layout issue the user has not queued. The only exception is a fatal artifact_failures response, which means the review surface itself could not be used. ${pollExecutionGuidance({ agent })} ${POLL_SEND_AND_END_RULE}`,
       'Run `folio-axi reply <html-file> --agent-reply "<message>"` to show a concise reply and exit once Folio accepts it, when you are handing a result back and are not about to long-poll. The board stops showing Working only after this command exits 0. Use `folio-axi poll <html-file> --agent-reply "<message>"` when that reply should be followed by another wait for feedback. A longer reply uses `--agent-reply-file <path>` (`-` reads stdin) on either command. Run `folio-axi reply --help` for the receipt contract',
@@ -1456,7 +1456,7 @@ async function visibleSessions() {
   const store = new SessionStore(stateFile());
   const open = (await store.listSessions()).filter((session) => session.status !== "ended");
   // Folio: list this project's pages; other projects only as a count.
-  const cwd = process.cwd();
+  const cwd = await canonicalDirectory(process.cwd());
   const sessions = open.filter((session) => isInsideDirectory(session.file, cwd));
   const elsewhere = open.length - sessions.length;
   const { health } = await findRunningServer(defaultPort());

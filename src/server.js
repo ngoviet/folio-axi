@@ -541,10 +541,11 @@ export async function serve({
   function finishFeedbackDelivery(key, result) {
     if (result.status !== "feedback") return;
     markFeedbackDelivered(key, activePolls, deliveredFeedback, events);
-    // The take already stamped the batch Seen in state.json (docs/delivery-acks.md); tell the open
+    // A raw take already stamped the batch Seen in state.json (docs/delivery-acks.md); tell the open
     // tabs only now, on the path that is about to write the response, never from the destructive
-    // take itself, so a tab is not told Seen for a batch a disconnect is about to put back.
-    void publishChatSync(key);
+    // take itself, so a tab is not told Seen for a batch a disconnect is about to put back. An
+    // ackable take stamps nothing; its Seen is published by the ack.
+    if (!result.delivery_id) void publishChatSync(key);
   }
 
   async function publishChatSync(key) {
@@ -583,7 +584,6 @@ export async function serve({
     // waiting poll.
     if (typeof result.delivery_id === "string" && result.delivery_id) {
       events.emit("feedback", key);
-      await publishChatSync(key);
       return;
     }
     const prompts = Array.isArray(result.prompts) ? result.prompts : [];
@@ -1415,6 +1415,7 @@ export async function serve({
         res.status(404).json({ error: "session not found" });
         return;
       }
+      if (result.status === "acked") await publishChatSync(req.params.key);
       res.json(result);
     } catch (error) {
       next(error);

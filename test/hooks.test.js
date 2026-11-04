@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -15,11 +15,12 @@ import {
   MAX_CONSECUTIVE_STOP_BLOCKS,
   runHookEvent,
 } from "../src/hooks.js";
+import { NO_SYMLINKS } from "./helpers/symlinks.js";
 
 const cwd = path.resolve(tmpdir(), "folio-project");
 const page = (name, extra = {}) => ({
   key: name,
-  file: path.join(cwd, ".lavish", `${name}.html`),
+  file: path.join(cwd, ".folio", `${name}.html`),
   status: "open",
   prompts: [],
   ...extra,
@@ -173,6 +174,24 @@ test("UserPromptSubmit adds waiting feedback as additional context", async () =>
     const output = JSON.parse(result.output);
     assert.equal(output.hookSpecificOutput.hookEventName, "UserPromptSubmit");
     assert.match(output.hookSpecificOutput.additionalContext, /make it blue/);
+  });
+});
+
+test("SessionStart finds pages when the cwd is a link to the project", { skip: NO_SYMLINKS }, async () => {
+  await withStateDir(async (dir) => {
+    const project = path.join(dir, "project");
+    const link = path.join(dir, "link");
+    await mkdir(project);
+    await symlink(project, link, "dir");
+    const file = path.join(await realpath(project), "page.html");
+    const result = await runHookEvent("session-start", {
+      input: { cwd: link },
+      env: {},
+      stateDirectory: dir,
+      readSessions: async () => [{ key: "k", file, status: "open", prompts: [] }],
+      pollOnce: async () => assert.fail("SessionStart never takes feedback"),
+    });
+    assert.match(JSON.parse(result.output).hookSpecificOutput.additionalContext, /- page\.html · open/);
   });
 });
 

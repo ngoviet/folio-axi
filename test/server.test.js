@@ -2244,7 +2244,7 @@ test("serve falls back promptly when the bind host is unavailable", async () => 
 
 test("/artifact serves files copied under the artifact directory", async () => {
   const parent = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
-  const dir = path.join(parent, ".lavish");
+  const dir = path.join(parent, ".folio");
   const assetDir = path.join(dir, "assets");
   const artifact = path.join(dir, "artifact.html");
   await mkdir(dir);
@@ -2296,7 +2296,7 @@ test("/artifact serves files copied under the artifact directory", async () => {
 test("/artifact refuses to serve a symlink that escapes the artifact directory", { skip: NO_SYMLINKS }, async () => {
   const parent = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
   const outside = await mkdtemp(path.join(tmpdir(), "lavish-outside-"));
-  const dir = path.join(parent, ".lavish");
+  const dir = path.join(parent, ".folio");
   const artifact = path.join(dir, "artifact.html");
   await mkdir(dir);
   await writeFile(artifact, "<!doctype html><html><body></body></html>");
@@ -2329,7 +2329,7 @@ test(
   async () => {
     const parent = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
     const outside = await mkdtemp(path.join(tmpdir(), "lavish-outside-"));
-    const dir = path.join(parent, ".lavish");
+    const dir = path.join(parent, ".folio");
     const artifact = path.join(dir, "artifact.html");
     await mkdir(dir);
     await writeFile(artifact, "<!doctype html><html><body></body></html>");
@@ -2361,7 +2361,7 @@ test(
 // still rejects the traversal.
 test("/artifact still rejects lexical .. traversal that reaches the server unnormalized", async () => {
   const parent = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
-  const dir = path.join(parent, ".lavish");
+  const dir = path.join(parent, ".folio");
   const artifact = path.join(dir, "artifact.html");
   await mkdir(dir);
   await writeFile(artifact, "<!doctype html><html><body></body></html>");
@@ -2440,7 +2440,7 @@ test("/api/sessions refuses an HTML symlink to a non-HTML file", { skip: NO_SYML
 
 test("/artifact serves same-tree assets for an HTML session", async () => {
   const parent = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
-  const dir = path.join(parent, ".lavish");
+  const dir = path.join(parent, ".folio");
   const assetDir = path.join(dir, "assets");
   const artifact = path.join(dir, "artifact.html");
   await mkdir(dir);

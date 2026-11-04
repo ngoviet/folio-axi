@@ -585,9 +585,31 @@ export function markPreReceipt(chat) {
 export function stampDelivered(chat, seq, at) {
   let changed = false;
   for (const entry of Array.isArray(chat) ? chat : []) {
-    if (!isUserEntry(entry) || entry.delivered_at) continue;
+    if (!isUndelivered(entry)) continue;
     entry.delivered_at = String(at);
     entry.delivered_seq = seq;
+    changed = true;
+  }
+  return changed;
+}
+
+function isUndelivered(entry) {
+  return isUserEntry(entry) && !entry.delivered_at && !entry.delivered_seq;
+}
+
+// An ackable take ties the batch to its sequence without marking it Seen: a note queued before the
+// ack carries no sequence, so `confirmDelivery` stamps exactly the entries that take handed over.
+export function reserveDelivery(chat, seq) {
+  for (const entry of Array.isArray(chat) ? chat : []) {
+    if (isUndelivered(entry)) entry.delivered_seq = seq;
+  }
+}
+
+export function confirmDelivery(chat, seq, at) {
+  let changed = false;
+  for (const entry of Array.isArray(chat) ? chat : []) {
+    if (!isUserEntry(entry) || entry.delivered_at || entry.delivered_seq !== seq) continue;
+    entry.delivered_at = String(at);
     changed = true;
   }
   return changed;
