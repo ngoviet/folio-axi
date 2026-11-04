@@ -76,6 +76,7 @@ const UNSENT_OWNERSHIP_COPY =
   "Unsent answers stay in the tab or window where you entered them; taking over in another window does not bring them along.";
 
 async function createChromeHarness({
+  userAgent = "Mozilla/5.0 Chrome/156.0.0.0 Safari/537.36",
   fetchImpl = /** @type {(url?: any, init?: any) => Promise<any>} */ (
     async () => ({ ok: true, json: async () => ({}) })
   ),
@@ -359,6 +360,7 @@ async function createChromeHarness({
   element("panelScroll").parentElement = element("panel");
   element("whiteboardOverlay").hidden = true;
   element("layoutGateBypass").hidden = true;
+  element("artifactSilentNotice").hidden = true;
   element("shareDialog").hidden = true;
   element("moreMenu").hidden = true;
   element("warningsDrawer").hidden = true;
@@ -404,11 +406,13 @@ async function createChromeHarness({
     location: {
       protocol: "http:",
       host: "lavish.test",
+      href: "http://lavish.test/session/abc",
       reload() {
         reloadCount += 1;
       },
     },
     navigator: {
+      userAgent,
       clipboard: {
         async writeText(value) {
           clipboardWrites.push(String(value));
@@ -6754,6 +6758,120 @@ test("a silent artifact is probed for a fatal failure, and a talking one is not"
   const failure = posts.find((post) => post.url === "/api/abc/artifact-failures");
   assert.equal(failure.body.failures[0].kind, "artifact-unavailable");
   assert.match(failure.body.failures[0].detail, /HTTP 404/);
+});
+
+/** @param {{ probeStatus?: number, userAgent?: string, posts?: any[] }} [options] */
+async function silentArtifactChrome({ probeStatus = 200, userAgent, posts = [] } = {}) {
+  const chrome = await createChromeHarness({
+    artifactSrc: "/artifact/abc/index.html",
+    userAgent,
+    fetchImpl: async (url, init) => {
+      posts.push({ url, body: init && init.body ? JSON.parse(init.body) : null });
+      if (String(url).includes("/artifact/abc/index.html?") && String(url).includes("probe=1"))
+        return { ok: probeStatus >= 200 && probeStatus < 300, status: probeStatus, json: async () => ({}) };
+      return { ok: true, json: async () => ({ warnings: [] }) };
+    },
+  });
+  chrome.element("artifact").dispatch("load");
+  chrome.runTimers(8000);
+  await flushPromises();
+  await flushPromises();
+  return chrome;
+}
+
+test("a silent artifact the server can serve says so instead of revealing an empty frame", async () => {
+  const posts = [];
+  const chrome = await silentArtifactChrome({ posts });
+
+  assert.equal(chrome.element("artifactSilentNotice").hidden, false);
+  assert.equal(chrome.element("artifactSilentUrl").textContent, "http://lavish.test/session/abc");
+  assert.equal(chrome.element("layoutGateOverlay").hidden, true, "the notice must not sit behind the gate");
+  assert.equal(
+    posts.some((post) => post.url === "/api/abc/artifact-failures"),
+    false,
+    "a browser that refused the frame is not a fatal artifact failure, so it must not wake poll",
+  );
+});
+
+test("the silent artifact notice names the built-in browser only when it is the one reviewing", async () => {
+  const claude = await silentArtifactChrome({
+    userAgent: "Mozilla/5.0 Claude/4.4212.0 Chrome/152.0.7977.167 Safari/537.36 MSIX",
+  });
+  assert.match(claude.element("artifactSilentCopy").textContent, /Claude's built-in browser/);
+
+  const chromeBrowser = await silentArtifactChrome();
+  assert.doesNotMatch(chromeBrowser.element("artifactSilentCopy").textContent, /Claude/);
+});
+
+test("the silent artifact notice copies the review link and can be dismissed", async () => {
+  const chrome = await silentArtifactChrome();
+
+  chrome.element("artifactSilentCopyLink").onclick();
+  await flushPromises();
+  assert.deepEqual(chrome.clipboardWrites, ["http://lavish.test/session/abc"]);
+
+  chrome.element("artifactSilentDismiss").onclick();
+  assert.equal(chrome.element("artifactSilentNotice").hidden, true);
+});
+
+test("an artifact that speaks late retires the silent artifact notice", async () => {
+  const chrome = await silentArtifactChrome();
+  assert.equal(chrome.element("artifactSilentNotice").hidden, false);
+
+  chrome.sendFrameMessage({
+    artifact_load_token: chrome.artifactLoadToken(),
+    type: "lavish:layoutDiagnostics",
+    complete: true,
+    viewport_width: 1440,
+    findings: [],
+  });
+  assert.equal(chrome.element("artifactSilentNotice").hidden, true);
+});
+
+test("an artifact that speaks while the probe is in flight never shows the silent notice", async () => {
+  let answerProbe = () => {};
+  const chrome = await createChromeHarness({
+    artifactSrc: "/artifact/abc/index.html",
+    fetchImpl: async (url) => {
+      if (String(url).includes("probe=1"))
+        return new Promise((resolve) => {
+          answerProbe = () => resolve({ ok: true, status: 200, json: async () => ({}) });
+        });
+      return { ok: true, json: async () => ({ warnings: [] }) };
+    },
+  });
+
+  chrome.element("artifact").dispatch("load");
+  chrome.runTimers(8000);
+  await flushPromises();
+  chrome.sendFrameMessage({
+    artifact_load_token: chrome.artifactLoadToken(),
+    type: "lavish:layoutDiagnostics",
+    complete: true,
+    viewport_width: 1440,
+    findings: [],
+  });
+  answerProbe();
+  await flushPromises();
+  await flushPromises();
+
+  assert.equal(chrome.element("artifactSilentNotice").hidden, true);
+});
+
+test("a probe that proves the artifact unavailable keeps the fatal path and shows no silent notice", async () => {
+  for (const probeStatus of [404, 409]) {
+    const chrome = await silentArtifactChrome({ probeStatus });
+    assert.equal(chrome.element("artifactSilentNotice").hidden, true, `HTTP ${probeStatus}`);
+  }
+});
+
+test("a fresh artifact load retires the silent artifact notice", async () => {
+  const chrome = await silentArtifactChrome();
+  assert.equal(chrome.element("artifactSilentNotice").hidden, false);
+
+  chrome.element("reloadArtifact").onclick();
+  await flushPromises();
+  assert.equal(chrome.element("artifactSilentNotice").hidden, true);
 });
 
 test("an artifact that reports diagnostics is never probed as unavailable", async () => {
