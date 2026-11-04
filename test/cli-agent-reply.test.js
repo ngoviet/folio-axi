@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -15,6 +15,7 @@ process.env.FOLIO_AXI_LINK_HOST = "127.0.0.1";
 import { createOpenOutput, createPollOutput, getCommandHelp, resolveAgentReply, VERSION } from "../src/cli.js";
 import { serve } from "../src/server.js";
 import { sessionKey } from "../src/session-store.js";
+import { NO_SYMLINKS } from "./helpers/symlinks.js";
 
 const CLI = fileURLToPath(new URL("../bin/folio-axi.js", import.meta.url));
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -284,6 +285,65 @@ test("poll recovers unacknowledged feedback after the artifact is deleted", asyn
     assert.match(result.stdout, /feedback survives a deleted artifact/);
     const after = await fetch(`${base}/api/poll?${query}`).then((response) => response.json());
     assert.equal(after.status, "waiting");
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("deleted paths through a symlink resolve for polls and ends", { skip: NO_SYMLINKS }, async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "folio-deleted-symlink-"));
+  const stateDir = path.join(dir, "state");
+  const realDir = path.join(dir, "real");
+  const linkDir = path.join(dir, "link");
+  await mkdir(stateDir);
+  await mkdir(path.join(realDir, "nested"), { recursive: true });
+  await symlink(realDir, linkDir, "dir");
+  const names = ["direct.html", "cli.html"];
+  for (const name of names) await writeFile(path.join(realDir, "nested", name), "<html></html>");
+  const keepAlive = path.join(dir, "keep.html");
+  await writeFile(keepAlive, "<html></html>");
+  const server = await serve({
+    port: 0,
+    host: "127.0.0.1",
+    stateFile: path.join(stateDir, "state.json"),
+    version: VERSION,
+  });
+  const env = {
+    ...process.env,
+    FOLIO_AXI_STATE_DIR: stateDir,
+    FOLIO_AXI_PORT: String(server.port),
+    FOLIO_AXI_HOST: "127.0.0.1",
+    FOLIO_AXI_LINK_HOST: "127.0.0.1",
+  };
+  try {
+    const base = `http://127.0.0.1:${server.port}`;
+    for (const file of [keepAlive, ...names.map((name) => path.join(linkDir, "nested", name))]) {
+      const response = await fetch(`${base}/api/sessions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ file }),
+      });
+      assert.equal(response.status, 200);
+    }
+    await rm(path.join(realDir, "nested"), { recursive: true });
+    const direct = path.join(linkDir, "nested", names[0]);
+    const cli = path.join(linkDir, "nested", names[1]);
+    const poll = await fetch(`${base}/api/poll?${new URLSearchParams({ file: direct, timeoutMs: "0" })}`);
+    assert.equal((await poll.json()).status, "waiting");
+    const cliPoll = await runCli(["poll", cli, "--timeout-ms", "0"], { env });
+    assert.equal(cliPoll.status, 0, cliPoll.stderr || cliPoll.stdout);
+    assert.match(cliPoll.stdout, /waiting/);
+    const end = await fetch(`${base}/api/end`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ file: direct }),
+    });
+    assert.equal((await end.json()).status, "ended");
+    const cliEnd = await runCli(["end", cli], { env });
+    assert.equal(cliEnd.status, 0, cliEnd.stderr || cliEnd.stdout);
+    const ended = await fetch(`${base}/api/poll?${new URLSearchParams({ file: cli, timeoutMs: "0" })}`);
+    assert.equal((await ended.json()).status, "ended");
   } finally {
     await server.close();
     await rm(dir, { recursive: true, force: true });

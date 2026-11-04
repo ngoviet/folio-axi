@@ -741,7 +741,7 @@ export class SessionStore {
   // Folio (#373): a page whose HTML file was deleted can no longer be found through realpath.
   // Match the stored canonical path instead; Windows paths compare case-insensitively.
   async findByStoredFile(file) {
-    const wanted = comparablePath(path.resolve(String(file || "")));
+    const wanted = comparablePath(await canonicalMissingPath(String(file || "")));
     return this.runExclusive(async () => {
       const state = await this.readState();
       return Object.values(state.sessions).find((session) => comparablePath(session?.file || "") === wanted) || null;
@@ -922,6 +922,22 @@ export class SessionStore {
 export async function canonicalFile(file) {
   const absolute = path.resolve(file);
   return realpath(absolute);
+}
+
+export async function canonicalMissingPath(file) {
+  let parent = path.resolve(file);
+  const suffix = [];
+  while (true) {
+    try {
+      return path.join(await realpath(parent), ...suffix);
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+      const next = path.dirname(parent);
+      if (next === parent) throw error;
+      suffix.unshift(path.basename(parent));
+      parent = next;
+    }
+  }
 }
 
 export function sessionKey(file) {
