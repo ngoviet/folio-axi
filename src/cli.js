@@ -33,7 +33,6 @@ import {
   publishToHtmlApp,
   updateHtmlApp,
 } from "./html-app.js";
-import { runHookCli } from "./hook-main.js";
 import {
   agentSessionId,
   claudeSettingsFile,
@@ -138,11 +137,6 @@ export async function run(argv) {
   // request drain in the `finally` below - that drain alone costs up to a full second.
   if (isVersionOnlyArgv(argv)) {
     process.stdout.write(`${VERSION}\n`);
-    return;
-  }
-  // Claude Code hooks print raw JSON for the harness, not AXI output, and must never fail it.
-  if (argv[0] === "hook") {
-    await runHookCli(argv.slice(1));
     return;
   }
   await ensureStateDir();

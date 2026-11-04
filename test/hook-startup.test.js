@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { registerHooks } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -57,5 +57,18 @@ test(
 test("hookCommandPrefix calls the checkout's entry point with node, or falls back to PATH", () => {
   assert.match(hookCommandPrefix(), /^node "[^"]+\/bin\/folio-axi\.js"$/);
   assert.equal(hookCommandPrefix(path.join(repo, "missing", "folio-axi.js")), "folio-axi");
-  assert.equal(hookCommandPrefix(path.join(repo, "package.json").replace("package", "pack$age")), "folio-axi");
+});
+
+test("hookCommandPrefix falls back to PATH for an existing entry with a shell-unsafe path", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "folio-hook-prefix-"));
+  try {
+    const safe = path.join(dir, "folio-axi.js");
+    const unsafe = path.join(dir, "folio$axi.js");
+    await writeFile(safe, "");
+    await writeFile(unsafe, "");
+    assert.equal(hookCommandPrefix(safe), `node "${safe.replaceAll("\\", "/")}"`);
+    assert.equal(hookCommandPrefix(unsafe), "folio-axi");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
