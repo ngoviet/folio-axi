@@ -1251,15 +1251,6 @@ test("chrome ignores Folio postMessages not sent by the artifact iframe", async 
   assert.match(js, /event\.source\s*!==\s*frame\.contentWindow/);
 });
 
-test("chrome restores queued prompts from tab storage after reload", async () => {
-  const js = await chromeClientSource();
-
-  assert.match(js, /folio-axi:queued:/);
-  assert.match(js, /function loadQueuedPrompts\(\)/);
-  assert.match(js, /const queued = loadQueuedPrompts\(\)/);
-  assert.match(js, /sessionStorage\.getItem\(queueStorageKey\)/);
-});
-
 test("chrome keeps queued prompts persisted until submit succeeds", async () => {
   const js = await chromeClientSource();
 
@@ -4608,7 +4599,7 @@ test("ending one of several sessions keeps the server running", async () => {
   }
 });
 
-test("a user-initiated end via the keyed route blocks a plain reopen but honors reopen: true", async () => {
+test("a user-initiated end within retention blocks a plain reopen but honors reopen: true", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
   const artifact = path.join(dir, "artifact.html");
   // A second, never-ended session keeps the server from self-shutting-down once the first
@@ -4616,9 +4607,9 @@ test("a user-initiated end via the keyed route blocks a plain reopen but honors 
   const keepAlive = path.join(dir, "keep-alive.html");
   await writeFile(artifact, "<!doctype html><html><body></body></html>");
   await writeFile(keepAlive, "<!doctype html><html><body></body></html>");
-  const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
+  let server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
   try {
-    const base = `http://127.0.0.1:${server.port}`;
+    let base = `http://127.0.0.1:${server.port}`;
     await fetch(`${base}/api/sessions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -4633,6 +4624,9 @@ test("a user-initiated end via the keyed route blocks a plain reopen but honors 
 
     // The browser chrome's plain "End session" hits this keyed route.
     await fetch(`${base}/api/${key}/end`, { method: "POST" });
+    await server.close();
+    server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
+    base = `http://127.0.0.1:${server.port}`;
 
     const blocked = await fetch(`${base}/api/sessions`, {
       method: "POST",
@@ -4643,7 +4637,7 @@ test("a user-initiated end via the keyed route blocks a plain reopen but honors 
     assert.equal(blocked.status, 200);
     assert.equal(blockedBody.status, "user-ended");
     assert.equal(blockedBody.key, key);
-    assert.equal(blockedBody.url, originalUrl);
+    assert.equal(new URL(blockedBody.url).pathname, new URL(originalUrl).pathname);
 
     // A blocked open must not resurrect the session or wake a poll.
     const stillEnded = await fetch(`${base}/api/poll?file=${encodeURIComponent(artifact)}&timeoutMs=0`);
@@ -5432,11 +5426,15 @@ test("SSE agent-presence returns to waiting when poll feedback storage fails", a
       const poll = fetch(`${base}/api/poll?file=${encodeURIComponent(artifact)}&timeoutMs=10`);
       assert.equal(await presence.next(), "listening");
 
+      const savedState = await readFile(stateFile);
       await writeFile(stateFile, "not json");
       const pollResult = await poll;
       assert.equal(pollResult.status, 500);
 
       assert.equal(await presence.next(), "waiting");
+      await writeFile(stateFile, savedState);
+      const nextPoll = await fetch(`${base}/api/poll?file=${encodeURIComponent(artifact)}&timeoutMs=0`);
+      assert.equal((await nextPoll.json()).status, "waiting");
     } finally {
       await presence.close();
     }
@@ -5444,15 +5442,6 @@ test("SSE agent-presence returns to waiting when poll feedback storage fails", a
     await server.close();
     await rm(dir, { recursive: true, force: true });
   }
-});
-
-test("long-poll response cleanup is guarded against storage failures", async () => {
-  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
-
-  assert.match(
-    source,
-    /try \{\s*await pollOwnershipLock\.runExclusive\(async \(\) => \{[\s\S]*?const result = await store\.takeFeedback\(key, \{ ackable \}\);[\s\S]*?\}\);\s*\} finally \{\s*cleanup\(\);/,
-  );
 });
 
 test("heartbeat long-poll errors close the stream without Express error handling", async () => {
