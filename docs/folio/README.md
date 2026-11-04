@@ -63,6 +63,7 @@ Kế hoạch đầy đủ có sơ đồ: [ke-hoach.html](ke-hoach.html) (bản t
 - [ ] **GĐ 4** (điện thoại): chờ chủ chọn Tailscale hay Cloudflare Tunnel; mã truy cập theo trang và #474 làm sau khi chọn.
 - [ ] **GĐ 5:** chờ chủ duyệt sửa mục "Trình bày" trong `~/.claude/CLAUDE.md`; chưa gỡ lavish-axi 0.1.93. Cài thử: `npm link` trong repo rồi `folio-axi setup hooks --write` (chủ tự chạy hoặc duyệt).
 - [x] Đổi tên hiển thị: mọi chữ "Lavish" / "Lavish Editor" trong giao diện, help CLI, playbook, README và tài liệu thành "Folio". Giữ tên API của SDK trang (`window.lavish.*`, `data-lavish-*`, `lavish:*`, `%% lavish-icon`) để trang viết cho Lavish vẫn chạy và còn lấy được bản sửa upstream. `CHANGELOG.md` và `docs/folio/` giữ nguyên vì là lịch sử.
+- [x] Sửa thêm sau review: thư mục artifact mặc định nay là `.folio/` (`.lavish/` vẫn được git bỏ qua); lô giao có ack chỉ được đánh dấu Seen sau khi ack thành công; poll có ack không kèm `session_id` trên trang đã có chủ bị `NOT_OWNER`, `--takeover` không kèm `session_id` chỉ bị từ chối khi trang có chủ; tệp tạm của `state.json` tạo với quyền 0600; `poll` và `end` khôi phục trang đã xoá theo đường dẫn lưu sẵn, kể cả qua thư mục symlink/junction.
 - Chưa làm: hiển thị trên trang "phiên đã đóng, có nút chép câu trả lời" (thiết kế mục 6) và cho phép `reply` sau Send & End.
 
 ## Liên quan ở nơi khác
