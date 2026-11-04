@@ -635,6 +635,7 @@ export class SessionStore {
       // Folio: an earlier batch nobody acked is handed out again, ahead of anything newer.
       const unacked = ackable && isUnackedDelivery(session.unacked_delivery) ? session.unacked_delivery : null;
       if (unacked) {
+        if (retainDeliveredAttachments(session, unacked.prompts, Date.now())) await this.writeState(state);
         const pending = (session.prompts || []).length > 0 || (session.artifact_failures || []).length > 0;
         const result = {
           status: "feedback",
@@ -686,25 +687,7 @@ export class SessionStore {
       // Delivery clears pending prompts, so retain the attachment ids for a bounded
       // grace window while the polling agent opens the absolute paths it received.
       const deliveredNow = Date.now();
-      const deliveredIds = new Set();
-      for (const prompt of prompts) {
-        for (const attachment of prompt.attachments || []) {
-          if (attachment?.id) deliveredIds.add(attachment.id);
-        }
-      }
-      const carried = (session.delivered_attachments || [])
-        .filter(
-          (entry) =>
-            entry &&
-            entry.id &&
-            !deliveredIds.has(entry.id) &&
-            deliveredNow - Number(entry.at) <= ATTACHMENT_DELIVERY_GRACE_MS,
-        )
-        .map((entry) => ({ id: entry.id, at: Number(entry.at) }))
-        .sort((a, b) => a.at - b.at);
-      const current = [...deliveredIds].map((id) => ({ id, at: deliveredNow }));
-      const historyRoom = Math.max(0, MAX_DELIVERED_ATTACHMENTS - current.length);
-      session.delivered_attachments = [...carried.slice(-historyRoom), ...current];
+      retainDeliveredAttachments(session, prompts, deliveredNow);
       if (freshPrompts.length > 0) {
         session.delivery_seq = deliverySeq;
         if (stampDelivered(session.chat, deliverySeq, new Date(deliveredNow).toISOString())) {
@@ -948,6 +931,29 @@ export function sessionKey(file) {
 export function normalizeOwnerSessionId(value) {
   const owner = String(value || "").trim();
   return /^[A-Za-z0-9._:-]{1,128}$/.test(owner) ? owner : "";
+}
+
+function retainDeliveredAttachments(session, prompts, deliveredNow) {
+  const deliveredIds = new Set();
+  for (const prompt of prompts) {
+    for (const attachment of prompt.attachments || []) {
+      if (attachment?.id) deliveredIds.add(attachment.id);
+    }
+  }
+  const carried = (session.delivered_attachments || [])
+    .filter(
+      (entry) =>
+        entry &&
+        entry.id &&
+        !deliveredIds.has(entry.id) &&
+        deliveredNow - Number(entry.at) <= ATTACHMENT_DELIVERY_GRACE_MS,
+    )
+    .map((entry) => ({ id: entry.id, at: Number(entry.at) }))
+    .sort((a, b) => a.at - b.at);
+  const current = [...deliveredIds].map((id) => ({ id, at: deliveredNow }));
+  const historyRoom = Math.max(0, MAX_DELIVERED_ATTACHMENTS - current.length);
+  session.delivered_attachments = [...(historyRoom ? carried.slice(-historyRoom) : []), ...current];
+  return deliveredIds.size > 0;
 }
 
 function isUnackedDelivery(value) {

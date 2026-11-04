@@ -8,7 +8,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { serve } from "../src/server.js";
-import { SessionStore } from "../src/session-store.js";
+import { ATTACHMENT_DELIVERY_GRACE_MS, SessionStore } from "../src/session-store.js";
 
 test("a disconnected raw poll restores fresh feedback while preserving the unacked batch", async () => {
   await withServer(async ({ base, artifact, stateFile }) => {
@@ -443,6 +443,48 @@ test("unacknowledged attachments stay referenced after delivery grace", async ()
     assert.ok((await store.referencedAttachmentIds({ now: later })).has(`${session.key}/img`));
     await store.ackDelivery(session.key, delivery.delivery_id);
     assert.equal((await store.referencedAttachmentIds({ now: later })).has(`${session.key}/img`), false);
+  });
+});
+
+test("redelivery renews attachment protection after acknowledgment", async () => {
+  await withServer(async ({ stateFile, artifact }) => {
+    const store = new SessionStore(stateFile);
+    const session = await store.upsertSession(artifact, "http://localhost");
+    await store.queuePrompts(
+      session.key,
+      {
+        prompts: [{ prompt: "image", attachments: [{ id: "img", name: "image" }] }],
+      },
+      {
+        resolveAttachment: async () => ({
+          id: "img",
+          path: "/image",
+          mime: "image/png",
+          bytes: 1,
+          width: 1,
+          height: 1,
+        }),
+      },
+    );
+    const first = await store.takeFeedback(session.key, { ackable: true });
+    const state = await store.readState();
+    state.sessions[session.key].delivered_attachments[0].at = Date.now() - 2 * ATTACHMENT_DELIVERY_GRACE_MS;
+    await store.writeState(state);
+    const before = Date.now();
+    const again = await store.takeFeedback(session.key, { ackable: true });
+    assert.equal(again.delivery_id, first.delivery_id);
+    await store.ackDelivery(session.key, again.delivery_id);
+    assert.ok(
+      (await store.referencedAttachmentIds({ now: before + ATTACHMENT_DELIVERY_GRACE_MS - 1000 })).has(
+        `${session.key}/img`,
+      ),
+    );
+    assert.equal(
+      (await store.referencedAttachmentIds({ now: Date.now() + ATTACHMENT_DELIVERY_GRACE_MS + 1000 })).has(
+        `${session.key}/img`,
+      ),
+      false,
+    );
   });
 });
 
