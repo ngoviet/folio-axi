@@ -6,19 +6,42 @@ const packageJson = JSON.parse(await readFile(new URL("../package.json", import.
 
 await mkdir("dist", { recursive: true });
 
+const define = {
+  "process.env.FOLIO_AXI_BUILD_UMAMI_HOST": JSON.stringify(process.env.FOLIO_AXI_UMAMI_HOST || ""),
+  "process.env.FOLIO_AXI_BUILD_UMAMI_WEBSITE_ID": JSON.stringify(process.env.FOLIO_AXI_UMAMI_WEBSITE_ID || ""),
+  "process.env.FOLIO_AXI_BUILD_VERSION": JSON.stringify(packageJson.version),
+};
+
+// Map source imports onto sibling bundles so each bundle loads the others lazily instead of
+// inlining them (esbuild hoists an inlined module's external package imports to the top).
+function siblingBundles(map) {
+  return {
+    name: "sibling-bundles",
+    setup(build) {
+      for (const [request, outfile] of Object.entries(map)) {
+        const filter = new RegExp(`^${request.replaceAll(".", "\\.").replaceAll("/", "\\/")}$`);
+        build.onResolve({ filter }, () => ({ path: outfile, external: true }));
+      }
+    },
+  };
+}
+
+const nodeBundle = { bundle: true, packages: "external", platform: "node", format: "esm", target: "node22", define };
+
+// dist/cli.mjs is a small dispatcher: `folio-axi hook <event>` runs on every Claude Code prompt
+// and stop, so it loads dist/hook.mjs (no express/chokidar) and everything else loads dist/cli-main.mjs.
 await esbuild.build({
+  ...nodeBundle,
   entryPoints: ["bin/folio-axi.js"],
   outfile: "dist/cli.mjs",
-  bundle: true,
-  packages: "external",
-  platform: "node",
-  format: "esm",
-  target: "node22",
-  define: {
-    "process.env.FOLIO_AXI_BUILD_UMAMI_HOST": JSON.stringify(process.env.FOLIO_AXI_UMAMI_HOST || ""),
-    "process.env.FOLIO_AXI_BUILD_UMAMI_WEBSITE_ID": JSON.stringify(process.env.FOLIO_AXI_UMAMI_WEBSITE_ID || ""),
-    "process.env.FOLIO_AXI_BUILD_VERSION": JSON.stringify(packageJson.version),
-  },
+  plugins: [siblingBundles({ "../src/hook-main.js": "./hook.mjs", "../src/cli.js": "./cli-main.mjs" })],
+});
+await esbuild.build({ ...nodeBundle, entryPoints: ["src/cli.js"], outfile: "dist/cli-main.mjs" });
+await esbuild.build({
+  ...nodeBundle,
+  entryPoints: ["src/hook-main.js"],
+  outfile: "dist/hook.mjs",
+  plugins: [siblingBundles({ "./cli.js": "./cli-main.mjs" })],
 });
 
 await chmod("dist/cli.mjs", 0o755);

@@ -33,15 +33,13 @@ import {
   publishToHtmlApp,
   updateHtmlApp,
 } from "./html-app.js";
+import { runHookCli } from "./hook-main.js";
 import {
   agentSessionId,
   claudeSettingsFile,
   computeClaudeHookUpdate,
   folioHookEntries,
-  HOOK_EVENTS,
   isInsideDirectory,
-  parseHookInput,
-  runHookEvent,
 } from "./hooks.js";
 import { localInterfaceAddresses } from "./local-address.js";
 import {
@@ -53,7 +51,6 @@ import {
   LOOPBACK_HOST,
   resolveConcreteListenHosts,
   serverLogFile,
-  stateDir,
   stateFile,
   stateId,
 } from "./paths.js";
@@ -145,7 +142,7 @@ export async function run(argv) {
   }
   // Claude Code hooks print raw JSON for the harness, not AXI output, and must never fail it.
   if (argv[0] === "hook") {
-    await hookCommand(argv.slice(1));
+    await runHookCli(argv.slice(1));
     return;
   }
   await ensureStateDir();
@@ -205,42 +202,27 @@ async function flushPendingAcks() {
   }
 }
 
-async function readAllStdin() {
-  if (process.stdin.isTTY) return "";
-  const chunks = [];
-  for await (const chunk of process.stdin) chunks.push(chunk);
-  return Buffer.concat(chunks).toString("utf8");
+// Hooks run on every prompt and stop. Calling node on this checkout's entry point directly skips
+// the npm shim, which on Git Bash spawns uname/sed/cygpath and roughly doubles each hook's cost.
+// Both the source (src/cli.js) and the bundle (dist/cli-main.mjs) sit one level below the root.
+export function hookCommandPrefix(entry = fileURLToPath(new URL("../bin/folio-axi.js", import.meta.url))) {
+  // A path the hook matcher could not parse back falls back to the PATH command.
+  if (!existsSync(entry) || /["'`$;&|<>\r\n]/.test(entry)) return "folio-axi";
+  return `node "${entry.replaceAll("\\", "/")}"`;
 }
 
-async function hookCommand(args) {
-  const event = args[0] || "";
-  if (!HOOK_EVENTS[event]) {
-    process.stderr.write(
-      `folio-axi hook: unknown event "${event}" (expected ${Object.keys(HOOK_EVENTS).join(", ")})\n`,
-    );
-    return;
-  }
-  try {
-    const input = parseHookInput(await readAllStdin());
-    const { output, acks } = await runHookEvent(event, {
-      input,
-      env: process.env,
-      stateDirectory: stateDir(),
-      readSessions: () => new SessionStore(stateFile()).listSessions(),
-      pollOnce: async (file, sessionId) => {
-        const baseUrl = await ensureServer();
-        const query = new URLSearchParams({ file, timeoutMs: "0", ack: "1", session_id: sessionId });
-        return fetchJson(`${baseUrl}/api/poll?${query}`, { retries: 0 });
-      },
-    });
-    if (!output) return;
-    await new Promise((resolve) => process.stdout.write(`${output}\n`, () => resolve(undefined)));
-    const baseUrl = acks.length > 0 ? await ensureServer() : "";
-    for (const { key, deliveryId } of acks) {
-      await postJson(`${baseUrl}/api/${key}/ack`, { delivery_id: deliveryId }).catch(() => {});
-    }
-  } catch (error) {
-    process.stderr.write(`folio-axi hook ${event}: ${error?.message || error}\n`);
+// Server calls for `folio-axi hook` (src/hook-main.js), which imports this module only once a
+// page has feedback waiting.
+export async function hookPollOnce(file, sessionId) {
+  const baseUrl = await ensureServer();
+  const query = new URLSearchParams({ file, timeoutMs: "0", ack: "1", session_id: sessionId });
+  return fetchJson(`${baseUrl}/api/poll?${query}`, { retries: 0 });
+}
+
+export async function hookAck(acks) {
+  const baseUrl = await ensureServer();
+  for (const { key, deliveryId } of acks) {
+    await postJson(`${baseUrl}/api/${key}/ack`, { delivery_id: deliveryId }).catch(() => {});
   }
 }
 
@@ -1410,7 +1392,7 @@ async function setupCommand(args) {
       ]);
     }
   }
-  const entries = folioHookEntries();
+  const entries = folioHookEntries(hookCommandPrefix());
   const [updated, changed] = computeClaudeHookUpdate(current, entries);
   const hooks = Object.entries(entries).map(([event, group]) => ({ event, command: group.hooks[0].command }));
   if (!args.includes("--write")) {
@@ -1420,7 +1402,9 @@ async function setupCommand(args) {
       help: changed
         ? [
             "Run `folio-axi setup hooks --write` to merge these into the settings file (other hooks are kept)",
-            "folio-axi must be on PATH for the hooks to run (`npm link` in the folio-axi checkout)",
+            hooks[0]?.command.startsWith("node ")
+              ? "The hooks run this checkout directly with node; re-run `folio-axi setup hooks --write` if you move it"
+              : "folio-axi must be on PATH for the hooks to run (`npm link` in the folio-axi checkout)",
           ]
         : ["Hooks are up to date; restart Claude Code sessions to load them"],
     };
@@ -2421,7 +2405,7 @@ function createCommandHelp({ agent = "generic" } = {}) {
     playbook: `Usage: folio-axi playbook [playbook_id]\n\nList focused artifact guidance playbooks, or show one playbook by ID. Known IDs: diagram, table, comparison, plan, code, input, explanation, slides.\n\n${PLAYBOOK_ROUTER_HELP}\n\nExamples:\n  folio-axi playbook\n  folio-axi playbook diagram\n  folio-axi playbook input\n`,
     libraries: `Usage: folio-axi libraries [--search <text>] [--library <id>]\n\nList the Excalidraw libraries (.excalidrawlib files) the user copied into ~/.folio-axi/excalidraw-libraries, or FOLIO_AXI_STATE_DIR/excalidraw-libraries when set. Their items appear in every whiteboard's library panel. --search lists item refs whose ref contains every search word; --library lists one library's item refs. Folio only reads this directory and never downloads libraries.\n\nExamples:\n  folio-axi libraries\n  folio-axi libraries --search lambda\n  folio-axi libraries --library aws-architecture-icons\n`,
     design: `Usage: folio-axi design\n\nShow a copy-pasteable CDN snippet for Tailwind CSS browser runtime v4 + DaisyUI v5 + themes, the whiteboard (Mermaid) opt-in snippet, a content-to-playbook router, an optional layout safety CSS snippet, plus technical reference for DaisyUI components. ${PLAYBOOK_ROUTER_HELP} Folio artifacts stay portable HTML. This CDN snippet is the design fallback, not the default: inspect the subject project before falling back, and paste the layout safety CSS only when useful for dense nested grid/flex layouts, badges, wide fonts, or local media. ${DESIGN_PRIORITY_RULE}\n`,
-    setup: `Usage: folio-axi setup hooks [--write]\n\nShows (or, with --write, merges into ~/.claude/settings.json) the Claude Code hooks Folio needs: SessionStart exports FOLIO_SESSION_ID and lists this directory's review pages; Stop holds the agent back while its page still has unread feedback (at most ${"3"} times in a row; FOLIO_AXI_STOP_HOOK=0 turns it off); UserPromptSubmit adds waiting feedback to the next chat turn. Other hooks in the file are kept. folio-axi must be on PATH. Restart Claude Code sessions afterward.\n`,
+    setup: `Usage: folio-axi setup hooks [--write]\n\nShows (or, with --write, merges into ~/.claude/settings.json) the Claude Code hooks Folio needs: SessionStart exports FOLIO_SESSION_ID and lists this directory's review pages; Stop holds the agent back while its page still has unread feedback (at most ${"3"} times in a row; FOLIO_AXI_STOP_HOOK=0 turns it off); UserPromptSubmit adds waiting feedback to the next chat turn. Other hooks in the file are kept. The hooks call this checkout's bin/folio-axi.js with node (skipping the npm shim); re-run setup after moving the checkout. Restart Claude Code sessions afterward.\n`,
     server: `Usage: folio-axi server [--port 4388] [--verbose] [--also-listen <host>...]\n\nRun the local Folio server. Pass --verbose (or set FOLIO_AXI_DEBUG=1) to log session and watcher events to stderr. Detached server output is appended to ~/.folio-axi/server.log, or FOLIO_AXI_STATE_DIR/server.log when set, for startup and crash diagnostics.\n\nBy default Folio binds to 127.0.0.1 and, when Tailscale is running, this machine's Tailscale IPv4. Any explicit FOLIO_AXI_HOST overrides automatic Tailscale binding; wildcard values such as 0.0.0.0 or :: are restricted to loopback. An explicit non-wildcard FOLIO_AXI_HOST sets the bind address, and the server also listens on 127.0.0.1 so every local CLI finds it; --also-listen adds further concrete addresses (the CLI passes it when it replaces a server, to keep every address the old one served). An address that cannot be bound is retried in the background and reported as network_warning. Binding beyond loopback exposes an unauthenticated server that can read and serve arbitrary local files to anything that can reach it, so only do so on a trusted network. With automatic binding enabled, a successfully bound Tailscale listener uses its MagicDNS name in generated session links; otherwise FOLIO_AXI_LINK_HOST can set the link hostname. See README's Allowed hosts section for Host allowlisting and FOLIO_AXI_ALLOWED_HOSTS. FOLIO_AXI_NO_OPEN=1 (or --no-open) suppresses the local browser launch.\n`,
   };
 }
