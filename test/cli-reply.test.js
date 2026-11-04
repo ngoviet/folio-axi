@@ -285,7 +285,7 @@ test("reply refuses a missing session, an unreachable server, and a non-success 
 
   const holder = createServer((_req, res) => {
     res.setHeader("content-type", "application/json");
-    res.end(JSON.stringify({ version: "not-lavish" }));
+    res.end(JSON.stringify({ version: "not-folio" }));
   });
   await new Promise((resolve) => holder.listen(0, "127.0.0.1", () => resolve()));
   const port = /** @type {import("node:net").AddressInfo} */ (holder.address()).port;

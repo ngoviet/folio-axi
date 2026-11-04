@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { connect as netConnect } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -259,6 +259,85 @@ test("a poll from another agent session is refused unless it takes over", async 
   });
 });
 
+test("ackable polls require the owner on owned pages but allow ownerless pages", async () => {
+  await withServer(async ({ base, artifact }) => {
+    const { key } = await open(base, artifact, "sess-a");
+    await sendPrompt(base, key, "owned feedback");
+    for (const params of [{ ack: "1" }, { ack: "1", session_id: "invalid id" }]) {
+      const response = await poll(base, artifact, params);
+      assert.equal(response.status, 409);
+      assert.equal((await response.json()).code, "NOT_OWNER");
+    }
+    const owner = await poll(base, artifact, { ack: "1", session_id: "sess-a" }).then((res) => res.json());
+    assert.equal(owner.prompts[0].prompt, "owned feedback");
+    const query = new URLSearchParams({
+      file: artifact,
+      timeoutMs: "0",
+      ack: "1",
+      session_id: "sess-b",
+      takeover: "1",
+    });
+    const takeover = await fetch(`${base}/api/poll?${query}`, { method: "POST" }).then((res) => res.json());
+    assert.equal(takeover.delivery_id, owner.delivery_id);
+  });
+  await withServer(async ({ base, artifact }) => {
+    const { key } = await open(base, artifact);
+    await sendPrompt(base, key, "ownerless feedback");
+    const response = await poll(base, artifact, { ack: "1" }).then((res) => res.json());
+    assert.equal(response.prompts[0].prompt, "ownerless feedback");
+  });
+});
+
+test("takeover of an owned page requires a valid session identity", async () => {
+  await withServer(async ({ base, artifact, stateFile }) => {
+    const { key } = await open(base, artifact, "sess-a");
+    await sendPrompt(base, key, "still owned");
+    for (const params of [{}, { ack: "1" }, { ack: "1", session_id: "invalid id" }]) {
+      const query = new URLSearchParams({ file: artifact, timeoutMs: "0", takeover: "1", ...params });
+      const response = await fetch(`${base}/api/poll?${query}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ agent_reply: "must not publish" }),
+      });
+      assert.equal(response.status, 400);
+      const body = await response.json();
+      assert.equal(body.code, "VALIDATION_ERROR");
+      assert.match(body.error, /Claude Code.*SessionStart.*FOLIO_SESSION_ID/);
+    }
+    const session = await new SessionStore(stateFile).findByKey(key);
+    assert.equal(session.owner_session_id, "sess-a");
+    assert.ok(!session.chat?.some((entry) => entry.text === "must not publish"));
+    const owner = await poll(base, artifact, { ack: "1", session_id: "sess-a" }).then((res) => res.json());
+    assert.equal(owner.prompts[0].prompt, "still owned");
+    const query = new URLSearchParams({
+      file: artifact,
+      timeoutMs: "0",
+      takeover: "1",
+      ack: "1",
+      session_id: "sess-b",
+    });
+    const takeover = await fetch(`${base}/api/poll?${query}`, { method: "POST" }).then((res) => res.json());
+    assert.equal(takeover.delivery_id, owner.delivery_id);
+    assert.equal((await new SessionStore(stateFile).findByKey(key)).owner_session_id, "sess-b");
+  });
+});
+
+test("sessionless takeover displaces an ownerless page's listener", async () => {
+  await withServer(async ({ base, artifact, stateFile }) => {
+    const { key } = await open(base, artifact);
+    const waiting = poll(base, artifact, { timeoutMs: "10000" });
+    while (!(await fetch(`${base}/health`).then((r) => r.json())).listeners?.some((entry) => entry.key === key)) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    const query = new URLSearchParams({ file: artifact, timeoutMs: "0", takeover: "1", ack: "1" });
+    const takeover = await fetch(`${base}/api/poll?${query}`, { method: "POST" });
+    assert.equal(takeover.status, 200);
+    assert.equal((await takeover.json()).status, "waiting");
+    assert.equal((await (await waiting).json()).code, "LISTENER_REPLACED");
+    assert.ok(!(await new SessionStore(stateFile).findByKey(key)).owner_session_id);
+  });
+});
+
 test("an acking poll gets the same batch again until it acks", async () => {
   await withServer(async ({ base, artifact }) => {
     const { key } = await open(base, artifact, "sess-a");
@@ -373,6 +452,19 @@ test("state.json is written through a temp file and stays valid JSON", async () 
     await Promise.all(Array.from({ length: 20 }, (_, i) => store.writeState({ sessions: {}, n: i })));
     const parsed = JSON.parse(await readFile(file, "utf8"));
     assert.equal(typeof parsed.n, "number");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("state replacement keeps feedback private", { skip: process.platform === "win32" }, async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "folio-state-mode-"));
+  try {
+    const file = path.join(dir, "state.json");
+    await writeFile(file, "{}", { mode: 0o600 });
+    await chmod(file, 0o600);
+    await new SessionStore(file).writeState({ sessions: {} });
+    assert.equal((await stat(file)).mode & 0o777, 0o600);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

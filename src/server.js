@@ -370,8 +370,8 @@ export async function serve({
     typeof log === "function"
       ? log
       : (line) => process.stderr.write(`${serverStdioIsTimestamped() ? line : formatServerLogLine(line)}\n`);
-  const logEvent = verbose ? (line) => writeLog(`[lavish] ${line}`) : null;
-  if (tailscaleDetectionWarning) writeLog(`[lavish] WARNING: ${tailscaleDetectionWarning}`);
+  const logEvent = verbose ? (line) => writeLog(`[folio] ${line}`) : null;
+  if (tailscaleDetectionWarning) writeLog(`[folio] WARNING: ${tailscaleDetectionWarning}`);
   let publicPort = port;
   let serverReady = false;
   let networkReconcileCheckedAt = 0;
@@ -398,7 +398,7 @@ export async function serve({
       .then((session) => {
         if (session) events.emit("chat-sync", key, session);
       })
-      .catch((error) => writeLog(`[lavish] working stamp after reload failed: ${error?.message || error}`));
+      .catch((error) => writeLog(`[folio] working stamp after reload failed: ${error?.message || error}`));
   });
   // The transcript the chrome renders is computed here (src/chat-messages.js): agent text ships
   // with its rendered html, user entries ship as text with their anchor, never as html.
@@ -552,7 +552,7 @@ export async function serve({
       const session = await store.findByKey(key);
       if (session) events.emit("chat-sync", key, session);
     } catch (error) {
-      writeLog(`[lavish] chat-sync after delivery failed: ${error?.message || error}`);
+      writeLog(`[folio] chat-sync after delivery failed: ${error?.message || error}`);
     }
   }
 
@@ -625,12 +625,12 @@ export async function serve({
     const persistedNothing = !session || Boolean(session.rejected) || Boolean(session.conflict);
     if (restoreError) {
       writeLog(
-        `[lavish] closed poll feedback restore failed; the batch was lost: ${restoreError?.message || restoreError}`,
+        `[folio] closed poll feedback restore failed; the batch was lost: ${restoreError?.message || restoreError}`,
       );
     } else if (persistedNothing) {
-      writeLog("[lavish] closed poll feedback restore was refused; nothing was re-queued and the batch was lost");
+      writeLog("[folio] closed poll feedback restore was refused; nothing was re-queued and the batch was lost");
     } else if (!restoredPrompts || JSON.stringify(restoredPrompts) !== JSON.stringify(prompts) || !failuresRestored) {
-      writeLog("[lavish] closed poll feedback restore was incomplete; delivery was not marked");
+      writeLog("[folio] closed poll feedback restore was incomplete; delivery was not marked");
     }
     const pendingAfterRestore =
       (Array.isArray(restoredPrompts) && restoredPrompts.length > 0) ||
@@ -909,6 +909,7 @@ export async function serve({
       res.status(405).json({ error: "POST /api/poll requires agent_reply or takeover=1" });
       return;
     }
+    const pollSessionId = normalizeOwnerSessionId(req.query.session_id);
     // `close` is subscribed before the first `await` and re-checked after the listeners are armed,
     // because a client that disconnects while `takeFeedback` is in flight would otherwise arrive
     // too late for its own cleanup: the handler marks the poll active afterwards and nothing left
@@ -968,51 +969,64 @@ export async function serve({
       }
       // Folio: feedback belongs to the agent session that opened the page. A poll from another
       // session is refused unless it explicitly takes over, which also moves ownership.
-      const pollSessionId = normalizeOwnerSessionId(req.query.session_id);
       const ackable = req.query.ack === "1";
-      const { holder, previousPresence, conflict, missing } = await pollOwnershipLock.runExclusive(async () => {
-        const currentHolder = activePolls.get(key);
-        if (pollSessionId) {
-          const ownedSession = await store.findByKey(key);
-          const ownerSessionId = ownedSession?.owner_session_id || "";
-          if (ownerSessionId && ownerSessionId !== pollSessionId && !takeover) {
-            return {
-              conflict: {
-                status: "error",
-                code: "NOT_OWNER",
-                error: "this page belongs to another agent session",
-                owner_session_id: ownerSessionId,
-              },
-            };
+      const { holder, previousPresence, conflict, missing, invalidTakeover } = await pollOwnershipLock.runExclusive(
+        async () => {
+          const currentHolder = activePolls.get(key);
+          if (pollSessionId || ackable || takeover) {
+            const ownedSession = await store.findByKey(key);
+            const ownerSessionId = ownedSession?.owner_session_id || "";
+            if (takeover && !pollSessionId && ownerSessionId) return { invalidTakeover: true };
+            if (ownerSessionId && ownerSessionId !== pollSessionId && !takeover) {
+              return {
+                conflict: {
+                  status: "error",
+                  code: "NOT_OWNER",
+                  error: "this page belongs to another agent session",
+                  owner_session_id: ownerSessionId,
+                },
+              };
+            }
+            if (currentHolder && !takeover) return { conflict: listenerConflict(currentHolder, "LISTENER_ACTIVE") };
+            if (pollSessionId && ownedSession && ownerSessionId !== pollSessionId)
+              await store.setOwnerSession(key, pollSessionId);
+          } else if (currentHolder && !takeover) {
+            return { conflict: listenerConflict(currentHolder, "LISTENER_ACTIVE") };
           }
-          if (currentHolder && !takeover) return { conflict: listenerConflict(currentHolder, "LISTENER_ACTIVE") };
-          if (ownedSession && ownerSessionId !== pollSessionId) await store.setOwnerSession(key, pollSessionId);
-        } else if (currentHolder && !takeover) {
-          return { conflict: listenerConflict(currentHolder, "LISTENER_ACTIVE") };
-        }
-        const nextHolder = { key, owner, startedAt: Date.now(), replaced: false, replace: null };
-        claimedHolder = nextHolder;
-        const priorPresence = presenceSignature(key, activePolls, deliveredFeedback);
-        if (currentHolder) {
-          // Install the successor before releasing the old response so its cleanup cannot emit a
-          // transient "waiting" state or clear the successor's listener ownership.
-          currentHolder.replaced = true;
-          activePolls.set(key, nextHolder);
-          currentHolder.replace?.();
-        } else {
-          activePolls.set(key, nextHolder);
-        }
-        // Attaching a fresh round retires the prior delivery marker; releasing a poll never does.
-        deliveredFeedback.delete(key);
-        if (agentReply !== null) {
-          const session = await publishAgentReply(key, agentReply);
-          if (!session) {
-            activePolls.delete(key);
-            return { missing: true };
+          const nextHolder = { key, owner, startedAt: Date.now(), replaced: false, replace: null };
+          claimedHolder = nextHolder;
+          const priorPresence = presenceSignature(key, activePolls, deliveredFeedback);
+          if (currentHolder) {
+            // Install the successor before releasing the old response so its cleanup cannot emit a
+            // transient "waiting" state or clear the successor's listener ownership.
+            currentHolder.replaced = true;
+            activePolls.set(key, nextHolder);
+            currentHolder.replace?.();
+          } else {
+            activePolls.set(key, nextHolder);
           }
-        }
-        return { holder: nextHolder, previousPresence: priorPresence };
-      });
+          // Attaching a fresh round retires the prior delivery marker; releasing a poll never does.
+          deliveredFeedback.delete(key);
+          if (agentReply !== null) {
+            const session = await publishAgentReply(key, agentReply);
+            if (!session) {
+              activePolls.delete(key);
+              return { missing: true };
+            }
+          }
+          return { holder: nextHolder, previousPresence: priorPresence };
+        },
+      );
+      if (invalidTakeover) {
+        detachRequestClose();
+        res.status(400).json({
+          status: "error",
+          code: "VALIDATION_ERROR",
+          error:
+            "Run inside a Claude Code session with the Folio SessionStart hook installed or set FOLIO_SESSION_ID before taking over",
+        });
+        return;
+      }
       if (conflict) {
         detachRequestClose();
         res.status(409).json(conflict);
@@ -2179,7 +2193,7 @@ export async function serve({
       }
     }
     const httpServer = await listenHttp(app, boundPort, address, (error) => {
-      writeLog(`[lavish] HTTP server error: ${error instanceof Error ? error.message : String(error)}`);
+      writeLog(`[folio] HTTP server error: ${error instanceof Error ? error.message : String(error)}`);
     });
     if (shuttingDown) {
       httpServer.close();
@@ -2255,7 +2269,7 @@ export async function serve({
             await listenOnce(listenHost);
             pendingBinds.delete(listenHost);
             bound = true;
-            writeLog(`[lavish] now listening on ${hostForUrl(listenHost)}:${boundPort} after an earlier bind failure.`);
+            writeLog(`[folio] now listening on ${hostForUrl(listenHost)}:${boundPort} after an earlier bind failure.`);
           } catch (error) {
             if (!shuttingDown) pendingBinds.set(listenHost, error instanceof Error ? error : new Error(String(error)));
           }
@@ -2343,7 +2357,7 @@ export async function serve({
   // Always logged, not only under --verbose: an address that silently stopped serving is what left
   // tailnet review links dead for most of an hour with nothing but a debug line to show for it.
   for (const [listenHost, error] of pendingBinds) {
-    writeLog(`[lavish] WARNING: ${describeBindFailure(listenHost, error)}`);
+    writeLog(`[folio] WARNING: ${describeBindFailure(listenHost, error)}`);
   }
   serverReady = true;
   scheduleBindRecovery();
@@ -2354,7 +2368,7 @@ export async function serve({
   function shutdown(reloadKey = "", reason = "", cause = "requested") {
     if (shuttingDown) return;
     shuttingDown = true;
-    writeLog(`[lavish] shutting down: ${cause}${reason ? ` (reason=${reason})` : ""}`);
+    writeLog(`[folio] shutting down: ${cause}${reason ? ` (reason=${reason})` : ""}`);
     if (idleTimer) {
       clearTimeout(idleTimer);
       idleTimer = null;

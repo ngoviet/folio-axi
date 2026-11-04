@@ -5,7 +5,7 @@ installServerStdioTimestamps();
 let fatalExitScheduled = false;
 function handleFatalServerError(kind, error) {
   const detail = error instanceof Error ? error.stack || error.message : String(error);
-  console.error(`[lavish] ${kind}: ${detail}`);
+  console.error(`[folio] ${kind}: ${detail}`);
   if (fatalExitScheduled) return;
   fatalExitScheduled = true;
   process.exitCode = 1;

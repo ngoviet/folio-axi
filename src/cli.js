@@ -1323,7 +1323,7 @@ export async function shutdownServerOnPort(
     return { server: { status: "not-running", port } };
   }
   if (!(await canControlServerOnPort(baseUrl, health, processMatchesLavish))) {
-    return { server: { status: "not-lavish", port } };
+    return { server: { status: "not-folio", port } };
   }
   await shutdownRequester(baseUrl, { reason: "stop" });
   let freed = await portFreeWaiter(baseUrl, 3000);

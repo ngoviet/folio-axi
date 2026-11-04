@@ -901,7 +901,7 @@ export class SessionStore {
   async writeState(state) {
     const body = `${JSON.stringify(state, null, 2)}\n`;
     const temp = `${this.file}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`;
-    await writeFile(temp, body);
+    await writeFile(temp, body, { mode: 0o600 });
     for (let attempt = 0; ; attempt++) {
       try {
         await rename(temp, this.file);

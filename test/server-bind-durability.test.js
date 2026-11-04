@@ -552,7 +552,7 @@ net.Server.prototype.emit = function (event, ...args) {
       const log = await readFile(logFile, "utf8");
       assert.match(
         log,
-        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z \[lavish\] HTTP server error: post-listen-repro$/m,
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z \[folio\] HTTP server error: post-listen-repro$/m,
       );
     });
   },
@@ -586,7 +586,7 @@ test("an uncaught server exception is timestamped before deterministic exit", { 
     const log = await readFile(logFile, "utf8");
     assert.match(
       log,
-      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z \[lavish\] uncaught exception: Error: uncaught-repro$/m,
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z \[folio\] uncaught exception: Error: uncaught-repro$/m,
     );
   });
 });
@@ -713,7 +713,7 @@ test(
         },
         () => stopCommand([]),
       );
-      assert.equal(output.server.status, "not-lavish");
+      assert.equal(output.server.status, "not-folio");
     } finally {
       await new Promise((resolve) => foreignOnly.close(() => resolve(undefined)));
     }

@@ -2608,7 +2608,7 @@ test("shutdownServerOnPort ignores unidentified health responders", async () => 
 
   assert.equal(shutdowns, 0);
   assert.equal(kills, 0);
-  assert.deepEqual(output, { server: { status: "not-lavish", port: 4387 } });
+  assert.deepEqual(output, { server: { status: "not-folio", port: 4387 } });
 });
 
 test("open can resume a session without opening another browser window", () => {
