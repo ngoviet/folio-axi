@@ -271,7 +271,7 @@ test("poll recovers unacknowledged feedback after the artifact is deleted", asyn
     const message = "feedback survives a deleted artifact";
     const queued = await fetch(`${base}/api/${opened.key}/prompts`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", origin: base },
       body: JSON.stringify({ prompts: [{ prompt: message, tag: "message" }] }),
     });
     assert.equal(queued.status, 200);
