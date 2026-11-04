@@ -202,10 +202,31 @@ test("hook setup recognizes only executable invocations", () => {
     "folio-axi hook stop; my-check",
     "folio-axi hook stop | my-check",
     'node "C:\\Program Files\\Folio\\folio-axi.js" hook stop || my-check',
+    "folio-axi hook stop>out.txt",
+    "folio-axi hook $(my-check)",
+    "folio-axi hook `my-check`",
+    "folio-axi hook unknown",
+    "folio-axi hook stop extra",
+    'node "$(my-check)/folio-axi.js" hook stop',
   ];
   const hooks = commands.map((command) => ({ type: "command", command }));
   const [updated] = computeClaudeHookUpdate({ hooks: { Stop: [{ hooks }] } });
   assert.deepEqual(updated.hooks.Stop[0].hooks, hooks.slice(3));
+});
+
+test("hook setup replaces supported events for direct and Node commands", () => {
+  for (const [event, argument] of Object.entries({
+    SessionStart: "session-start",
+    Stop: "stop",
+    UserPromptSubmit: "prompt-submit",
+  })) {
+    const hooks = [
+      { type: "command", command: `folio-axi hook ${argument}` },
+      { type: "command", command: `node "C:\\Program Files\\Folio\\folio-axi.js" hook ${argument}` },
+    ];
+    const [updated] = computeClaudeHookUpdate({ hooks: { [event]: [{ hooks }] } });
+    assert.deepEqual(updated.hooks[event], [folioHookEntries()[event]]);
+  }
 });
 
 test("hook preserves structured feedback and does not acknowledge a cut batch", async () => {

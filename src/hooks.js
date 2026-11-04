@@ -269,10 +269,11 @@ export function folioHookEntries(command = "folio-axi") {
 
 function isFolioHook(hook) {
   if (typeof hook?.command !== "string") return false;
+  if (/[`$;&|<>\r\n]/.test(hook.command)) return false;
   const token = "(?:\"[^\"]+\"|'[^']+'|[^\\s]+)";
   const match = hook.command
     .trim()
-    .match(new RegExp(`^(${token})(?:\\s+(${token}))?\\s+hook\\s+([^\\s;&|]+)\\s*$`, "i"));
+    .match(new RegExp(`^(${token})(?:\\s+(${token}))?\\s+hook\\s+(session-start|stop|prompt-submit)\\s*$`, "i"));
   if (!match) return false;
   const executable = (value) =>
     value
@@ -282,8 +283,8 @@ function isFolioHook(hook) {
       .toLowerCase();
   const first = executable(match[1]);
   return match[2]
-    ? /^(?:node|node\.exe)$/.test(first) && executable(match[2]) === "folio-axi.js"
-    : /^(?:folio-axi|folio-axi\.cmd)$/.test(first);
+    ? /^(?:node|node\.exe)$/.test(first) && /^(?:folio-axi|folio-axi\.cmd|folio-axi\.js)$/.test(executable(match[2]))
+    : /^(?:folio-axi|folio-axi\.cmd|folio-axi\.js)$/.test(first);
 }
 
 /**

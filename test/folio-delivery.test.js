@@ -271,7 +271,7 @@ test("an acking poll gets the same batch again until it acks", async () => {
   });
 });
 
-test("an agent reply also settles the unacked batch", async () => {
+test("agent replies leave an unacknowledged batch available until matching ack", async () => {
   await withServer(async ({ base, artifact }) => {
     const { key } = await open(base, artifact, "sess-a");
     await sendPrompt(base, key, "please fix");
@@ -285,7 +285,29 @@ test("an agent reply also settles the unacked batch", async () => {
     });
     assert.equal(reply.status, 200);
     const after = await poll(base, artifact, { session_id: "sess-a", ack: "1" }).then((res) => res.json());
-    assert.equal(after.status, "waiting");
+    assert.equal(after.delivery_id, delivered.delivery_id);
+    assert.equal(after.prompts[0].prompt, "please fix");
+    const query = new URLSearchParams({ file: artifact, session_id: "sess-a", ack: "1", timeoutMs: "0" });
+    const viaPoll = await fetch(`${base}/api/poll?${query}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ agent_reply: "another reply" }),
+    }).then((res) => res.json());
+    assert.equal(viaPoll.delivery_id, delivered.delivery_id);
+    assert.equal(viaPoll.prompts[0].prompt, "please fix");
+    const stale = await fetch(`${base}/api/${key}/ack`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ delivery_id: "wrong" }),
+    }).then((res) => res.json());
+    assert.equal(stale.status, "stale");
+    const acked = await fetch(`${base}/api/${key}/ack`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ delivery_id: delivered.delivery_id }),
+    }).then((res) => res.json());
+    assert.equal(acked.status, "acked");
+    assert.equal((await (await poll(base, artifact, { session_id: "sess-a", ack: "1" })).json()).status, "waiting");
   });
 });
 

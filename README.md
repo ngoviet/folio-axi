@@ -5,7 +5,7 @@ Folio is a privately maintained copy of [lavish-axi](https://github.com/kuncheng
 What Folio changes:
 
 - **Feedback reaches the right agent session.** `folio-axi <file>` records the Claude Code session that opened the page (`FOLIO_SESSION_ID`, exported by the SessionStart hook). A poll from another session gets `NOT_OWNER` unless it passes `--takeover`.
-- **No silent loss.** `poll` acks a batch only after printing it; a poll killed before that gets the same batch again next time. An agent reply also settles it.
+- **No silent loss.** `poll` acks a batch only after printing it; a poll killed before that gets the same batch again next time. An agent reply does not acknowledge it.
 - **Hooks instead of a poll that must stay alive.** `folio-axi setup hooks --write` adds three Claude Code hooks: SessionStart (short page list for this directory, under 1,500 characters, empty when there is none), Stop (holds the agent back while its page has unread feedback, at most 3 times in a row; `FOLIO_AXI_STOP_HOOK=0` turns it off) and UserPromptSubmit (adds waiting feedback to the next turn).
 - `folio-axi end <file>` works after the HTML file was deleted; ended pages are pruned after 7 days (`FOLIO_AXI_ENDED_RETENTION_DAYS`); `state.json` is written atomically.
 - Windows: stale servers are found with `netstat`, the server starts without a console window, hooks use the Windows profile directory.

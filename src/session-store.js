@@ -841,8 +841,6 @@ export class SessionStore {
         return null;
       }
       if (requireOpen && session.status === "ended") return session;
-      // Folio: a reply means the agent read what it was given.
-      delete session.unacked_delivery;
       const at = new Date().toISOString();
       // Done (docs/delivery-acks.md): the reply answers what the agent has seen. Stamped in the same
       // write as the reply, with the reply's own time, and never on an entry no poll has delivered.
