@@ -1952,6 +1952,16 @@ export function parseNetstatListeners(output, hostname, port) {
   return [...pids];
 }
 
+export function isOwnWindowsServerCommand(command, root = fileURLToPath(new URL("..", import.meta.url))) {
+  const tokens = String(command || "").match(/"[^"]*"|[^\s]+/g) || [];
+  const unquote = (value) => value.replace(/^"|"$/g, "");
+  if (tokens.length < 2 || !/^node(?:\.exe)?$/i.test(path.win32.basename(unquote(tokens[0])))) return false;
+  const entry = path.win32.resolve(unquote(tokens[1])).toLowerCase();
+  const own = (relative) => path.win32.resolve(root, relative).toLowerCase();
+  if ([own("bin/folio-axi-server.js"), own("dist/server.mjs")].includes(entry)) return true;
+  return [own("bin/folio-axi.js"), own("dist/cli.mjs")].includes(entry) && tokens[2] === "server";
+}
+
 function windowsListenerPids(hostname, port) {
   try {
     const listing = spawnSync("netstat", ["-ano", "-p", "TCP"], { encoding: "utf8", windowsHide: true });
@@ -1968,7 +1978,7 @@ function windowsListenerPids(hostname, port) {
         ],
         { encoding: "utf8", windowsHide: true },
       );
-      return command.status === 0 && /folio-axi/.test(command.stdout || "");
+      return command.status === 0 && isOwnWindowsServerCommand(command.stdout);
     });
   } catch {
     return [];

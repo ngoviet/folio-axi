@@ -31,6 +31,7 @@ import {
   detectInvokingAgent,
   fetchJson,
   getCommandHelp,
+  isOwnWindowsServerCommand,
   normalizeArgv,
   parseNetstatListeners,
   resolveShareRequest,
@@ -50,6 +51,19 @@ import {
   telemetryCommandName,
   VERSION,
 } from "../src/cli.js";
+
+test("Windows process matching requires this installation's Node server entry", () => {
+  const root = "C:\\work\\folio-axi";
+  const matches = (command) => isOwnWindowsServerCommand(command, root);
+  assert.equal(matches('"C:\\Program Files\\nodejs\\node.exe" "C:\\WORK\\FOLIO-AXI\\bin\\folio-axi-server.js"'), true);
+  assert.equal(matches('node "C:\\work\\folio-axi\\dist\\server.mjs"'), true);
+  assert.equal(matches('node "C:\\work\\folio-axi\\bin\\folio-axi.js" server --port 4388'), true);
+  assert.equal(matches('node "C:\\work\\folio-axi\\dist\\cli.mjs" server'), true);
+  assert.equal(matches('node "C:\\work\\folio-axi\\other-server.js"'), false);
+  assert.equal(matches('node "C:\\other\\bin\\folio-axi-server.js"'), false);
+  assert.equal(matches('node "C:\\work\\folio-axi\\bin\\folio-axi.js" open server'), false);
+  assert.equal(matches('other.exe "C:\\work\\folio-axi\\dist\\server.mjs"'), false);
+});
 import { DESIGN_PRIORITY_RULE, DESIGN_SYSTEM_HINT } from "../src/design-reference.js";
 import { createSkillMarkdown } from "../src/skill.js";
 import { SELF_PAINT_WARNING } from "../src/self-paint.js";

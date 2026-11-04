@@ -198,6 +198,10 @@ test("hook setup recognizes only executable invocations", () => {
     "folio-axi",
     "other-folio-axi hook stop",
     "node other.js hook stop",
+    "folio-axi hook stop && my-check",
+    "folio-axi hook stop; my-check",
+    "folio-axi hook stop | my-check",
+    'node "C:\\Program Files\\Folio\\folio-axi.js" hook stop || my-check',
   ];
   const hooks = commands.map((command) => ({ type: "command", command }));
   const [updated] = computeClaudeHookUpdate({ hooks: { Stop: [{ hooks }] } });

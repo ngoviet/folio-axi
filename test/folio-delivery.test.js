@@ -59,19 +59,19 @@ test("closed raw redelivery restores the original batch ahead of newer feedback"
       await taken;
       socket.destroy();
       await new Promise((resolve) => setTimeout(resolve, 30));
+      const takeover = fetch(
+        `${base}/api/poll?${new URLSearchParams({ file: artifact, timeoutMs: "0", ack: "1", session_id: "sess-b", takeover: "1" })}`,
+        { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 30));
       release();
-      let restored;
-      for (let i = 0; i < 100; i++) {
-        restored = await store.findByKey(key);
-        if (restored.unacked_delivery) break;
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
+      const delivered = await (await takeover).json();
+      const restored = await store.findByKey(key);
       assert.equal(restored.unacked_delivery.id, first.delivery_id);
       assert.deepEqual(restored.unacked_delivery.artifact_failures, first.artifact_failures);
       assert.equal(restored.unacked_delivery.dom_snapshot, "old snapshot");
       assert.equal(restored.dom_snapshot, "new snapshot");
       assert.equal(restored.artifact_failures[0].detail, "new");
-      const delivered = await poll(base, artifact, { ack: "1", session_id: "sess-a" }).then((r) => r.json());
       assert.equal(delivered.prompts[0].prompt, "old");
       assert.equal(delivered.raw_unacked_delivery, undefined);
       await store.ackDelivery(key, delivered.delivery_id);

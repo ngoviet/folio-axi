@@ -13,6 +13,8 @@ Lavish Editor is a CLI + local HTTP server that opens agent-generated HTML artif
 
 ### Process model
 
+On Windows, listener PID checks require Node running this installation's server entry, or its CLI entry with the `server` argument; a matching directory or command substring does not establish ownership.
+
 Tailscale detection (`src/tailscale.js`) resolves each command candidate to an executable regular file before calling `execFile`: absolute paths are checked directly and bare names are resolved through `PATH`. Unresolved candidates are skipped without a launch attempt, because even an attempted launch of a missing binary can trigger managed-device software restrictions. Resolution and probe errors remain non-fatal, and all candidates share one probe timeout budget. `test/tailscale.test.js` covers skipping missing, directory, and non-executable candidates while retaining probes of installed executables.
 
 The CLI (`bin/folio-axi.js` -> `src/cli.js`) spawns `folio-axi server` as a **detached** background process (`src/cli.js:startServer`) and waits for `/health`, which returns `{ ok, app, version }`.

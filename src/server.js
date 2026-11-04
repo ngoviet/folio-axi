@@ -1037,39 +1037,50 @@ export async function serve({
       }
       const timeoutMs =
         req.query.timeoutMs === undefined ? null : Math.max(0, Math.min(Number(req.query.timeoutMs || 0), 2147483647));
-      const immediate = await store.takeFeedback(key, { ackable });
-      if (immediate.status !== "waiting") {
+      const handledImmediately = await pollOwnershipLock.runExclusive(async () => {
+        if (holder.replaced || requestClosed || res.writableEnded) {
+          if (holder.replaced && !requestClosed && !res.writableEnded)
+            res.json(listenerConflict(holder, "LISTENER_REPLACED"));
+          releasePollListener(holder, activePolls, deliveredFeedback, events);
+          detachRequestClose();
+          return true;
+        }
+        const immediate = await store.takeFeedback(key, { ackable });
+        if (immediate.status !== "waiting") {
+          if (holder.replaced) {
+            await restoreClosedFeedback(key, immediate);
+            detachRequestClose();
+            res.json(listenerConflict(holder, "LISTENER_REPLACED"));
+            releasePollListener(holder, activePolls, deliveredFeedback, events);
+            return true;
+          }
+          if (requestClosed || res.writableEnded) {
+            await restoreClosedFeedback(key, immediate);
+            releasePollListener(holder, activePolls, deliveredFeedback, events);
+            detachRequestClose();
+            return true;
+          }
+          finishFeedbackDelivery(key, immediate);
+          releasePollListener(holder, activePolls, deliveredFeedback, events);
+          if (immediate.session_ended) clearFeedbackDelivery(key, activePolls, deliveredFeedback, events);
+          detachRequestClose();
+          res.json(agentFacingFeedback(immediate));
+          return true;
+        }
         if (holder.replaced) {
-          await restoreClosedFeedback(key, immediate);
           detachRequestClose();
           res.json(listenerConflict(holder, "LISTENER_REPLACED"));
           releasePollListener(holder, activePolls, deliveredFeedback, events);
-          return;
+          return true;
         }
         if (requestClosed || res.writableEnded) {
-          await restoreClosedFeedback(key, immediate);
           releasePollListener(holder, activePolls, deliveredFeedback, events);
           detachRequestClose();
-          return;
+          return true;
         }
-        finishFeedbackDelivery(key, immediate);
-        releasePollListener(holder, activePolls, deliveredFeedback, events);
-        if (immediate.session_ended) clearFeedbackDelivery(key, activePolls, deliveredFeedback, events);
-        detachRequestClose();
-        res.json(agentFacingFeedback(immediate));
-        return;
-      }
-      if (holder.replaced) {
-        detachRequestClose();
-        res.json(listenerConflict(holder, "LISTENER_REPLACED"));
-        releasePollListener(holder, activePolls, deliveredFeedback, events);
-        return;
-      }
-      if (requestClosed || res.writableEnded) {
-        releasePollListener(holder, activePolls, deliveredFeedback, events);
-        detachRequestClose();
-        return;
-      }
+        return false;
+      });
+      if (handledImmediately) return;
       const streamHeartbeat = timeoutMs === null;
       let heartbeat = null;
       if (streamHeartbeat) {
@@ -1119,30 +1130,39 @@ export async function serve({
         responding = true;
         let finalSessionEnded = false;
         try {
-          const result = await store.takeFeedback(key, { ackable });
-          // Feedback or an explicit end that raced the grace timer wins. The disconnect result
-          // is only the non-terminal replacement for a poll that would otherwise keep waiting.
-          const responseResult = forcedResult && result.status === "waiting" ? forcedResult : result;
-          finalSessionEnded = responseResult?.session_ended === true;
-          if (holder.replaced) {
-            if (responseResult.status !== "waiting") await restoreClosedFeedback(key, responseResult);
-            if (!requestClosed && !res.writableEnded) {
-              if (streamHeartbeat) res.end(JSON.stringify(listenerConflict(holder, "LISTENER_REPLACED")));
-              else res.json(listenerConflict(holder, "LISTENER_REPLACED"));
+          await pollOwnershipLock.runExclusive(async () => {
+            if (holder.replaced || requestClosed || res.writableEnded) {
+              if (holder.replaced && !requestClosed && !res.writableEnded) {
+                if (streamHeartbeat) res.end(JSON.stringify(listenerConflict(holder, "LISTENER_REPLACED")));
+                else res.json(listenerConflict(holder, "LISTENER_REPLACED"));
+              }
+              return;
             }
-            return;
-          }
-          if (requestClosed || res.writableEnded) {
-            await restoreClosedFeedback(key, responseResult);
-            return;
-          }
-          finishFeedbackDelivery(key, responseResult);
-          const agentResponse = agentFacingFeedback(responseResult);
-          if (streamHeartbeat) {
-            res.end(JSON.stringify(agentResponse));
-          } else {
-            res.json(agentResponse);
-          }
+            const result = await store.takeFeedback(key, { ackable });
+            // Feedback or an explicit end that raced the grace timer wins. The disconnect result
+            // is only the non-terminal replacement for a poll that would otherwise keep waiting.
+            const responseResult = forcedResult && result.status === "waiting" ? forcedResult : result;
+            finalSessionEnded = responseResult?.session_ended === true;
+            if (holder.replaced) {
+              if (responseResult.status !== "waiting") await restoreClosedFeedback(key, responseResult);
+              if (!requestClosed && !res.writableEnded) {
+                if (streamHeartbeat) res.end(JSON.stringify(listenerConflict(holder, "LISTENER_REPLACED")));
+                else res.json(listenerConflict(holder, "LISTENER_REPLACED"));
+              }
+              return;
+            }
+            if (requestClosed || res.writableEnded) {
+              await restoreClosedFeedback(key, responseResult);
+              return;
+            }
+            finishFeedbackDelivery(key, responseResult);
+            const agentResponse = agentFacingFeedback(responseResult);
+            if (streamHeartbeat) {
+              res.end(JSON.stringify(agentResponse));
+            } else {
+              res.json(agentResponse);
+            }
+          });
         } finally {
           cleanup();
           if (finalSessionEnded) clearFeedbackDelivery(key, activePolls, deliveredFeedback, events);

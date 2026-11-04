@@ -272,7 +272,7 @@ function isFolioHook(hook) {
   const token = "(?:\"[^\"]+\"|'[^']+'|[^\\s]+)";
   const match = hook.command
     .trim()
-    .match(new RegExp(`^(${token})(?:\\s+(${token}))?\\s+hook\\s+([^\\s]+)(?:\\s|$)`, "i"));
+    .match(new RegExp(`^(${token})(?:\\s+(${token}))?\\s+hook\\s+([^\\s;&|]+)\\s*$`, "i"));
   if (!match) return false;
   const executable = (value) =>
     value
