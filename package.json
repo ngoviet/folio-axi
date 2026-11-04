@@ -1,17 +1,15 @@
 {
-  "name": "lavish-axi",
-  "version": "0.1.96",
+  "name": "folio-axi",
+  "version": "0.2.0",
   "packageManager": "pnpm@11.1.1",
-  "description": "HTML is the new markdown. Lavish is the new editor for your HTML artifacts.",
+  "description": "Folio (based on lavish-axi 0.1.96): HTML review pages whose feedback always reaches the right agent session.",
   "type": "module",
   "bin": {
-    "lavish-axi": "dist/cli.mjs"
+    "folio-axi": "dist/cli.mjs"
   },
   "files": [
     "dist",
-    "plugin.json",
-    "skills/lavish",
-    "lavish-editor-marketing/renders/lavish-editor-marketing.gif",
+    "skills/folio",
     "LICENSE",
     "THIRD-PARTY-NOTICES.md",
     "README.md"
@@ -19,8 +17,7 @@
   "scripts": {
     "build": "node scripts/build.js",
     "build:skill": "node scripts/build-skill.js",
-    "build:plugin": "node scripts/build-plugin.js",
-    "check": "npm run build && npm run lint && npm run format:check && npm run typecheck && npm test && node scripts/build-skill.js --check && node scripts/build-plugin.js --check",
+    "check": "npm run build && npm run lint && npm run format:check && npm run typecheck && npm test && node scripts/build-skill.js --check",
     "start": "node dist/cli.mjs",
     "lint": "eslint bin src test scripts",
     "format": "prettier --write .",
@@ -65,18 +62,14 @@
     "cli",
     "html",
     "review",
-    "collaboration"
+    "collaboration",
+    "claude-code",
+    "folio"
   ],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kunchenguid/lavish-axi.git"
+    "url": "git+https://github.com/ngoviet/folio-axi.git"
   },
-  "bugs": {
-    "url": "https://github.com/kunchenguid/lavish-axi/issues"
-  },
-  "homepage": "https://github.com/kunchenguid/lavish-axi#readme",
-  "publishConfig": {
-    "access": "public"
-  }
+  "private": true
 }

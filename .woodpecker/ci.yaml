@@ -1,0 +1,25 @@
+# CI của Folio trên Woodpecker tự host (PC4, https://ci.bepmamnon.com), không dùng GitHub Actions.
+# Repo chỉ có CI khi đã Enable trong UI Woodpecker VÀ có tệp này.
+#
+# Mỗi bước chạy trong một container mới, dùng chung thư mục mã đã clone. Bộ test trình duyệt
+# (*.browser.test.js) chỉ chạy khi FOLIO_AXI_BROWSER_E2E=1 nên ở đây tự bỏ qua.
+# Trong container `localhost` ra cả ::1 lẫn 127.0.0.1, nên ép IPv4 trước cho các test gọi fetch.
+
+when:
+  - event: pull_request
+  - event: push
+    branch: main
+  - event: manual
+
+steps:
+  - name: check
+    image: node:24-bookworm
+    environment:
+      NODE_OPTIONS: --dns-result-order=ipv4first
+      FOLIO_AXI_NO_OPEN: "1"
+    commands:
+      - corepack enable
+      - chown -R node:node .
+      - runuser -u node -- env HOME=/home/node corepack prepare pnpm@11.1.1 --activate
+      - runuser -u node -- env HOME=/home/node pnpm install --frozen-lockfile
+      - runuser -u node -- env HOME=/home/node pnpm run check

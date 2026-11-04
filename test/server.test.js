@@ -10,8 +10,8 @@ import test from "node:test";
 import { runInNewContext } from "node:vm";
 import WebSocket from "ws";
 
-process.env.LAVISH_AXI_HOST = "127.0.0.1";
-process.env.LAVISH_AXI_LINK_HOST = "127.0.0.1";
+process.env.FOLIO_AXI_HOST = "127.0.0.1";
+process.env.FOLIO_AXI_LINK_HOST = "127.0.0.1";
 
 import {
   allowsAllHosts,
@@ -36,6 +36,7 @@ import {
   serve,
 } from "../src/server.js";
 import { canonicalFile, sessionKey, SessionStore } from "../src/session-store.js";
+import { NO_SYMLINKS } from "./helpers/symlinks.js";
 
 async function chromeClientSource() {
   return readFile(new URL("../src/chrome-client.js", import.meta.url), "utf8");
@@ -487,7 +488,7 @@ test("artifact assets resolve within the artifact directory", async () => {
   assert.equal(await resolveArtifactAsset(root, "../secret.txt"), null);
 });
 
-test("artifact assets reject a symlink that escapes the artifact directory", async () => {
+test("artifact assets reject a symlink that escapes the artifact directory", { skip: NO_SYMLINKS }, async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
   const outside = await mkdtemp(path.join(tmpdir(), "lavish-outside-"));
   try {
@@ -503,37 +504,45 @@ test("artifact assets reject a symlink that escapes the artifact directory", asy
   }
 });
 
-test("artifact assets reject a path that escapes through an intermediate directory symlink", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
-  const outside = await mkdtemp(path.join(tmpdir(), "lavish-outside-"));
-  try {
-    await writeFile(path.join(outside, "secret.txt"), "outside-secret\n");
-    // The escaping link is a *directory* component, so the leaf name looks ordinary.
-    await symlink(outside, path.join(dir, "vendor"));
+test(
+  "artifact assets reject a path that escapes through an intermediate directory symlink",
+  { skip: NO_SYMLINKS },
+  async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
+    const outside = await mkdtemp(path.join(tmpdir(), "lavish-outside-"));
+    try {
+      await writeFile(path.join(outside, "secret.txt"), "outside-secret\n");
+      // The escaping link is a *directory* component, so the leaf name looks ordinary.
+      await symlink(outside, path.join(dir, "vendor"));
 
-    assert.equal(await resolveArtifactAsset(dir, "vendor/secret.txt"), null);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-    await rm(outside, { recursive: true, force: true });
-  }
-});
+      assert.equal(await resolveArtifactAsset(dir, "vendor/secret.txt"), null);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
+  },
+);
 
-test("artifact assets still resolve a symlink that stays inside the artifact directory", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
-  try {
-    const real = path.join(dir, "real.css");
-    await writeFile(real, "body { color: rgb(1 2 3); }\n");
-    await symlink(real, path.join(dir, "alias.css"));
+test(
+  "artifact assets still resolve a symlink that stays inside the artifact directory",
+  { skip: NO_SYMLINKS },
+  async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
+    try {
+      const real = path.join(dir, "real.css");
+      await writeFile(real, "body { color: rgb(1 2 3); }\n");
+      await symlink(real, path.join(dir, "alias.css"));
 
-    // Confinement must not over-block, and the resolved (symlink-free) path is what callers
-    // get, so nothing re-follows the link after the check.
-    assert.equal(await resolveArtifactAsset(dir, "alias.css"), await realpath(real));
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
+      // Confinement must not over-block, and the resolved (symlink-free) path is what callers
+      // get, so nothing re-follows the link after the check.
+      assert.equal(await resolveArtifactAsset(dir, "alias.css"), await realpath(real));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);
 
-test("artifact asset resolution fails closed when realpath errors", async () => {
+test("artifact asset resolution fails closed when realpath errors", { skip: NO_SYMLINKS }, async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
   try {
     const linkA = path.join(dir, "loop-a");
@@ -567,7 +576,7 @@ test("artifact SDK script is valid JavaScript", () => {
   assert.doesNotThrow(() => new Function(js));
 });
 
-test("artifact SDK ignores Lavish-owned annotation UI", () => {
+test("artifact SDK ignores Folio-owned annotation UI", () => {
   const js = createSdkJs("abc");
 
   assert.match(js, /function isLavishUi/);
@@ -575,7 +584,7 @@ test("artifact SDK ignores Lavish-owned annotation UI", () => {
   assert.match(js, /data-lavish-ui/);
 });
 
-test("artifact SDK isolates Lavish annotation UI in Shadow DOM", () => {
+test("artifact SDK isolates Folio annotation UI in Shadow DOM", () => {
   const js = createSdkJs("abc");
 
   assert.match(js, /attachShadow\(\{\s*mode:\s*["']open["'],?\s*\}\)/);
@@ -760,7 +769,7 @@ test("annotation card title renders selected tag as an html element name", () =>
   assert.match(js, /"Annotate &lt;" \+ c\.tag \+ "&gt;"/);
 });
 
-test("annotation card shadow styles use Lavish design-system variables", () => {
+test("annotation card shadow styles use Folio design-system variables", () => {
   const js = createSdkJs("abc");
 
   assert.match(js, /--ink-900:#0f1115/);
@@ -789,7 +798,7 @@ test("annotate switch shows a brass track and ink knob when enabled", async () =
   assert.match(js, /annotationSwitch\.setAttribute\("aria-pressed", String\(annotation\)\)/);
 });
 
-test("chrome declares the Lavish design-system tokens", async () => {
+test("chrome declares the Folio design-system tokens", async () => {
   const css = await chromeCssSource();
 
   assert.match(css, /--ink-900:#0f1115/);
@@ -851,7 +860,7 @@ test("chrome top bar follows the design mock wordmark and overflow menu treatmen
   const html = createChromeHtml({ key: "abc", file: "/tmp/artifact.html" });
   const css = await chromeCssSource();
 
-  assert.match(html, /class="brand-mark">Lavish/);
+  assert.match(html, /class="brand-mark">Folio/);
   assert.match(html, /class="brand-support">Editor/);
   assert.match(css, /font-family:var\(--font-serif\)/);
   assert.match(css, /letter-spacing:\.18em/);
@@ -948,7 +957,7 @@ test("overflow menu offers publishing an ht-ml.app link via a share dialog", asy
     html,
     /Publish to <a class="share-link" href="https:\/\/ht-ml\.app" target="_blank" rel="noopener noreferrer">ht-ml\.app<\/a>/,
   );
-  assert.match(html, /third-party hosting service, not part of Lavish/);
+  assert.match(html, /third-party hosting service, not part of Folio/);
   assert.match(html, /id="sharePassword"/);
   assert.match(html, /id="shareUpdateKey"/);
   assert.match(html, /Without a password, the page is PUBLIC/);
@@ -986,7 +995,7 @@ test("the share dialog hands back the site id alongside the update key it tells 
   // command as a way to lock a page - only --private sets one.
   assert.match(
     html,
-    /Republish this page&#39;s HTML with <code>lavish-axi share &lt;file&gt; --site &lt;site id&gt; --update-key &lt;key&gt;<\/code>/,
+    /Republish this page&#39;s HTML with <code>folio-axi share &lt;file&gt; --site &lt;site id&gt; --update-key &lt;key&gt;<\/code>/,
   );
   assert.match(html, /add <code>--private<\/code> to also lock it/);
   assert.doesNotMatch(html, /Republish or lock this page/);
@@ -1073,7 +1082,7 @@ test("takeover banner explains draft ownership before offering takeover", () => 
   const banner = html.match(/id="handoffBanner"[^>]*>([\s\S]*?)<\/div>/)?.[1] || "";
   assert.match(
     banner,
-    /<span>This review is open in another Lavish tab\. Unsent answers stay in the tab or window where you entered them; taking over in another window does not bring them along\.<\/span>/,
+    /<span>This review is open in another Folio tab\. Unsent answers stay in the tab or window where you entered them; taking over in another window does not bring them along\.<\/span>/,
   );
   assert.doesNotMatch(banner, /switch back there/i);
   assert.match(banner, /id="handoffTakeover"[^>]*>Take over here/);
@@ -1236,30 +1245,10 @@ test("chrome remembers the artifact scroll position across reloads", async () =>
   assert.match(js, /x:\s*lastScroll\.x,\s*y:\s*lastScroll\.y/);
 });
 
-test("chrome ignores Lavish postMessages not sent by the artifact iframe", async () => {
+test("chrome ignores Folio postMessages not sent by the artifact iframe", async () => {
   const js = await chromeClientSource();
 
   assert.match(js, /event\.source\s*!==\s*frame\.contentWindow/);
-});
-
-test("chrome restores queued prompts from tab storage after reload", async () => {
-  const js = await chromeClientSource();
-
-  assert.match(js, /lavish-axi:queued:/);
-  assert.match(js, /function loadQueuedPrompts\(\)/);
-  assert.match(js, /const queued = loadQueuedPrompts\(\)/);
-  assert.match(js, /sessionStorage\.getItem\(queueStorageKey\)/);
-});
-
-test("chrome keeps queued prompts persisted until submit succeeds", async () => {
-  const js = await chromeClientSource();
-
-  assert.doesNotMatch(js, /const prompts = queued\.splice\(0, queued\.length\)/);
-  assert.match(js, /await fetch\("\/api\/" \+ key \+ "\/prompts", \{/);
-  assert.doesNotMatch(js, /queued\.splice\(0, prompts\.length\)/);
-  assert.match(js, /for \(const prompt of prompts\) \{/);
-  assert.match(js, /const index = queued\.indexOf\(prompt\)/);
-  assert.match(js, /if \(index !== -1\) queued\.splice\(index, 1\)/);
 });
 
 test("/health reports the server version so clients can detect upgrades", async () => {
@@ -1321,7 +1310,7 @@ test("resolved all-interfaces aliases are rejected before listening", async () =
             port: 0,
             stateFile: path.join(dir, `${alias}.json`),
             version: "9.9.9-test",
-            env: { LAVISH_AXI_HOST: alias },
+            env: { FOLIO_AXI_HOST: alias },
             detectTailscale: async () => null,
             lookupHost: async () => [{ address: "0.0.0.0", family: 4 }],
             idleTimeoutMs: null,
@@ -1341,7 +1330,7 @@ test("an explicit bind host overrides automatic Tailscale detection", async () =
     port: 0,
     stateFile: path.join(dir, "state.json"),
     version: "9.9.9-test",
-    env: { LAVISH_AXI_HOST: "127.0.0.1" },
+    env: { FOLIO_AXI_HOST: "127.0.0.1" },
     detectTailscale: async () => {
       detections += 1;
       return { ipv4: "100.64.12.34", magicDnsName: "review.tailnet.ts.net" };
@@ -1573,7 +1562,7 @@ test("Tailscale mode binds concrete listeners, serves the MagicDNS link, and tea
       headers: { accept: "text/html" },
     });
     assert.equal(landing.status, 200);
-    assert.match(landing.body, /Lavish Editor is running/);
+    assert.match(landing.body, /Folio is running/);
 
     const shutdown = await rawRequest(server.port, "/shutdown", {
       method: "POST",
@@ -2226,7 +2215,7 @@ test("allowsAllHosts detects the '*' opt-out sentinel", () => {
 
 test("serve falls back promptly when the bind host is unavailable", async () => {
   // This used to reject with EADDRNOTAVAIL, which is what took the whole server down whenever a
-  // pinned LAVISH_AXI_HOST was momentarily gone - no listener, and no agent able to heal it. The
+  // pinned FOLIO_AXI_HOST was momentarily gone - no listener, and no agent able to heal it. The
   // property this test has always really guarded is that the attempt stays BOUNDED, so that is
   // what it asserts now; the fallback's reachability is owned by server-bind-durability.test.js.
   const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
@@ -2255,7 +2244,7 @@ test("serve falls back promptly when the bind host is unavailable", async () => 
 
 test("/artifact serves files copied under the artifact directory", async () => {
   const parent = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
-  const dir = path.join(parent, ".lavish");
+  const dir = path.join(parent, ".folio");
   const assetDir = path.join(dir, "assets");
   const artifact = path.join(dir, "artifact.html");
   await mkdir(dir);
@@ -2304,10 +2293,10 @@ test("/artifact serves files copied under the artifact directory", async () => {
   }
 });
 
-test("/artifact refuses to serve a symlink that escapes the artifact directory", async () => {
+test("/artifact refuses to serve a symlink that escapes the artifact directory", { skip: NO_SYMLINKS }, async () => {
   const parent = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
   const outside = await mkdtemp(path.join(tmpdir(), "lavish-outside-"));
-  const dir = path.join(parent, ".lavish");
+  const dir = path.join(parent, ".folio");
   const artifact = path.join(dir, "artifact.html");
   await mkdir(dir);
   await writeFile(artifact, "<!doctype html><html><body></body></html>");
@@ -2334,41 +2323,45 @@ test("/artifact refuses to serve a symlink that escapes the artifact directory",
   }
 });
 
-test("/artifact refuses a path that escapes through an intermediate directory symlink", async () => {
-  const parent = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
-  const outside = await mkdtemp(path.join(tmpdir(), "lavish-outside-"));
-  const dir = path.join(parent, ".lavish");
-  const artifact = path.join(dir, "artifact.html");
-  await mkdir(dir);
-  await writeFile(artifact, "<!doctype html><html><body></body></html>");
-  await writeFile(path.join(outside, "secret.txt"), "outside-secret\n");
-  await symlink(outside, path.join(dir, "vendor"));
-  const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
-  try {
-    const base = `http://127.0.0.1:${server.port}`;
-    const sessionRes = await fetch(`${base}/api/sessions`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ file: artifact }),
-    });
-    const session = await sessionRes.json();
-    const leak = await fetch(`${base}/artifact/${session.key}/vendor/secret.txt`);
+test(
+  "/artifact refuses a path that escapes through an intermediate directory symlink",
+  { skip: NO_SYMLINKS },
+  async () => {
+    const parent = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
+    const outside = await mkdtemp(path.join(tmpdir(), "lavish-outside-"));
+    const dir = path.join(parent, ".folio");
+    const artifact = path.join(dir, "artifact.html");
+    await mkdir(dir);
+    await writeFile(artifact, "<!doctype html><html><body></body></html>");
+    await writeFile(path.join(outside, "secret.txt"), "outside-secret\n");
+    await symlink(outside, path.join(dir, "vendor"));
+    const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
+    try {
+      const base = `http://127.0.0.1:${server.port}`;
+      const sessionRes = await fetch(`${base}/api/sessions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ file: artifact }),
+      });
+      const session = await sessionRes.json();
+      const leak = await fetch(`${base}/artifact/${session.key}/vendor/secret.txt`);
 
-    assert.equal(leak.status, 403);
-    assert.doesNotMatch(await leak.text(), /outside-secret/);
-  } finally {
-    await server.close();
-    await rm(parent, { recursive: true, force: true });
-    await rm(outside, { recursive: true, force: true });
-  }
-});
+      assert.equal(leak.status, 403);
+      assert.doesNotMatch(await leak.text(), /outside-secret/);
+    } finally {
+      await server.close();
+      await rm(parent, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
+  },
+);
 
 // The realpath hardening must not cost us the original lexical guard, and `fetch` collapses
 // `..` in a URL before it ever reaches the wire - only a raw request proves the server itself
 // still rejects the traversal.
 test("/artifact still rejects lexical .. traversal that reaches the server unnormalized", async () => {
   const parent = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
-  const dir = path.join(parent, ".lavish");
+  const dir = path.join(parent, ".folio");
   const artifact = path.join(dir, "artifact.html");
   await mkdir(dir);
   await writeFile(artifact, "<!doctype html><html><body></body></html>");
@@ -2422,7 +2415,7 @@ test("/api/sessions refuses a non-HTML path so its directory cannot become an ar
   }
 });
 
-test("/api/sessions refuses an HTML symlink to a non-HTML file", async () => {
+test("/api/sessions refuses an HTML symlink to a non-HTML file", { skip: NO_SYMLINKS }, async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
   const secret = path.join(dir, "secret.txt");
   const decoy = path.join(dir, "decoy.html");
@@ -2447,7 +2440,7 @@ test("/api/sessions refuses an HTML symlink to a non-HTML file", async () => {
 
 test("/artifact serves same-tree assets for an HTML session", async () => {
   const parent = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
-  const dir = path.join(parent, ".lavish");
+  const dir = path.join(parent, ".folio");
   const assetDir = path.join(dir, "assets");
   const artifact = path.join(dir, "artifact.html");
   await mkdir(dir);
@@ -2527,39 +2520,43 @@ test("leftover non-HTML sessions are refused before any session.file content rea
   }
 });
 
-test("/whiteboard-assets refuses escaping symlinks and .. traversal but still serves its bundle", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
-  const outside = await mkdtemp(path.join(tmpdir(), "lavish-outside-"));
-  const assetsDir = path.join(dir, "whiteboard-assets");
-  await mkdir(assetsDir);
-  await writeFile(path.join(assetsDir, "whiteboard.js"), "// fake bundle\n");
-  await writeFile(path.join(outside, "secret.txt"), "outside-secret\n");
-  await symlink(path.join(outside, "secret.txt"), path.join(assetsDir, "leak.txt"));
-  await writeFile(path.join(dir, "sibling-secret.txt"), "outside-secret\n");
-  const server = await serve({
-    port: 0,
-    stateFile: path.join(dir, "state.json"),
-    version: "9.9.9-test",
-    whiteboardAssetsDir: assetsDir,
-  });
-  try {
-    const bundle = await fetch(`http://127.0.0.1:${server.port}/whiteboard-assets/whiteboard.js`);
-    assert.equal(bundle.status, 200);
-    assert.match(await bundle.text(), /fake bundle/);
+test(
+  "/whiteboard-assets refuses escaping symlinks and .. traversal but still serves its bundle",
+  { skip: NO_SYMLINKS },
+  async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
+    const outside = await mkdtemp(path.join(tmpdir(), "lavish-outside-"));
+    const assetsDir = path.join(dir, "whiteboard-assets");
+    await mkdir(assetsDir);
+    await writeFile(path.join(assetsDir, "whiteboard.js"), "// fake bundle\n");
+    await writeFile(path.join(outside, "secret.txt"), "outside-secret\n");
+    await symlink(path.join(outside, "secret.txt"), path.join(assetsDir, "leak.txt"));
+    await writeFile(path.join(dir, "sibling-secret.txt"), "outside-secret\n");
+    const server = await serve({
+      port: 0,
+      stateFile: path.join(dir, "state.json"),
+      version: "9.9.9-test",
+      whiteboardAssetsDir: assetsDir,
+    });
+    try {
+      const bundle = await fetch(`http://127.0.0.1:${server.port}/whiteboard-assets/whiteboard.js`);
+      assert.equal(bundle.status, 200);
+      assert.match(await bundle.text(), /fake bundle/);
 
-    const leak = await rawRequest(server.port, "/whiteboard-assets/leak.txt");
-    assert.equal(leak.status, 403);
-    assert.doesNotMatch(leak.body, /outside-secret/);
+      const leak = await rawRequest(server.port, "/whiteboard-assets/leak.txt");
+      assert.equal(leak.status, 403);
+      assert.doesNotMatch(leak.body, /outside-secret/);
 
-    const traversal = await rawRequest(server.port, "/whiteboard-assets/../sibling-secret.txt");
-    assert.equal(traversal.status, 403);
-    assert.doesNotMatch(traversal.body, /outside-secret/);
-  } finally {
-    await server.close();
-    await rm(dir, { recursive: true, force: true });
-    await rm(outside, { recursive: true, force: true });
-  }
-});
+      const traversal = await rawRequest(server.port, "/whiteboard-assets/../sibling-secret.txt");
+      assert.equal(traversal.status, 403);
+      assert.doesNotMatch(traversal.body, /outside-secret/);
+    } finally {
+      await server.close();
+      await rm(dir, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
+  },
+);
 
 test("detected layout warnings leave the long-poll pending and never wake an agent", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
@@ -3070,7 +3067,7 @@ test("a refreshed chrome receives a new handoff and establishes the newest load"
   }
 });
 
-// Issue #369: an `npx -y lavish-axi ...` that resolves a newer CLI restarts the server under a
+// Issue #369: an `npx -y folio-axi ...` that resolves a newer CLI restarts the server under a
 // reviewer who never asked for it. Every open review then answered 409 "Artifact load expired"
 // and the chrome showed an empty middle, which reads as the page being gone.
 test("a live artifact load survives the server restart the reviewer never asked for", async () => {
@@ -3776,8 +3773,8 @@ test("POST /api/:key/share publishes the local-inlined artifact to ht-ml.app", a
 
   const requests = [];
   const htmlApp = await startFakeHtmlApp(requests);
-  const previousApiUrl = process.env.LAVISH_AXI_HTML_APP_API_URL;
-  process.env.LAVISH_AXI_HTML_APP_API_URL = `http://127.0.0.1:${htmlApp.port}`;
+  const previousApiUrl = process.env.FOLIO_AXI_HTML_APP_API_URL;
+  process.env.FOLIO_AXI_HTML_APP_API_URL = `http://127.0.0.1:${htmlApp.port}`;
 
   const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
   try {
@@ -3814,7 +3811,7 @@ test("POST /api/:key/share publishes the local-inlined artifact to ht-ml.app", a
   } finally {
     await server.close();
     await htmlApp.close();
-    restoreEnv("LAVISH_AXI_HTML_APP_API_URL", previousApiUrl);
+    restoreEnv("FOLIO_AXI_HTML_APP_API_URL", previousApiUrl);
     await rm(dir, { recursive: true, force: true });
   }
 });
@@ -3826,8 +3823,8 @@ test("POST /api/:key/share generates a password on request and hands it back onc
 
   const requests = [];
   const htmlApp = await startFakeHtmlApp(requests);
-  const previousApiUrl = process.env.LAVISH_AXI_HTML_APP_API_URL;
-  process.env.LAVISH_AXI_HTML_APP_API_URL = `http://127.0.0.1:${htmlApp.port}`;
+  const previousApiUrl = process.env.FOLIO_AXI_HTML_APP_API_URL;
+  process.env.FOLIO_AXI_HTML_APP_API_URL = `http://127.0.0.1:${htmlApp.port}`;
 
   const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
   try {
@@ -3852,7 +3849,7 @@ test("POST /api/:key/share generates a password on request and hands it back onc
   } finally {
     await server.close();
     await htmlApp.close();
-    restoreEnv("LAVISH_AXI_HTML_APP_API_URL", previousApiUrl);
+    restoreEnv("FOLIO_AXI_HTML_APP_API_URL", previousApiUrl);
     await rm(dir, { recursive: true, force: true });
   }
 });
@@ -3877,8 +3874,8 @@ async function publishThroughShareRoute(dir, status, body) {
   const artifact = path.join(dir, "artifact.html");
   await writeFile(artifact, "<!doctype html><html><body><h1>Ship</h1></body></html>");
   const htmlApp = await startFailingHtmlApp(status);
-  const previousApiUrl = process.env.LAVISH_AXI_HTML_APP_API_URL;
-  process.env.LAVISH_AXI_HTML_APP_API_URL = `http://127.0.0.1:${htmlApp.port}`;
+  const previousApiUrl = process.env.FOLIO_AXI_HTML_APP_API_URL;
+  process.env.FOLIO_AXI_HTML_APP_API_URL = `http://127.0.0.1:${htmlApp.port}`;
   const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
   try {
     const base = `http://127.0.0.1:${server.port}`;
@@ -3897,7 +3894,7 @@ async function publishThroughShareRoute(dir, status, body) {
   } finally {
     await server.close();
     await htmlApp.close();
-    restoreEnv("LAVISH_AXI_HTML_APP_API_URL", previousApiUrl);
+    restoreEnv("FOLIO_AXI_HTML_APP_API_URL", previousApiUrl);
   }
 }
 
@@ -3930,12 +3927,12 @@ test("POST /api/:key/share reports an incomplete 200 as published, not as an unk
   await writeFile(artifact, "<!doctype html><html><body><h1>Ship</h1></body></html>");
 
   // The host answered 200, so the page landed. Classifying it as indeterminate contradicted the
-  // error text beside it AND dropped the url Lavish was holding for a page that is public by
+  // error text beside it AND dropped the url Folio was holding for a page that is public by
   // default and, without the update_key, unmanageable forever.
   const requests = [];
   const htmlApp = await startFakeHtmlApp(requests, { site_id: "abc123", url: "https://abc123.ht-ml.app/" });
-  const previousApiUrl = process.env.LAVISH_AXI_HTML_APP_API_URL;
-  process.env.LAVISH_AXI_HTML_APP_API_URL = `http://127.0.0.1:${htmlApp.port}`;
+  const previousApiUrl = process.env.FOLIO_AXI_HTML_APP_API_URL;
+  process.env.FOLIO_AXI_HTML_APP_API_URL = `http://127.0.0.1:${htmlApp.port}`;
 
   const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
   try {
@@ -3962,7 +3959,7 @@ test("POST /api/:key/share reports an incomplete 200 as published, not as an unk
   } finally {
     await server.close();
     await htmlApp.close();
-    restoreEnv("LAVISH_AXI_HTML_APP_API_URL", previousApiUrl);
+    restoreEnv("FOLIO_AXI_HTML_APP_API_URL", previousApiUrl);
     await rm(dir, { recursive: true, force: true });
   }
 });
@@ -3991,8 +3988,8 @@ test("POST /api/:key/share never echoes a password the user typed", async () => 
 
   const requests = [];
   const htmlApp = await startFakeHtmlApp(requests);
-  const previousApiUrl = process.env.LAVISH_AXI_HTML_APP_API_URL;
-  process.env.LAVISH_AXI_HTML_APP_API_URL = `http://127.0.0.1:${htmlApp.port}`;
+  const previousApiUrl = process.env.FOLIO_AXI_HTML_APP_API_URL;
+  process.env.FOLIO_AXI_HTML_APP_API_URL = `http://127.0.0.1:${htmlApp.port}`;
 
   const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
   try {
@@ -4016,7 +4013,7 @@ test("POST /api/:key/share never echoes a password the user typed", async () => 
   } finally {
     await server.close();
     await htmlApp.close();
-    restoreEnv("LAVISH_AXI_HTML_APP_API_URL", previousApiUrl);
+    restoreEnv("FOLIO_AXI_HTML_APP_API_URL", previousApiUrl);
     await rm(dir, { recursive: true, force: true });
   }
 });
@@ -4028,8 +4025,8 @@ test("POST /api/:key/share returns unresolved local asset warnings", async () =>
 
   const requests = [];
   const htmlApp = await startFakeHtmlApp(requests);
-  const previousApiUrl = process.env.LAVISH_AXI_HTML_APP_API_URL;
-  process.env.LAVISH_AXI_HTML_APP_API_URL = `http://127.0.0.1:${htmlApp.port}`;
+  const previousApiUrl = process.env.FOLIO_AXI_HTML_APP_API_URL;
+  process.env.FOLIO_AXI_HTML_APP_API_URL = `http://127.0.0.1:${htmlApp.port}`;
 
   const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
   try {
@@ -4061,7 +4058,7 @@ test("POST /api/:key/share returns unresolved local asset warnings", async () =>
   } finally {
     await server.close();
     await htmlApp.close();
-    restoreEnv("LAVISH_AXI_HTML_APP_API_URL", previousApiUrl);
+    restoreEnv("FOLIO_AXI_HTML_APP_API_URL", previousApiUrl);
     await rm(dir, { recursive: true, force: true });
   }
 });
@@ -4143,8 +4140,8 @@ test("POST /api/:key/share rejects cross-origin browser requests", async () => {
 
   const requests = [];
   const htmlApp = await startFakeHtmlApp(requests);
-  const previousApiUrl = process.env.LAVISH_AXI_HTML_APP_API_URL;
-  process.env.LAVISH_AXI_HTML_APP_API_URL = `http://127.0.0.1:${htmlApp.port}`;
+  const previousApiUrl = process.env.FOLIO_AXI_HTML_APP_API_URL;
+  process.env.FOLIO_AXI_HTML_APP_API_URL = `http://127.0.0.1:${htmlApp.port}`;
 
   const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
   try {
@@ -4172,7 +4169,7 @@ test("POST /api/:key/share rejects cross-origin browser requests", async () => {
   } finally {
     await server.close();
     await htmlApp.close();
-    restoreEnv("LAVISH_AXI_HTML_APP_API_URL", previousApiUrl);
+    restoreEnv("FOLIO_AXI_HTML_APP_API_URL", previousApiUrl);
     await rm(dir, { recursive: true, force: true });
   }
 });
@@ -4184,8 +4181,8 @@ test("POST /api/:key/share rejects requests without provenance headers", async (
 
   const requests = [];
   const htmlApp = await startFakeHtmlApp(requests);
-  const previousApiUrl = process.env.LAVISH_AXI_HTML_APP_API_URL;
-  process.env.LAVISH_AXI_HTML_APP_API_URL = `http://127.0.0.1:${htmlApp.port}`;
+  const previousApiUrl = process.env.FOLIO_AXI_HTML_APP_API_URL;
+  process.env.FOLIO_AXI_HTML_APP_API_URL = `http://127.0.0.1:${htmlApp.port}`;
 
   const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
   try {
@@ -4210,7 +4207,7 @@ test("POST /api/:key/share rejects requests without provenance headers", async (
   } finally {
     await server.close();
     await htmlApp.close();
-    restoreEnv("LAVISH_AXI_HTML_APP_API_URL", previousApiUrl);
+    restoreEnv("FOLIO_AXI_HTML_APP_API_URL", previousApiUrl);
     await rm(dir, { recursive: true, force: true });
   }
 });
@@ -4420,27 +4417,27 @@ test("a shutdown that names no reason claims none", async () => {
 
 test("resolveIdleTimeoutMs defaults, parses, and only explicit opt-outs disable", () => {
   assert.equal(resolveIdleTimeoutMs({}), 30 * 60_000);
-  assert.equal(resolveIdleTimeoutMs({ LAVISH_AXI_IDLE_TIMEOUT_MS: "" }), 30 * 60_000);
-  assert.equal(resolveIdleTimeoutMs({ LAVISH_AXI_IDLE_TIMEOUT_MS: "5000" }), 5000);
-  assert.equal(resolveIdleTimeoutMs({ LAVISH_AXI_IDLE_TIMEOUT_MS: "0" }), null);
-  assert.equal(resolveIdleTimeoutMs({ LAVISH_AXI_IDLE_TIMEOUT_MS: "off" }), null);
-  assert.equal(resolveIdleTimeoutMs({ LAVISH_AXI_IDLE_TIMEOUT_MS: "-1" }), 30 * 60_000);
-  assert.equal(resolveIdleTimeoutMs({ LAVISH_AXI_IDLE_TIMEOUT_MS: "30000ms" }), 30 * 60_000);
-  assert.equal(resolveIdleTimeoutMs({ LAVISH_AXI_IDLE_TIMEOUT_MS: "later" }), 30 * 60_000);
+  assert.equal(resolveIdleTimeoutMs({ FOLIO_AXI_IDLE_TIMEOUT_MS: "" }), 30 * 60_000);
+  assert.equal(resolveIdleTimeoutMs({ FOLIO_AXI_IDLE_TIMEOUT_MS: "5000" }), 5000);
+  assert.equal(resolveIdleTimeoutMs({ FOLIO_AXI_IDLE_TIMEOUT_MS: "0" }), null);
+  assert.equal(resolveIdleTimeoutMs({ FOLIO_AXI_IDLE_TIMEOUT_MS: "off" }), null);
+  assert.equal(resolveIdleTimeoutMs({ FOLIO_AXI_IDLE_TIMEOUT_MS: "-1" }), 30 * 60_000);
+  assert.equal(resolveIdleTimeoutMs({ FOLIO_AXI_IDLE_TIMEOUT_MS: "30000ms" }), 30 * 60_000);
+  assert.equal(resolveIdleTimeoutMs({ FOLIO_AXI_IDLE_TIMEOUT_MS: "later" }), 30 * 60_000);
   // Node's setTimeout ceiling is 2^31-1 ms; larger delays fire after 1ms instead.
-  assert.equal(resolveIdleTimeoutMs({ LAVISH_AXI_IDLE_TIMEOUT_MS: "3000000000" }), 2 ** 31 - 1);
+  assert.equal(resolveIdleTimeoutMs({ FOLIO_AXI_IDLE_TIMEOUT_MS: "3000000000" }), 2 ** 31 - 1);
 });
 
 test("resolveBrowserDisconnectGraceMs defaults, parses, and only explicit opt-outs disable", () => {
   assert.equal(resolveBrowserDisconnectGraceMs({}), 10_000);
-  assert.equal(resolveBrowserDisconnectGraceMs({ LAVISH_AXI_DISCONNECT_GRACE_MS: "" }), 10_000);
-  assert.equal(resolveBrowserDisconnectGraceMs({ LAVISH_AXI_DISCONNECT_GRACE_MS: " 120000 " }), 120_000);
-  assert.equal(resolveBrowserDisconnectGraceMs({ LAVISH_AXI_DISCONNECT_GRACE_MS: "0" }), null);
-  assert.equal(resolveBrowserDisconnectGraceMs({ LAVISH_AXI_DISCONNECT_GRACE_MS: "OFF" }), null);
-  assert.equal(resolveBrowserDisconnectGraceMs({ LAVISH_AXI_DISCONNECT_GRACE_MS: "-1" }), 10_000);
-  assert.equal(resolveBrowserDisconnectGraceMs({ LAVISH_AXI_DISCONNECT_GRACE_MS: "30000ms" }), 10_000);
-  assert.equal(resolveBrowserDisconnectGraceMs({ LAVISH_AXI_DISCONNECT_GRACE_MS: "later" }), 10_000);
-  assert.equal(resolveBrowserDisconnectGraceMs({ LAVISH_AXI_DISCONNECT_GRACE_MS: "3000000000" }), 2 ** 31 - 1);
+  assert.equal(resolveBrowserDisconnectGraceMs({ FOLIO_AXI_DISCONNECT_GRACE_MS: "" }), 10_000);
+  assert.equal(resolveBrowserDisconnectGraceMs({ FOLIO_AXI_DISCONNECT_GRACE_MS: " 120000 " }), 120_000);
+  assert.equal(resolveBrowserDisconnectGraceMs({ FOLIO_AXI_DISCONNECT_GRACE_MS: "0" }), null);
+  assert.equal(resolveBrowserDisconnectGraceMs({ FOLIO_AXI_DISCONNECT_GRACE_MS: "OFF" }), null);
+  assert.equal(resolveBrowserDisconnectGraceMs({ FOLIO_AXI_DISCONNECT_GRACE_MS: "-1" }), 10_000);
+  assert.equal(resolveBrowserDisconnectGraceMs({ FOLIO_AXI_DISCONNECT_GRACE_MS: "30000ms" }), 10_000);
+  assert.equal(resolveBrowserDisconnectGraceMs({ FOLIO_AXI_DISCONNECT_GRACE_MS: "later" }), 10_000);
+  assert.equal(resolveBrowserDisconnectGraceMs({ FOLIO_AXI_DISCONNECT_GRACE_MS: "3000000000" }), 2 ** 31 - 1);
 });
 
 async function expectDoneWithin(server, ms) {
@@ -4591,7 +4588,7 @@ test("ending one of several sessions keeps the server running", async () => {
   }
 });
 
-test("a user-initiated end via the keyed route blocks a plain reopen but honors reopen: true", async () => {
+test("a user-initiated end within retention blocks a plain reopen but honors reopen: true", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
   const artifact = path.join(dir, "artifact.html");
   // A second, never-ended session keeps the server from self-shutting-down once the first
@@ -4599,9 +4596,9 @@ test("a user-initiated end via the keyed route blocks a plain reopen but honors 
   const keepAlive = path.join(dir, "keep-alive.html");
   await writeFile(artifact, "<!doctype html><html><body></body></html>");
   await writeFile(keepAlive, "<!doctype html><html><body></body></html>");
-  const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
+  let server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
   try {
-    const base = `http://127.0.0.1:${server.port}`;
+    let base = `http://127.0.0.1:${server.port}`;
     await fetch(`${base}/api/sessions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -4616,6 +4613,9 @@ test("a user-initiated end via the keyed route blocks a plain reopen but honors 
 
     // The browser chrome's plain "End session" hits this keyed route.
     await fetch(`${base}/api/${key}/end`, { method: "POST" });
+    await server.close();
+    server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
+    base = `http://127.0.0.1:${server.port}`;
 
     const blocked = await fetch(`${base}/api/sessions`, {
       method: "POST",
@@ -4626,7 +4626,7 @@ test("a user-initiated end via the keyed route blocks a plain reopen but honors 
     assert.equal(blocked.status, 200);
     assert.equal(blockedBody.status, "user-ended");
     assert.equal(blockedBody.key, key);
-    assert.equal(blockedBody.url, originalUrl);
+    assert.equal(new URL(blockedBody.url).pathname, new URL(originalUrl).pathname);
 
     // A blocked open must not resurrect the session or wake a poll.
     const stillEnded = await fetch(`${base}/api/poll?file=${encodeURIComponent(artifact)}&timeoutMs=0`);
@@ -4762,7 +4762,7 @@ test("an agent-initiated end via the file-based route reopens normally without t
       body: JSON.stringify({ file: artifact }),
     });
 
-    // `lavish-axi end <file>` uses the file-based route - agent-initiated.
+    // `folio-axi end <file>` uses the file-based route - agent-initiated.
     await fetch(`${base}/api/end`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -4955,12 +4955,12 @@ test("closing the last review WebSocket releases an active poll without ending t
   }
 });
 
-test("LAVISH_AXI_DISCONNECT_GRACE_MS sets the reconnect grace a served poll waits out", async () => {
+test("FOLIO_AXI_DISCONNECT_GRACE_MS sets the reconnect grace a served poll waits out", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
   const artifact = path.join(dir, "artifact.html");
   await writeFile(artifact, "<!doctype html><html><body></body></html>");
   const server = await serve({
-    env: { ...process.env, LAVISH_AXI_DISCONNECT_GRACE_MS: "20" },
+    env: { ...process.env, FOLIO_AXI_DISCONNECT_GRACE_MS: "20" },
     port: 0,
     stateFile: path.join(dir, "state.json"),
     version: "9.9.9-test",
@@ -4987,12 +4987,12 @@ test("LAVISH_AXI_DISCONNECT_GRACE_MS sets the reconnect grace a served poll wait
   }
 });
 
-test("LAVISH_AXI_DISCONNECT_GRACE_MS=off keeps an active poll waiting after the last review disconnects", async () => {
+test("FOLIO_AXI_DISCONNECT_GRACE_MS=off keeps an active poll waiting after the last review disconnects", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
   const artifact = path.join(dir, "artifact.html");
   await writeFile(artifact, "<!doctype html><html><body></body></html>");
   const server = await serve({
-    env: { ...process.env, LAVISH_AXI_DISCONNECT_GRACE_MS: "off" },
+    env: { ...process.env, FOLIO_AXI_DISCONNECT_GRACE_MS: "off" },
     port: 0,
     stateFile: path.join(dir, "state.json"),
     version: "9.9.9-test",
@@ -5415,11 +5415,15 @@ test("SSE agent-presence returns to waiting when poll feedback storage fails", a
       const poll = fetch(`${base}/api/poll?file=${encodeURIComponent(artifact)}&timeoutMs=10`);
       assert.equal(await presence.next(), "listening");
 
+      const savedState = await readFile(stateFile);
       await writeFile(stateFile, "not json");
       const pollResult = await poll;
       assert.equal(pollResult.status, 500);
 
       assert.equal(await presence.next(), "waiting");
+      await writeFile(stateFile, savedState);
+      const nextPoll = await fetch(`${base}/api/poll?file=${encodeURIComponent(artifact)}&timeoutMs=0`);
+      assert.equal((await nextPoll.json()).status, "waiting");
     } finally {
       await presence.close();
     }
@@ -5427,22 +5431,6 @@ test("SSE agent-presence returns to waiting when poll feedback storage fails", a
     await server.close();
     await rm(dir, { recursive: true, force: true });
   }
-});
-
-test("long-poll response cleanup is guarded against storage failures", async () => {
-  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
-
-  assert.match(source, /try \{\s*const result = await store\.takeFeedback\(key\)/);
-  assert.match(source, /finally \{\s*cleanup\(\);\s*\}/);
-});
-
-test("heartbeat long-poll errors close the stream without Express error handling", async () => {
-  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
-
-  assert.match(source, /function handleRespondError\(error\) \{/);
-  assert.match(source, /if \(streamHeartbeat\) \{/);
-  assert.match(source, /res\.destroy\(error\)/);
-  assert.match(source, /respond\(\)\.catch\(handleRespondError\)/);
 });
 
 test("a poll dropped before it arms never leaves presence listening", async () => {
@@ -5958,7 +5946,7 @@ test("SSE agent-presence resets to waiting after ending and reopening a session"
   }
 });
 
-// #171: a browser tab left open across `lavish-axi end` must be told the session ended, instead
+// #171: a browser tab left open across `folio-axi end` must be told the session ended, instead
 // of silently keeping Send enabled for feedback nobody will ever poll for.
 test("SSE forwards an ended event to an attached chrome when the agent ends the session (#171)", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
@@ -6382,7 +6370,7 @@ test("/health and the landing page stay responsive after opening two back-to-bac
       new Promise((_, reject) => setTimeout(() => reject(new Error("/ timed out")), 1000)),
     ]);
     assert.equal(rootRes.status, 200);
-    assert.match(await rootRes.text(), /Lavish Editor/);
+    assert.match(await rootRes.text(), /Folio/);
 
     assert.ok(Date.now() - start < 1000, "both probes should return well under one second");
   } finally {
@@ -6541,7 +6529,7 @@ test("chrome falls back to a default favicon and title when none are provided", 
   const html = createChromeHtml({ key: "abc", file: "/tmp/artifact.html" });
 
   assert.match(html, /<link rel="icon" href="data:image\/svg\+xml,/);
-  assert.match(html, /<title>Lavish Editor<\/title>/);
+  assert.match(html, /<title>Folio<\/title>/);
 });
 
 test("chrome adopts a favicon tag and tab title passed from the artifact", () => {
@@ -6549,11 +6537,11 @@ test("chrome adopts a favicon tag and tab title passed from the artifact", () =>
     '<link rel="icon" href="data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\'><text>🗂️</text></svg>">';
   const html = createChromeHtml(
     { key: "abc", file: "/tmp/artifact.html" },
-    { faviconTag, title: "Project Board · Lavish" },
+    { faviconTag, title: "Project Board · Folio" },
   );
 
   assert.ok(html.includes(faviconTag), "artifact favicon tag is injected verbatim");
-  assert.match(html, /<title>Project Board · Lavish<\/title>/);
+  assert.match(html, /<title>Project Board · Folio<\/title>/);
 });
 
 test("chrome tab title from the artifact is HTML-escaped", () => {

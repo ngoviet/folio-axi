@@ -14,12 +14,13 @@ import WebSocket from "ws";
 import { inheritedListenHosts, run, stopCommand, VERSION } from "../src/cli.js";
 import { stateId } from "../src/paths.js";
 import { serve } from "../src/server.js";
+import { NO_SYMLINKS } from "./helpers/symlinks.js";
 
 // 192.0.2.0/24 is TEST-NET-1: assigned to no interface, so binding it fails with EADDRNOTAVAIL.
 const UNBINDABLE_HOST = "192.0.2.1";
 
 // A second concrete address on this machine, standing in for the Tailscale or LAN address one
-// agent pins with LAVISH_AXI_HOST while another agent on the same machine sets nothing.
+// agent pins with FOLIO_AXI_HOST while another agent on the same machine sets nothing.
 function otherLocalIpv4() {
   for (const entries of Object.values(networkInterfaces())) {
     for (const entry of entries || []) {
@@ -66,12 +67,12 @@ async function withEnv(overrides, fn) {
 
 function cliEnv(dir, port, host) {
   return {
-    LAVISH_AXI_PORT: String(port),
-    LAVISH_AXI_HOST: host,
-    LAVISH_AXI_STATE_DIR: dir,
-    LAVISH_AXI_NO_OPEN: "1",
-    LAVISH_AXI_TELEMETRY: "0",
-    LAVISH_AXI_IDLE_TIMEOUT_MS: "60000",
+    FOLIO_AXI_PORT: String(port),
+    FOLIO_AXI_HOST: host,
+    FOLIO_AXI_STATE_DIR: dir,
+    FOLIO_AXI_NO_OPEN: "1",
+    FOLIO_AXI_TELEMETRY: "0",
+    FOLIO_AXI_IDLE_TIMEOUT_MS: "60000",
   };
 }
 
@@ -258,7 +259,7 @@ test(
         port,
         stateFile: path.join(dir, "state.json"),
         version: "9.9.9-test",
-        env: { LAVISH_AXI_HOST: otherHost },
+        env: { FOLIO_AXI_HOST: otherHost },
         log: (line) => logs.push(line),
         idleTimeoutMs: null,
         bindRecoveryDelaysMs: [100],
@@ -342,7 +343,7 @@ test(
   },
 );
 
-test("a second server for a port whose loopback a Lavish server owns refuses to start", async (t) => {
+test("a second server for a port whose loopback a Folio server owns refuses to start", async (t) => {
   const otherHost = otherLocalIpv4();
   if (!otherHost) {
     t.skip("host has no non-loopback IPv4 address");
@@ -365,11 +366,11 @@ test("a second server for a port whose loopback a Lavish server owns refuses to 
           port: owner.port,
           stateFile: path.join(dir, "state.json"),
           version: "9.9.9-test",
-          env: { LAVISH_AXI_HOST: otherHost },
+          env: { FOLIO_AXI_HOST: otherHost },
           log: () => {},
           idleTimeoutMs: null,
         }),
-        /Another Lavish server .* already owns port/,
+        /Another Folio server .* already owns port/,
       );
       // The loser must not have taken the other address on its way out: a split daemon pair on one
       // port is exactly what the loopback owner check exists to prevent.
@@ -395,7 +396,7 @@ test("a foreign loopback listener prevents a pinned server from claiming the sam
         port,
         stateFile: path.join(dir, "state.json"),
         version: "9.9.9-test",
-        env: { LAVISH_AXI_HOST: otherHost },
+        env: { FOLIO_AXI_HOST: otherHost },
         log: () => {},
         idleTimeoutMs: null,
       }).then(
@@ -415,7 +416,7 @@ test("a foreign loopback listener prevents a pinned server from claiming the sam
   });
 });
 
-test("a symlinked state directory adopts the daemon started at its target", async () => {
+test("a symlinked state directory adopts the daemon started at its target", { skip: NO_SYMLINKS }, async () => {
   await withTempDir(async (dir) => {
     const alias = path.join(dir, "alias");
     await symlink(dir, alias, "dir");
@@ -425,7 +426,7 @@ test("a symlinked state directory adopts the daemon started at its target", asyn
       port,
       stateFile: path.join(dir, "state.json"),
       version: VERSION,
-      env: { LAVISH_AXI_HOST: "127.0.0.1" },
+      env: { FOLIO_AXI_HOST: "127.0.0.1" },
       detectTailscale: null,
       log: () => {},
       idleTimeoutMs: null,
@@ -481,7 +482,7 @@ test(
 );
 
 test(
-  "switching LAVISH_AXI_HOST from loopback to another address replaces the server once and keeps its sessions",
+  "switching FOLIO_AXI_HOST from loopback to another address replaces the server once and keeps its sessions",
   { timeout: 30_000 },
   async (t) => {
     const otherHost = otherLocalIpv4();
@@ -497,7 +498,7 @@ test(
         port,
         stateFile: path.join(dir, "state.json"),
         version: VERSION,
-        env: { LAVISH_AXI_HOST: "127.0.0.1" },
+        env: { FOLIO_AXI_HOST: "127.0.0.1" },
         log: () => {},
         idleTimeoutMs: null,
       });
@@ -528,7 +529,7 @@ test(
 );
 
 test(
-  "switching LAVISH_AXI_HOST from another address to loopback adopts the running server",
+  "switching FOLIO_AXI_HOST from another address to loopback adopts the running server",
   { timeout: 20_000 },
   async (t) => {
     const otherHost = otherLocalIpv4();
@@ -544,7 +545,7 @@ test(
         port,
         stateFile: path.join(dir, "state.json"),
         version: VERSION,
-        env: { LAVISH_AXI_HOST: otherHost },
+        env: { FOLIO_AXI_HOST: otherHost },
         log: () => {},
         idleTimeoutMs: null,
       });
@@ -688,7 +689,7 @@ test(
       const old = createHttpServer((req, res) => {
         if (req.url?.startsWith("/health")) {
           res.writeHead(200, { "content-type": "application/json" });
-          res.end(JSON.stringify({ ok: true, app: "lavish-axi", version: "0.1.77" }));
+          res.end(JSON.stringify({ ok: true, app: "folio-axi", version: "0.1.77" }));
           return;
         }
         if (req.method === "POST" && req.url === "/shutdown") shutdowns += 1;
@@ -766,7 +767,7 @@ test(
       const artifact = await writeArtifact(dir);
       const port = await freePort(otherHost);
       // A loopback-only server of this installation that another CLI restarts every time this one
-      // shuts it down: after each /shutdown it answers like a Lavish server still starting (503),
+      // shuts it down: after each /shutdown it answers like a Folio server still starting (503),
       // which frees the port for this CLI's probes but makes the server it spawns stand down.
       let shutdowns = 0;
       let startingUntil = 0;
@@ -777,10 +778,10 @@ test(
           res.end(
             JSON.stringify(
               starting
-                ? { ok: false, app: "lavish-axi", version: VERSION }
+                ? { ok: false, app: "folio-axi", version: VERSION }
                 : {
                     ok: true,
-                    app: "lavish-axi",
+                    app: "folio-axi",
                     version: VERSION,
                     state_id: stateId(path.join(dir, "state.json")),
                     hosts: ["127.0.0.1"],
@@ -802,7 +803,7 @@ test(
         assert.equal(shutdowns, 2, "expected the initial replacement plus exactly one retry");
         assert.match(output, /SERVER_ERROR/);
         assert.ok(output.includes(otherHost), `expected the missing address in ${output}`);
-        assert.match(output, /lavish-axi stop/);
+        assert.match(output, /folio-axi stop/);
       } finally {
         await new Promise((resolve) => loopbackOnly.close(() => resolve(undefined)));
         await shutdownAt(otherHost, port);
@@ -881,7 +882,7 @@ test(
         port,
         stateFile: path.join(dir, "state.json"),
         version: "0.0.1",
-        env: { LAVISH_AXI_HOST: otherHost },
+        env: { FOLIO_AXI_HOST: otherHost },
         extraListenHosts: ["::1"],
         log: () => {},
         idleTimeoutMs: null,
@@ -929,7 +930,7 @@ test(
         port,
         stateFile: path.join(dir, "state.json"),
         version: "0.0.1",
-        env: { LAVISH_AXI_HOST: otherHost },
+        env: { FOLIO_AXI_HOST: otherHost },
         log: () => {},
         idleTimeoutMs: null,
       });
@@ -1079,7 +1080,7 @@ test(
         port,
         stateFile: path.join(dir, "state.json"),
         version: VERSION,
-        env: { LAVISH_AXI_HOST: name },
+        env: { FOLIO_AXI_HOST: name },
         lookupHost: async (host) => {
           if (host !== name) return [{ address: host, family: host.includes(":") ? 6 : 4 }];
           if (!dnsUp) throw Object.assign(new Error(`getaddrinfo ENOTFOUND ${host}`), { code: "ENOTFOUND" });
@@ -1114,7 +1115,7 @@ function lsofAvailable() {
 }
 
 // A child process listening at host:port. The script's file name is what `ps` shows, so a
-// pre-handshake Lavish server is one whose name says lavish-axi and an unrelated one is not.
+// pre-handshake Folio server is one whose name says folio-axi and an unrelated one is not.
 async function spawnListener(dir, name, host, port, source) {
   const script = path.join(dir, name);
   await writeFile(script, source);
@@ -1139,7 +1140,7 @@ test("stopping a pre-handshake server signals only the process at its own addres
     // Answers /health with no app or version and has no /shutdown, like the oldest releases.
     const preHandshake = await spawnListener(
       dir,
-      "lavish-axi-pre-handshake.mjs",
+      "folio-axi-pre-handshake.mjs",
       "127.0.0.1",
       port,
       `import { createServer } from "node:http";
@@ -1189,14 +1190,14 @@ os.networkInterfaces = () => ({ ...networkInterfaces(), blackhole: [{ address: "
     const started = Date.now();
     const child = spawn(
       process.execPath,
-      [fileURLToPath(new URL("../bin/lavish-axi.js", import.meta.url)), "stop", "--port", String(port)],
+      [fileURLToPath(new URL("../bin/folio-axi.js", import.meta.url)), "stop", "--port", String(port)],
       {
         env: {
           ...process.env,
           NODE_OPTIONS: `--import=${pathToFileURL(preload).href}`,
-          LAVISH_AXI_STATE_DIR: dir,
-          LAVISH_AXI_TELEMETRY: "0",
-          LAVISH_AXI_HOST: "127.0.0.1",
+          FOLIO_AXI_STATE_DIR: dir,
+          FOLIO_AXI_TELEMETRY: "0",
+          FOLIO_AXI_HOST: "127.0.0.1",
         },
         stdio: ["ignore", "pipe", "pipe"],
       },

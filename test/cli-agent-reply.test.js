@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -9,14 +9,15 @@ import test from "node:test";
 
 import { AxiError } from "axi-sdk-js";
 
-process.env.LAVISH_AXI_HOST = "127.0.0.1";
-process.env.LAVISH_AXI_LINK_HOST = "127.0.0.1";
+process.env.FOLIO_AXI_HOST = "127.0.0.1";
+process.env.FOLIO_AXI_LINK_HOST = "127.0.0.1";
 
 import { createOpenOutput, createPollOutput, getCommandHelp, resolveAgentReply, VERSION } from "../src/cli.js";
 import { serve } from "../src/server.js";
 import { sessionKey } from "../src/session-store.js";
+import { NO_SYMLINKS } from "./helpers/symlinks.js";
 
-const CLI = fileURLToPath(new URL("../bin/lavish-axi.js", import.meta.url));
+const CLI = fileURLToPath(new URL("../bin/folio-axi.js", import.meta.url));
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 const STRUCTURED_REPLY = ["## What changed", "", "- **Phase 1 heading** done", "- next item", "", "1. ship it"].join(
@@ -95,8 +96,8 @@ test("open and poll next_step keep --agent-reply concise-first and structure-whe
 
   assertConciseFirstGuidance(open.next_step);
   assertConciseFirstGuidance(poll.next_step);
-  assert.match(open.next_step, /lavish-axi poll --help|README/);
-  assert.match(poll.next_step, /lavish-axi poll --help|README/);
+  assert.match(open.next_step, /folio-axi poll --help|README/);
+  assert.match(poll.next_step, /folio-axi poll --help|README/);
 });
 
 test("poll help documents --agent-reply-file for longer Markdown and points at README's subset", () => {
@@ -114,8 +115,8 @@ test("poll help documents --agent-reply-file for longer Markdown and points at R
   assert.match(help, /README/);
   assert.match(help, /Feedback controls/);
   assert.doesNotMatch(help, /prefer multiline/i);
-  assert.match(help, /lavish-axi poll report\.html --agent-reply "Renamed the payment step\."/);
-  assert.match(help, /lavish-axi poll report\.html --agent-reply-file reply\.md/);
+  assert.match(help, /folio-axi poll report\.html --agent-reply "Renamed the payment step\."/);
+  assert.match(help, /folio-axi poll report\.html --agent-reply-file reply\.md/);
 });
 
 test("resolveAgentReply keeps the inline --agent-reply string", async () => {
@@ -218,8 +219,8 @@ test("poll rejects over-limit agent reply files and stdin with an actionable err
   await writeFile(replyFile, oversizedReply);
   const env = {
     ...process.env,
-    LAVISH_AXI_STATE_DIR: path.join(dir, "state"),
-    LAVISH_AXI_TELEMETRY: "0",
+    FOLIO_AXI_STATE_DIR: path.join(dir, "state"),
+    FOLIO_AXI_TELEMETRY: "0",
   };
   try {
     for (const result of [
@@ -240,6 +241,155 @@ test("poll rejects over-limit agent reply files and stdin with an actionable err
   }
 });
 
+test("poll recovers unacknowledged feedback after the artifact is deleted", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "folio-poll-deleted-"));
+  const stateDir = path.join(dir, "state");
+  await mkdir(stateDir);
+  const artifact = path.join(dir, "artifact.html");
+  await writeFile(artifact, "<!doctype html><html><body>ok</body></html>");
+  const server = await serve({
+    port: 0,
+    host: "127.0.0.1",
+    stateFile: path.join(stateDir, "state.json"),
+    version: VERSION,
+  });
+  const env = {
+    ...process.env,
+    FOLIO_AXI_STATE_DIR: stateDir,
+    FOLIO_AXI_PORT: String(server.port),
+    FOLIO_AXI_HOST: "127.0.0.1",
+    FOLIO_AXI_LINK_HOST: "127.0.0.1",
+    FOLIO_SESSION_ID: "deleted-artifact-owner",
+  };
+  try {
+    const base = `http://127.0.0.1:${server.port}`;
+    const opened = await fetch(`${base}/api/sessions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ file: artifact, owner_session_id: env.FOLIO_SESSION_ID }),
+    }).then((response) => response.json());
+    const message = "feedback survives a deleted artifact";
+    const queued = await fetch(`${base}/api/${opened.key}/prompts`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: base },
+      body: JSON.stringify({ prompts: [{ prompt: message, tag: "message" }] }),
+    });
+    assert.equal(queued.status, 200);
+    await rm(artifact);
+    const query = new URLSearchParams({ file: artifact, ack: "1", session_id: env.FOLIO_SESSION_ID, timeoutMs: "0" });
+    const taken = await fetch(`${base}/api/poll?${query}`).then((response) => response.json());
+    assert.ok(taken.delivery_id);
+    assert.equal(taken.prompts[0].prompt, message);
+    const result = await runCli(["poll", artifact, "--timeout-ms", "0"], { env });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /feedback survives a deleted artifact/);
+    const after = await fetch(`${base}/api/poll?${query}`).then((response) => response.json());
+    assert.equal(after.status, "waiting");
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("deleted paths through a symlink resolve for polls and ends", { skip: NO_SYMLINKS }, async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "folio-deleted-symlink-"));
+  const stateDir = path.join(dir, "state");
+  const realDir = path.join(dir, "real");
+  const linkDir = path.join(dir, "link");
+  await mkdir(stateDir);
+  await mkdir(path.join(realDir, "nested"), { recursive: true });
+  await symlink(realDir, linkDir, "dir");
+  const names = ["direct.html", "cli.html"];
+  for (const name of names) await writeFile(path.join(realDir, "nested", name), "<html></html>");
+  const keepAlive = path.join(dir, "keep.html");
+  await writeFile(keepAlive, "<html></html>");
+  const server = await serve({
+    port: 0,
+    host: "127.0.0.1",
+    stateFile: path.join(stateDir, "state.json"),
+    version: VERSION,
+  });
+  const env = {
+    ...process.env,
+    FOLIO_AXI_STATE_DIR: stateDir,
+    FOLIO_AXI_PORT: String(server.port),
+    FOLIO_AXI_HOST: "127.0.0.1",
+    FOLIO_AXI_LINK_HOST: "127.0.0.1",
+  };
+  try {
+    const base = `http://127.0.0.1:${server.port}`;
+    for (const file of [keepAlive, ...names.map((name) => path.join(linkDir, "nested", name))]) {
+      const response = await fetch(`${base}/api/sessions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ file }),
+      });
+      assert.equal(response.status, 200);
+    }
+    await rm(path.join(realDir, "nested"), { recursive: true });
+    const direct = path.join(linkDir, "nested", names[0]);
+    const cli = path.join(linkDir, "nested", names[1]);
+    const poll = await fetch(`${base}/api/poll?${new URLSearchParams({ file: direct, timeoutMs: "0" })}`);
+    assert.equal((await poll.json()).status, "waiting");
+    const cliPoll = await runCli(["poll", cli, "--timeout-ms", "0"], { env });
+    assert.equal(cliPoll.status, 0, cliPoll.stderr || cliPoll.stdout);
+    assert.match(cliPoll.stdout, /waiting/);
+    const end = await fetch(`${base}/api/end`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ file: direct }),
+    });
+    assert.equal((await end.json()).status, "ended");
+    const cliEnd = await runCli(["end", cli], { env });
+    assert.equal(cliEnd.status, 0, cliEnd.stderr || cliEnd.stdout);
+    const ended = await fetch(`${base}/api/poll?${new URLSearchParams({ file: cli, timeoutMs: "0" })}`);
+    assert.equal((await ended.json()).status, "ended");
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("bare folio-axi lists this project's pages from a linked cwd", { skip: NO_SYMLINKS }, async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "folio-linked-cwd-"));
+  const stateDir = path.join(dir, "state");
+  const realDir = path.join(dir, "real");
+  const linkDir = path.join(dir, "link");
+  await mkdir(stateDir);
+  await mkdir(realDir);
+  await symlink(realDir, linkDir, "dir");
+  const artifact = path.join(realDir, "page.html");
+  await writeFile(artifact, "<html></html>");
+  const server = await serve({
+    port: 0,
+    host: "127.0.0.1",
+    stateFile: path.join(stateDir, "state.json"),
+    version: VERSION,
+  });
+  const env = {
+    ...process.env,
+    FOLIO_AXI_STATE_DIR: stateDir,
+    FOLIO_AXI_PORT: String(server.port),
+    FOLIO_AXI_HOST: "127.0.0.1",
+    FOLIO_AXI_LINK_HOST: "127.0.0.1",
+  };
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.port}/api/sessions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ file: artifact }),
+    });
+    assert.equal(response.status, 200);
+    const home = await runCli([], { cwd: linkDir, env });
+    assert.equal(home.status, 0, home.stderr || home.stdout);
+    assert.match(home.stdout, /page\.html/);
+    assert.doesNotMatch(home.stdout, /sessions_elsewhere/);
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("poll --agent-reply-file and stdin land multiline Markdown in the transcript and chrome html", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "lavish-agent-reply-e2e-"));
   const stateDir = path.join(dir, "state");
@@ -256,12 +406,12 @@ test("poll --agent-reply-file and stdin land multiline Markdown in the transcrip
   });
   const env = {
     ...process.env,
-    LAVISH_AXI_STATE_DIR: stateDir,
-    LAVISH_AXI_PORT: String(server.port),
-    LAVISH_AXI_HOST: "127.0.0.1",
-    LAVISH_AXI_LINK_HOST: "127.0.0.1",
-    LAVISH_AXI_TELEMETRY: "0",
-    LAVISH_AXI_NO_OPEN: "1",
+    FOLIO_AXI_STATE_DIR: stateDir,
+    FOLIO_AXI_PORT: String(server.port),
+    FOLIO_AXI_HOST: "127.0.0.1",
+    FOLIO_AXI_LINK_HOST: "127.0.0.1",
+    FOLIO_AXI_TELEMETRY: "0",
+    FOLIO_AXI_NO_OPEN: "1",
   };
   try {
     const base = `http://127.0.0.1:${server.port}`;

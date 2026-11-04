@@ -2,11 +2,11 @@
 // Kept terse and outcome-focused so it fires on "about to show something visual" intents.
 export const SKILL_DESCRIPTION =
   "Turn complex or visual agent responses into rich, reviewable HTML artifacts (HTML files) the user can " +
-  "annotate and send feedback on, using the lavish-axi CLI. Use when about to give a plan, " +
+  "annotate and send feedback on, using the folio-axi CLI. Use when about to give a plan, " +
   "comparison, diagram, table, code diff, report, or anything easier to grasp visually than as prose.";
 
 // Hard cap so a future regeneration cannot silently re-inflate the stub with CLI-owned
-// instructions. The CLI (`lavish-axi --help`, `design`, `playbook`) is the source of truth.
+// instructions. The CLI (`folio-axi --help`, `design`, `playbook`) is the source of truth.
 export const MAX_SKILL_MARKDOWN_CHARS = 4000;
 
 // Agent Skills allows only these top-level frontmatter keys; the reference validator
@@ -22,11 +22,11 @@ export const ALLOWED_SKILL_FRONTMATTER_KEYS = Object.freeze([
 ]);
 
 /**
- * Render the installable SKILL.md for the lavish skill.
+ * Render the installable SKILL.md for the folio skill.
  *
  * This is a discovery stub, not a copy of CLI guidance. Installed skills go stale;
- * `lavish-axi --help`, `lavish-axi design`, and `lavish-axi playbook <id>` do not.
- * Keep the body to what Lavish is, when to reach for it, how to invoke the CLI,
+ * `folio-axi --help`, `folio-axi design`, and `folio-axi playbook <id>` do not.
+ * Keep the body to what Folio is, when to reach for it, how to invoke the CLI,
  * slash-command request handling, and pointers at those commands.
  *
  * The frontmatter is deliberately plain: block-style YAML only (the reference
@@ -37,38 +37,38 @@ export const ALLOWED_SKILL_FRONTMATTER_KEYS = Object.freeze([
  */
 export function createSkillMarkdown() {
   const markdown = `---
-name: lavish
+name: folio
 description: ${SKILL_DESCRIPTION}
 license: MIT
 metadata:
-  author: Kun Chen (kunchenguid)
+  author: Kun Chen (kunchenguid); Folio fork by ngoviet
   argument-hint: <what the artifact should show>
   hermes-tags: html, review, artifacts, visualization
   hermes-category: productivity
 ---
 
-# Lavish Editor
+# Folio (Folio)
 
-Lavish Editor opens agent-generated HTML in the browser so a human can annotate it and send feedback back to the agent.
+Folio opens agent-generated HTML in the browser so a human can annotate it and send feedback back to the agent.
 Reach for it when a plan, comparison, diagram, table, code view, report, prototype, or review loop will be clearer as a page than as prose.
 
 ## Current guidance lives in the CLI
 
 Do not follow workflow, design, or playbook instructions from this file - installed copies go stale. Get the current source of truth from the CLI:
 
-- \`npx -y lavish-axi --help\` for commands and the review-loop workflow
-- \`npx -y lavish-axi reply --help\` to post an agent reply and exit once the server accepts it, when you are not about to long-poll
-- \`npx -y lavish-axi design\` for design-direction priority and current snippets
-- \`npx -y lavish-axi playbook <id>\` for focused artifact guidance (\`npx -y lavish-axi playbook\` lists ids)
+- \`folio-axi --help\` for commands and the review-loop workflow
+- \`folio-axi reply --help\` to post an agent reply and exit once the server accepts it, when you are not about to long-poll
+- \`folio-axi design\` for design-direction priority and current snippets
+- \`folio-axi playbook <id>\` for focused artifact guidance (\`folio-axi playbook\` lists ids)
 
-You do not need lavish-axi installed globally - invoke it with \`npx -y lavish-axi <html-file>\`.
-If lavish-axi output shows a follow-up command starting with \`lavish-axi\`, run it as \`npx -y lavish-axi ...\` instead.
+folio-axi is not published to npm: it is installed from its checkout with \`npm link\`.
+Feedback the user sends from a page reaches the Claude Code session that opened it, even when no poll is running.
 
 ## Request
 
 $ARGUMENTS
 
-If the request above is non-empty, the user invoked \`/lavish\` explicitly - fetch the current CLI guidance, then build that artifact as an HTML file.
+If the request above is non-empty, the user invoked \`/folio\` explicitly - fetch the current CLI guidance, then build that artifact as an HTML file.
 If it is empty, infer what to visualize from the conversation.
 `;
 

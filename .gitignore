@@ -1,6 +1,8 @@
 node_modules/
+/.pnpm-store/
 dist/
 coverage/
+.folio/
 .lavish/
 .lavish-axi/
 # Agent runtime state. `.omc/skills/**` is the one committable exception.
@@ -11,3 +13,4 @@ coverage/
 package-lock.json
 .no-mistakes/evidence/
 /.planning/
+.folio-axi/

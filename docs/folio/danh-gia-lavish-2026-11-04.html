@@ -1,0 +1,119 @@
+<title>Có nên dùng lại Lavish?</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700&family=JetBrains+Mono:wght@400&display=swap">
+<style>
+/* Bố cục: một cột đọc, bảng cuộn ngang riêng, nhãn trạng thái bằng chip */
+:root{
+  --bg:#f6f7f9; --surface:#ffffff; --fg:#1d232b; --muted:#5b6672; --line:#dde2e8;
+  --accent:#2f5d8a; --ok:#1f7a4a; --ok-bg:#e3f3ea; --bad:#a3352b; --bad-bg:#fbe7e4; --warn:#8a5a00; --warn-bg:#fbf0d9;
+  --f-body:"Be Vietnam Pro",system-ui,"Segoe UI",sans-serif; --f-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#14181d; --surface:#1c2229; --fg:#e4e8ed; --muted:#9aa6b2; --line:#2e3741;
+  --accent:#8db8e3; --ok:#7fd3a3; --ok-bg:#1d3328; --bad:#f19a8f; --bad-bg:#3a2220; --warn:#e8c070; --warn-bg:#352b17; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#14181d; --surface:#1c2229; --fg:#e4e8ed; --muted:#9aa6b2; --line:#2e3741;
+  --accent:#8db8e3; --ok:#7fd3a3; --ok-bg:#1d3328; --bad:#f19a8f; --bad-bg:#3a2220; --warn:#e8c070; --warn-bg:#352b17; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.6;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 48px}
+main{max-width:860px;margin:0 auto;display:grid;gap:30px}
+h1{font-size:1.75rem;line-height:1.25;margin:0;text-wrap:balance}
+h2{font-size:1.2rem;margin:0 0 10px;text-wrap:balance}
+p{margin:0 0 10px;max-width:68ch}
+.meta{color:var(--muted);font-size:.85rem;margin-top:6px}
+.verdict{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:8px;padding:16px 18px}
+.verdict strong{color:var(--accent)}
+ul{margin:0;padding-left:20px;display:grid;gap:4px}
+code{font-family:var(--f-mono);font-size:.85em;background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:620px;font-size:.9rem}
+th,td{text-align:left;vertical-align:top;padding:9px 12px;border-bottom:1px solid var(--line)}
+th{font-size:.75rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:600}
+tr:last-child td{border-bottom:0}
+.chip{display:inline-block;font-size:.75rem;font-weight:600;padding:1px 8px;border-radius:99px;white-space:nowrap}
+.ok{color:var(--ok);background:var(--ok-bg)} .bad{color:var(--bad);background:var(--bad-bg)} .warn{color:var(--warn);background:var(--warn-bg)}
+a{color:var(--accent)}
+.ver{font-family:var(--f-mono);font-weight:400;white-space:nowrap}
+</style>
+
+<main>
+<header>
+  <h1>Có nên tích hợp lại Lavish vào Claude Code trên PC1?</h1>
+  <div class="meta">Rà soát ngày 04/11/2026 · lavish-axi đang cài: 0.1.93 · bản mới nhất: 0.1.96 (29/10) · nguồn: npm, GitHub releases/issues, axi.md, docs/lessons-learned.md (vòng 90–97)</div>
+</header>
+
+<section class="verdict">
+  <h2>Khuyến nghị: không tích hợp lại</h2>
+  <p>Giữ cách hiện tại: <strong>Artifact</strong> cho báo cáo, <strong>AskUserQuestion</strong> và nút của hộp kết thúc lượt cho câu hỏi cần anh quyết. Lavish chỉ dùng khi anh tự gọi <code>/lavish</code>, như quy tắc ngày 29/10.</p>
+  <p>Lý do chính: ba bản phát hành sau 25/10 chỉ sửa giao diện trình duyệt. Các lỗi đã làm mất câu trả lời của anh nằm ở cơ chế giao phản hồi (poll), và các issue gốc <a href="https://github.com/kunchenguid/lavish-axi/issues/296">#296</a>, <a href="https://github.com/kunchenguid/lavish-axi/issues/350">#350</a> vẫn mở. Từ 29/10 đến nay repo không có commit mới.</p>
+  <p style="margin:0">Không cần đổi cấu hình. Việc nâng 0.1.93 → 0.1.96 là tuỳ chọn, chỉ có ích nếu anh còn tự dùng <code>/lavish</code> trên máy tính.</p>
+</section>
+
+<section>
+  <h2>Lavish đã thay đổi gì từ 25/10</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Bản</th><th>Ngày</th><th>Thay đổi</th></tr></thead>
+    <tbody>
+      <tr><td class="ver">0.1.93</td><td>25/10</td><td>Phím tắt của trang không còn cắt ngang lúc gõ ghi chú (#452). Khung trang chỉ điều hướng qua một chỗ (#453). <em>Đây là bản PC1 đang cài.</em></td></tr>
+      <tr><td class="ver">0.1.94</td><td>27/10</td><td>Thanh hội thoại thu gọn được trên máy tính (#462). Trang tự đổi tiêu đề và biểu tượng tab (#458).</td></tr>
+      <tr><td class="ver">0.1.95</td><td>28/10</td><td>Cảnh báo "câu trả lời chưa gửi vẫn nằm ở tab của nó" trước khi takeover và khi bấm Gửi rỗng (#464).</td></tr>
+      <tr><td class="ver">0.1.96</td><td>29/10</td><td>Sửa chèn SDK vào trang có chuỗi <code>&lt;/body&gt;</code> trong script (#472). Bỏ qua tệp Tailscale không tồn tại khi dò (#467).</td></tr>
+      <tr><td>Sau 29/10</td><td>–</td><td>Không có commit nào trên nhánh chính tính đến 04/11. Repo: 4.392 sao, 61 issue mở.</td></tr>
+      <tr><td>axi.md</td><td>–</td><td>Không đổi: vẫn chỉ là danh mục, Lavish xếp ở nhóm "Human review". README vẫn đưa ba đường cài (skill, session hook, plugin).</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>Các lỗi đã gặp trên PC1 và trạng thái hiện tại</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Lỗi đã gặp</th><th>Lần gặp</th><th>Trạng thái</th><th>Bằng chứng</th></tr></thead>
+    <tbody>
+      <tr><td>Anh gửi phản hồi trên trang nhưng agent không nhận, vì lúc đó không có poll nào nghe</td><td>Vòng 92, 93, hoc-cung-con 26/10</td><td><span class="chip bad">Chưa sửa</span></td><td>#296 (giao có xác nhận, khôi phục được) vẫn mở. 0.1.95 chỉ thêm cảnh báo phía trình duyệt.</td></tr>
+      <tr><td>Nhiều phiên tranh một trang: poll nào tới trước thì lấy phản hồi</td><td>Vòng 93</td><td><span class="chip bad">Chưa sửa</span></td><td>#350 (giao phản hồi đúng agent chủ trang) vẫn mở.</td></tr>
+      <tr><td>Poll phải chạy nền suốt; phiên kết thúc là poll chết, trang còn mở thì câu hỏi sau nằm chờ</td><td>Vòng 92–93</td><td><span class="chip bad">Chưa sửa</span></td><td>Thiết kế vẫn dựa vào poll do agent tự giữ (#296, phần "presence-bounded").</td></tr>
+      <tr><td>Agent dừng nhầm 4 poll của phiên còn sống khi dò poll "mồ côi"</td><td>Vòng 93</td><td><span class="chip warn">Lỗi phía mình</span></td><td>Do đoán bằng chuỗi tiến trình cha Win32. Upstream vẫn chưa có lệnh liệt kê poll theo phiên chủ (#350), nên rủi ro còn đó.</td></tr>
+      <tr><td>Output hook 12–16 KB vượt trần 10.000 ký tự, chỉ 2 KB đầu vào ngữ cảnh; ~3,1k token mỗi lượt</td><td>Vòng 95</td><td><span class="chip bad">Chưa sửa</span></td><td>#388 (chế độ <code>--brief</code>) và #391 (lọc theo thư mục làm việc) vẫn mở. Hook bọc <code>hooks/lavish-session-hook.mjs</code> vẫn cần nếu bật lại.</td></tr>
+      <tr><td>Không <code>end</code> được trang khi tệp HTML đã mất</td><td>Vòng 93</td><td><span class="chip bad">Chưa sửa</span></td><td>#373 vẫn mở.</td></tr>
+      <tr><td>Lựa chọn trên form về agent dưới dạng output công cụ, bộ phân loại auto mode không coi là lời anh và chặn sửa cấu hình</td><td>Vòng 95</td><td><span class="chip bad">Không sửa được</span></td><td>Đặc tính của Claude Code, không thuộc Lavish. Câu trả lời trong chat thì không gặp.</td></tr>
+      <tr><td><code>lavish-axi setup hooks</code> bị auto mode chặn vì tự ghi <code>settings.json</code></td><td>Vòng 90, 93</td><td><span class="chip warn">Đi vòng được</span></td><td>Anh chạy tay hoặc duyệt trong chat. Không đổi.</td></tr>
+      <tr><td>Phím tắt trang cắt ngang lúc gõ ghi chú</td><td>Vòng 93</td><td><span class="chip ok">Đã sửa</span></td><td>#452, bản 0.1.93 (đã cài).</td></tr>
+      <tr><td>Xem trên điện thoại</td><td>Thường xuyên</td><td><span class="chip bad">Chưa ổn</span></td><td>Lavish chạy server cục bộ; muốn mở từ xa phải có Tailscale (PC1 chưa cài) và máy phải bật. #474 (bàn phím điện thoại che ô ghi chú) vẫn mở.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>So với cách đang dùng</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Tiêu chí</th><th>Lavish</th><th>Artifact + AskUserQuestion / nút wrap_up</th></tr></thead>
+    <tbody>
+      <tr><td>Trên điện thoại</td><td><span class="chip bad">Kém</span> Server cục bộ; cần Tailscale và PC bật; ô ghi chú bị bàn phím che (#474).</td><td><span class="chip ok">Tốt</span> Artifact là trang trên claude.ai, mở trong app điện thoại. Câu hỏi và nút hiện ngay trong phiên.</td></tr>
+      <tr><td>Phản hồi về đúng agent</td><td><span class="chip bad">Không chắc chắn</span> Chỉ tới khi có poll đang nghe; poll nào tới trước thì lấy.</td><td><span class="chip ok">Chắc chắn</span> Câu trả lời là tin nhắn của anh trong đúng phiên, harness quản lý. Bình luận trên Artifact cũng gửi được tới phiên đang theo dõi.</td></tr>
+      <tr><td>Độ ổn định</td><td><span class="chip bad">Thấp</span> 6 issue lõi về giao phản hồi và phiên vẫn mở; repo im từ 29/10.</td><td><span class="chip ok">Cao</span> Tính năng có sẵn của app, không có tiến trình nền.</td></tr>
+      <tr><td>Token</td><td><span class="chip warn">Tốn hơn</span> Hook ~3,1k token mỗi lượt (bản bọc còn 561–841 ký tự); thêm lệnh poll, reply mỗi vòng hỏi đáp.</td><td><span class="chip warn">Vừa</span> Không tốn mỗi lượt. Mỗi Artifact mới tốn một lần hướng dẫn thiết kế (khá dài) và nội dung trang.</td></tr>
+      <tr><td>Bảo mật</td><td><span class="chip warn">Cần để ý</span> Dữ liệu ở lại trên máy. Nhưng mở ra mạng (Tailscale) để xem từ điện thoại là thêm một cửa vào; phản hồi về agent dưới dạng dữ liệu công cụ.</td><td><span class="chip warn">Cần để ý</span> Trang riêng tư nhưng nội dung nằm trên claude.ai: không đưa mật khẩu, token, dữ liệu nhạy cảm vào báo cáo.</td></tr>
+      <tr><td>Số bước của anh</td><td>Mở tab, đọc, chọn hoặc ghi chú, bấm Gửi; nếu agent không nghe thì phải nhắc lại trong chat.</td><td>Đọc trang qua link; trả lời bằng 1 chạm vào nút hoặc gõ trong chat.</td></tr>
+      <tr><td>Điểm Lavish hơn</td><td colspan="2">Ghi chú gắn thẳng vào từng đoạn trên trang, form nhiều trường trả dữ liệu có cấu trúc. Có ích khi rà một bản kế hoạch dài trên máy tính, trong một phiên, xong là đóng trang.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>Khi nào vẫn có thể dùng Lavish</h2>
+  <ul>
+    <li>Anh ngồi ở PC1, muốn ghi chú từng dòng trên một bản thiết kế hoặc kế hoạch dài, và tự gọi <code>/lavish</code>.</li>
+    <li>Một trang chỉ thuộc một phiên; xong thì <code>lavish-axi end</code> ngay để không còn trang chờ.</li>
+    <li>Không bật lại hook SessionStart, không đặt lại quy tắc bắt buộc trong <code>~/.claude/CLAUDE.md</code>.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Điều kiện để xem xét lại</h2>
+  <ul>
+    <li>#296 và #350 được đóng: phản hồi có xác nhận và đi đúng phiên chủ trang.</li>
+    <li>#388 hoặc #391 được đóng: hook gọn, không cần bản bọc riêng.</li>
+    <li>Có cách mở trang từ điện thoại không cần Tailscale, hoặc anh chấp nhận cài Tailscale.</li>
+  </ul>
+</section>
+</main>

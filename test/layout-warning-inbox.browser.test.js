@@ -8,11 +8,11 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 // The behavioral regression boundary for passive layout triage. Before this change the browser's
-// audit returned straight out of `lavish-axi poll` with no user action, so several individually
+// audit returned straight out of `folio-axi poll` with no user action, so several individually
 // reasonable agent fixes produced repeated edit/reload cycles while the user was mid-review. Every
 // assertion here pins the replacement contract in a real browser: detection is passive, the user
 // decides what becomes work, and only a queued batch wakes the agent.
-const runBrowserE2e = process.env.LAVISH_AXI_BROWSER_E2E === "1";
+const runBrowserE2e = process.env.FOLIO_AXI_BROWSER_E2E === "1";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const fixtures = path.join(repoRoot, "test/fixtures/layout-audit");
 
@@ -47,12 +47,12 @@ test(
     const temp = await mkdtemp(path.join(tmpdir(), "lavish-warning-inbox-"));
     const port = await freePort();
     const lavishEnv = {
-      LAVISH_AXI_PORT: String(port),
-      LAVISH_AXI_STATE_DIR: path.join(temp, "state"),
-      LAVISH_AXI_NO_OPEN: "1",
-      LAVISH_AXI_TELEMETRY: "0",
-      LAVISH_AXI_HOST: "127.0.0.1",
-      LAVISH_AXI_LINK_HOST: "127.0.0.1",
+      FOLIO_AXI_PORT: String(port),
+      FOLIO_AXI_STATE_DIR: path.join(temp, "state"),
+      FOLIO_AXI_NO_OPEN: "1",
+      FOLIO_AXI_TELEMETRY: "0",
+      FOLIO_AXI_HOST: "127.0.0.1",
+      FOLIO_AXI_LINK_HOST: "127.0.0.1",
     };
     const chromeEnv = {
       CHROME_DEVTOOLS_AXI_SESSION: `lavish-warning-inbox-${process.pid}`,
@@ -60,7 +60,7 @@ test(
     };
 
     function openArtifact(file, args = []) {
-      const output = run(process.execPath, ["bin/lavish-axi.js", file, "--no-open", ...args], lavishEnv);
+      const output = run(process.execPath, ["bin/folio-axi.js", file, "--no-open", ...args], lavishEnv);
       const url = output.match(/url:\s*"([^"]+)"/)?.[1];
       assert.ok(url, output);
       return url;
@@ -69,7 +69,7 @@ test(
     function poll(file, timeoutMs) {
       return run(
         process.execPath,
-        ["bin/lavish-axi.js", "poll", file, "--timeout-ms", String(timeoutMs)],
+        ["bin/folio-axi.js", "poll", file, "--timeout-ms", String(timeoutMs)],
         lavishEnv,
         timeoutMs + 45_000,
       );
@@ -413,23 +413,23 @@ test(
       assert.match(cleanFeedback, /Tighten the summary/);
       assert.doesNotMatch(cleanFeedback, /layout-warnings/);
     } finally {
-      run(process.execPath, ["bin/lavish-axi.js", "stop", "--port", String(port)], lavishEnv, 15_000);
+      run(process.execPath, ["bin/folio-axi.js", "stop", "--port", String(port)], lavishEnv, 15_000);
       run("chrome-devtools-axi", ["stop"], chromeEnv);
       await rm(temp, { recursive: true, force: true });
     }
   },
 );
 
-test("a live reload preserves the review context Lavish owns", { skip: !runBrowserE2e, timeout: 240_000 }, async () => {
+test("a live reload preserves the review context Folio owns", { skip: !runBrowserE2e, timeout: 240_000 }, async () => {
   const temp = await mkdtemp(path.join(tmpdir(), "lavish-review-context-"));
   const port = await freePort();
   const lavishEnv = {
-    LAVISH_AXI_PORT: String(port),
-    LAVISH_AXI_STATE_DIR: path.join(temp, "state"),
-    LAVISH_AXI_NO_OPEN: "1",
-    LAVISH_AXI_TELEMETRY: "0",
-    LAVISH_AXI_HOST: "127.0.0.1",
-    LAVISH_AXI_LINK_HOST: "127.0.0.1",
+    FOLIO_AXI_PORT: String(port),
+    FOLIO_AXI_STATE_DIR: path.join(temp, "state"),
+    FOLIO_AXI_NO_OPEN: "1",
+    FOLIO_AXI_TELEMETRY: "0",
+    FOLIO_AXI_HOST: "127.0.0.1",
+    FOLIO_AXI_LINK_HOST: "127.0.0.1",
   };
   const chromeEnv = {
     CHROME_DEVTOOLS_AXI_SESSION: `lavish-review-context-${process.pid}`,
@@ -457,14 +457,14 @@ test("a live reload preserves the review context Lavish owns", { skip: !runBrows
   try {
     const artifact = path.join(temp, "review-context.html");
     await copyFile(path.join(fixtures, "review-context.html"), artifact);
-    const output = run(process.execPath, ["bin/lavish-axi.js", artifact, "--no-open"], lavishEnv);
+    const output = run(process.execPath, ["bin/folio-axi.js", artifact, "--no-open"], lavishEnv);
     const url = output.match(/url:\s*"([^"]+)"/)?.[1];
     assert.ok(url, output);
     run("chrome-devtools-axi", ["emulate", "--viewport", "1440x1000x1"], chromeEnv);
     run("chrome-devtools-axi", ["open", url], chromeEnv);
     wait(4500);
 
-    // Lavish-owned answers: a radio and a checkbox inside a data-lavish-question scope.
+    // Folio-owned answers: a radio and a checkbox inside a data-lavish-question scope.
     click(/radio " Pro"/);
     click(/checkbox " Include beta cohort"/);
     // Unsent annotation text on an element the reload will replace.
@@ -481,7 +481,7 @@ test("a live reload preserves the review context Lavish owns", { skip: !runBrows
     wait(5000);
 
     const after = snapshot();
-    assert.match(after, /radio " Pro" checked/, "a Lavish-owned answer survives the reload");
+    assert.match(after, /radio " Pro" checked/, "a Folio-owned answer survives the reload");
     assert.match(after, /checkbox " Include beta cohort" checked/);
     assert.match(after, /Annotate <p>/, "the open annotation card comes back");
 
@@ -504,7 +504,7 @@ test("a live reload preserves the review context Lavish owns", { skip: !runBrows
     assert.equal(geometry.emptyCopyDisplay, "none");
     assert.ok(geometry.excerptHeight <= geometry.excerptLineHeight + 1, "the anchor excerpt stays on one line");
   } finally {
-    run(process.execPath, ["bin/lavish-axi.js", "stop", "--port", String(port)], lavishEnv, 15_000);
+    run(process.execPath, ["bin/folio-axi.js", "stop", "--port", String(port)], lavishEnv, 15_000);
     run("chrome-devtools-axi", ["stop"], chromeEnv);
     await rm(temp, { recursive: true, force: true });
   }

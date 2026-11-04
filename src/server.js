@@ -73,7 +73,7 @@ import {
 } from "./paths.js";
 import { detectTailscale } from "./tailscale.js";
 import { artifactTreeRoot, isArtifactPathError, isHtmlPath, resolveAllowedArtifactFile } from "./artifact-path.js";
-import { canonicalFile, SessionStore, sessionKey } from "./session-store.js";
+import { canonicalFile, normalizeOwnerSessionId, SessionStore, sessionKey } from "./session-store.js";
 import { AsyncMutex } from "./async-mutex.js";
 import { generateSharePassword } from "./share-password.js";
 import {
@@ -116,7 +116,7 @@ const NETWORK_RECONCILE_CACHE_MS = 1_000;
 const BIND_RETRY_DELAYS_MS = [100, 250, 500];
 // A requested address that still has not bound after that budget is retried in the background for
 // the life of the process (the last delay repeats), so a tailnet address held by a stale daemon or
-// absent while Tailscale restarts comes back without anyone restarting Lavish.
+// absent while Tailscale restarts comes back without anyone restarting Folio.
 const BIND_RECOVERY_DELAYS_MS = [1_000, 2_000, 5_000, 10_000, 30_000];
 const LOOPBACK_OWNER_PROBE_TIMEOUT_MS = 500;
 const WEBSOCKET_CLOSE_GRACE_MS = 250;
@@ -149,7 +149,7 @@ export const BATCH_RELOAD_DEBOUNCE_MS = 900;
 
 // The whiteboard frame bundle (Excalidraw + Mermaid converter + React) is
 // produced by `scripts/build.js` into dist/whiteboard. Packaged runs find it
-// next to the served bundle; source runs (node bin/lavish-axi.js) fall back to
+// next to the served bundle; source runs (node bin/folio-axi.js) fall back to
 // the repo's dist output, so `pnpm run build` must have run at least once.
 export function defaultWhiteboardAssetsDir() {
   const packaged = fileURLToPath(new URL("./whiteboard", import.meta.url));
@@ -260,11 +260,11 @@ export function isValidWhiteboardChannelToken(token, secret, sessionKey, now = D
 
 // A detached server should not live forever. When no browser chrome or agent poll
 // are connected for this long, the server shuts itself down so it stops dangling. The next
-// `lavish-axi <file>` invocation re-spawns a fresh server and adopts resumable sessions from
+// `folio-axi <file>` invocation re-spawns a fresh server and adopts resumable sessions from
 // state.json. Browser-ended sessions still require the explicit --reopen opt-in. Set
-// LAVISH_AXI_IDLE_TIMEOUT_MS to 0/off to disable, or to a custom millisecond budget.
+// FOLIO_AXI_IDLE_TIMEOUT_MS to 0/off to disable, or to a custom millisecond budget.
 export function resolveIdleTimeoutMs(env = process.env) {
-  const raw = env.LAVISH_AXI_IDLE_TIMEOUT_MS?.trim();
+  const raw = env.FOLIO_AXI_IDLE_TIMEOUT_MS?.trim();
   if (raw === undefined || raw === "") return DEFAULT_IDLE_TIMEOUT_MS;
   if (raw === "0" || raw.toLowerCase() === "off") return null;
   const value = Number(raw);
@@ -274,12 +274,12 @@ export function resolveIdleTimeoutMs(env = process.env) {
 
 // How long an active poll waits for a review page to reconnect after the last one drops before it
 // returns browser_disconnected. A phone that locks or backgrounds the tab drops its socket, so the
-// 10s default can be too short there. Set LAVISH_AXI_DISCONNECT_GRACE_MS to a custom millisecond
+// 10s default can be too short there. Set FOLIO_AXI_DISCONNECT_GRACE_MS to a custom millisecond
 // budget, or to 0/off so a disconnect never releases the poll (only feedback, an end, or its own
 // timeout does). Both resolvers clamp to 2147483647 ms, setTimeout's maximum; a larger delay would
 // overflow and fire after about 1 ms.
 export function resolveBrowserDisconnectGraceMs(env = process.env) {
-  const raw = env.LAVISH_AXI_DISCONNECT_GRACE_MS?.trim();
+  const raw = env.FOLIO_AXI_DISCONNECT_GRACE_MS?.trim();
   if (raw === undefined || raw === "") return DEFAULT_BROWSER_DISCONNECT_GRACE_MS;
   if (raw === "0" || raw.toLowerCase() === "off") return null;
   const value = Number(raw);
@@ -314,7 +314,7 @@ export async function serve({
   // Keep the transport dependency off fast metadata paths such as `--version`.
   const { WebSocket, WebSocketServer } = await import("ws");
   const extraHosts = allowedHosts ?? extraAllowedHosts(env);
-  const envHost = env.LAVISH_AXI_HOST?.trim();
+  const envHost = env.FOLIO_AXI_HOST?.trim();
   const autoTailscale = !envHost;
   const detect = detectTailscaleFn === undefined ? detectTailscale : detectTailscaleFn;
   const tailscale = !hosts?.length && autoTailscale && typeof detect === "function" ? await detect() : null;
@@ -346,6 +346,8 @@ export async function serve({
   let bindRecoveryTimer = null;
   const app = express();
   const store = new SessionStore(stateFile);
+  // Folio: ended pages used to pile up in state.json for ever; drop the ones ended long ago.
+  void store.pruneEndedSessions(endedSessionRetentionMs()).catch(() => {});
   const events = new EventEmitter();
   const watchers = new Map();
   const activePolls = new Map();
@@ -361,15 +363,15 @@ export async function serve({
   // Sessions with at least one warning the user queued that has not been re-checked yet.
   const outstandingRepairBatches = new Set();
   const diagnosticViewportClasses = resolveDiagnosticViewportClasses();
-  const verbose = debug || env.LAVISH_AXI_DEBUG === "1";
+  const verbose = debug || env.FOLIO_AXI_DEBUG === "1";
   // The detached server's stderr is appended to server.log across restarts, where an untimestamped
   // line cannot be dated or correlated with an outage. An injected logger formats its own lines.
   const writeLog =
     typeof log === "function"
       ? log
       : (line) => process.stderr.write(`${serverStdioIsTimestamped() ? line : formatServerLogLine(line)}\n`);
-  const logEvent = verbose ? (line) => writeLog(`[lavish] ${line}`) : null;
-  if (tailscaleDetectionWarning) writeLog(`[lavish] WARNING: ${tailscaleDetectionWarning}`);
+  const logEvent = verbose ? (line) => writeLog(`[folio] ${line}`) : null;
+  if (tailscaleDetectionWarning) writeLog(`[folio] WARNING: ${tailscaleDetectionWarning}`);
   let publicPort = port;
   let serverReady = false;
   let networkReconcileCheckedAt = 0;
@@ -396,7 +398,7 @@ export async function serve({
       .then((session) => {
         if (session) events.emit("chat-sync", key, session);
       })
-      .catch((error) => writeLog(`[lavish] working stamp after reload failed: ${error?.message || error}`));
+      .catch((error) => writeLog(`[folio] working stamp after reload failed: ${error?.message || error}`));
   });
   // The transcript the chrome renders is computed here (src/chat-messages.js): agent text ships
   // with its rendered html, user entries ship as text with their anchor, never as html.
@@ -483,12 +485,12 @@ export async function serve({
             ? `${code}: that name does not resolve right now`
             : code || (error instanceof Error ? error.message : String(error));
     const address = `${hostForUrl(listenHost)}:${publicPort || port}`;
-    const reachable = `Lavish remains available on ${boundHosts.map((bound) => hostForUrl(bound)).join(", ") || "loopback"}`;
+    const reachable = `Folio remains available on ${boundHosts.map((bound) => hostForUrl(bound)).join(", ") || "loopback"}`;
     if (listenHost === tailscale?.ipv4) {
       return `Tailscale binding failed for ${address} (${why}); there is no phone access and tailnet review links do not load. ${reachable} and keeps retrying the tailnet address in the background.`;
     }
     const fellBack = boundHosts.length > 0 && boundHosts.every((bound) => bound === LOOPBACK_HOST);
-    return `Could not bind ${address} (${why}); ${fellBack ? "Lavish fell back to loopback and is" : "Lavish is"} not reachable at that address. ${reachable} and keeps retrying ${hostForUrl(listenHost)} in the background.`;
+    return `Could not bind ${address} (${why}); ${fellBack ? "Folio fell back to loopback and is" : "Folio is"} not reachable at that address. ${reachable} and keeps retrying ${hostForUrl(listenHost)} in the background.`;
   }
 
   // Everything that reports network health reads this, so the warning appears and clears with the
@@ -539,10 +541,11 @@ export async function serve({
   function finishFeedbackDelivery(key, result) {
     if (result.status !== "feedback") return;
     markFeedbackDelivered(key, activePolls, deliveredFeedback, events);
-    // The take already stamped the batch Seen in state.json (docs/delivery-acks.md); tell the open
+    // A raw take already stamped the batch Seen in state.json (docs/delivery-acks.md); tell the open
     // tabs only now, on the path that is about to write the response, never from the destructive
-    // take itself, so a tab is not told Seen for a batch a disconnect is about to put back.
-    void publishChatSync(key);
+    // take itself, so a tab is not told Seen for a batch a disconnect is about to put back. An
+    // ackable take stamps nothing; its Seen is published by the ack.
+    if (!result.delivery_id) void publishChatSync(key);
   }
 
   async function publishChatSync(key) {
@@ -550,14 +553,14 @@ export async function serve({
       const session = await store.findByKey(key);
       if (session) events.emit("chat-sync", key, session);
     } catch (error) {
-      writeLog(`[lavish] chat-sync after delivery failed: ${error?.message || error}`);
+      writeLog(`[folio] chat-sync after delivery failed: ${error?.message || error}`);
     }
   }
 
   // What the agent receives. `delivery_seq` is the store's own bookkeeping for undoing a take's Seen
   // stamps on a closed poll; it means nothing to an agent and stays off the wire.
   function agentFacingFeedback(result) {
-    if (!result || result.status !== "feedback" || !("delivery_seq" in result)) return result;
+    if (!result || result.status !== "feedback") return result;
     const rest = { ...result };
     delete rest.delivery_seq;
     return rest;
@@ -576,6 +579,13 @@ export async function serve({
   // feedback that is sitting in `state.json`. Emitting wakes it exactly like a fresh `/prompts`.
   async function restoreClosedFeedback(key, result) {
     if (result.status !== "feedback") return;
+    // Folio: an ackable take left the whole batch in `unacked_delivery`, which the next take
+    // hands out again. Re-queuing it as prompts too would deliver it twice, so only wake any
+    // waiting poll.
+    if (typeof result.delivery_id === "string" && result.delivery_id) {
+      events.emit("feedback", key);
+      return;
+    }
     const prompts = Array.isArray(result.prompts) ? result.prompts : [];
     let session = null;
     let restoreError = null;
@@ -615,12 +625,12 @@ export async function serve({
     const persistedNothing = !session || Boolean(session.rejected) || Boolean(session.conflict);
     if (restoreError) {
       writeLog(
-        `[lavish] closed poll feedback restore failed; the batch was lost: ${restoreError?.message || restoreError}`,
+        `[folio] closed poll feedback restore failed; the batch was lost: ${restoreError?.message || restoreError}`,
       );
     } else if (persistedNothing) {
-      writeLog("[lavish] closed poll feedback restore was refused; nothing was re-queued and the batch was lost");
+      writeLog("[folio] closed poll feedback restore was refused; nothing was re-queued and the batch was lost");
     } else if (!restoredPrompts || JSON.stringify(restoredPrompts) !== JSON.stringify(prompts) || !failuresRestored) {
-      writeLog("[lavish] closed poll feedback restore was incomplete; delivery was not marked");
+      writeLog("[folio] closed poll feedback restore was incomplete; delivery was not marked");
     }
     const pendingAfterRestore =
       (Array.isArray(restoredPrompts) && restoredPrompts.length > 0) ||
@@ -643,11 +653,11 @@ export async function serve({
   // never one of the hostnames this server answers to.
   //
   // Loopback names are always accepted. Binding to a concrete interface
-  // (LAVISH_AXI_HOST) or naming a link host (LAVISH_AXI_LINK_HOST) adds that host,
+  // (FOLIO_AXI_HOST) or naming a link host (FOLIO_AXI_LINK_HOST) adds that host,
   // so an operator who intentionally exposes the server on a specific interface
   // keeps rebinding protection while their chosen hostname works. Additional
   // names (a reverse-proxy hostname, extra interfaces) are an explicit opt-in via
-  // LAVISH_AXI_ALLOWED_HOSTS; a lone "*" there disables the guard for operators
+  // FOLIO_AXI_ALLOWED_HOSTS; a lone "*" there disables the guard for operators
   // who front the server with their own authentication. When a reverse proxy sits
   // in front, X-Forwarded-Host is validated too (see isAllowedRequestHost).
   //
@@ -714,8 +724,8 @@ export async function serve({
         error: "forbidden host",
         title: "Wrong address",
         message: tailscalePhoneReady
-          ? "This Lavish review server does not accept that host. Open the working URL below on this computer or your phone through Tailscale."
-          : "This Lavish review server does not accept that host. Open the working URL below on this computer. Phone access is unavailable.",
+          ? "This Folio review server does not accept that host. Open the working URL below on this computer or your phone through Tailscale."
+          : "This Folio review server does not accept that host. Open the working URL below on this computer. Phone access is unavailable.",
       });
     });
   }
@@ -768,14 +778,14 @@ export async function serve({
 
   app.get("/health", async (req, res) => {
     if (!serverReady) {
-      res.status(503).json({ ok: false, app: "lavish-axi", version });
+      res.status(503).json({ ok: false, app: "folio-axi", version });
       return;
     }
     const networkStale = req.query.reconcile_network === "1" ? await reconcileNetwork() : false;
     const networkWarning = currentNetworkWarning();
     res.json({
       ok: true,
-      app: "lavish-axi",
+      app: "folio-axi",
       version,
       state_id: serverStateId,
       state_dir: path.dirname(stateFile),
@@ -817,26 +827,35 @@ export async function serve({
       const file = await resolveAllowedArtifactFile(req.body?.file);
       const key = sessionKey(file);
       const reopen = Boolean(req.body.reopen);
-      const existing = await store.findByKey(key);
       const sessionUrl = `http://${hostForUrl(resolvedLinkHost)}:${publicPort}/session/${key}`;
       // A user-initiated end (ending or send-and-ending from the browser) means the human
       // deliberately closed the review surface. Silently reopening it on the next
-      // `lavish-axi <file>` is the exact behavior this route exists to prevent - require an
+      // `folio-axi <file>` is the exact behavior this route exists to prevent - require an
       // explicit `reopen` opt-in instead of reviving it automatically. Agent-initiated ends
-      // (`lavish-axi end`) keep reviving on the next open, same as before this change.
-      if (existing?.status === "ended" && existing.ended_by === "user" && !reopen) {
-        logEvent?.(`session open blocked (user-ended) key=${key} file=${file}`);
-        res.json({
-          key,
-          file,
-          url: sessionUrl,
-          status: "user-ended",
-          ...networkWarningField(),
+      // (`folio-axi end`) keep reviving on the next open, same as before this change.
+      const { session, existing, blocked } = await pollOwnershipLock.runExclusive(async () => {
+        const existing = await store.findByKey(key);
+        if (existing?.status === "ended" && existing.ended_by === "user" && !reopen) {
+          return { existing, blocked: true };
+        }
+        const session = await store.upsertSession(file, sessionUrl, {
+          ownerSessionId: typeof req.body?.owner_session_id === "string" ? req.body.owner_session_id : "",
         });
+        if (session.owner_session_id && session.owner_session_id !== existing?.owner_session_id) {
+          const holder = activePolls.get(key);
+          if (holder) {
+            holder.replaced = true;
+            holder.replace?.();
+            releasePollListener(holder, activePolls, deliveredFeedback, events);
+          }
+        }
+        return { session, existing, blocked: false };
+      });
+      if (blocked) {
+        res.json({ key, file, url: sessionUrl, status: "user-ended", ...networkWarningField() });
         return;
       }
       const url = shouldDisableLayoutGateOpen(req.body || {}) ? appendNoGateParam(sessionUrl) : sessionUrl;
-      const session = await store.upsertSession(file, sessionUrl);
       if (existing?.status === "ended") {
         clearFeedbackDelivery(key, activePolls, deliveredFeedback, events);
       }
@@ -890,6 +909,7 @@ export async function serve({
       res.status(405).json({ error: "POST /api/poll requires agent_reply or takeover=1" });
       return;
     }
+    const pollSessionId = normalizeOwnerSessionId(req.query.session_id);
     // `close` is subscribed before the first `await` and re-checked after the listeners are armed,
     // because a client that disconnects while `takeFeedback` is in flight would otherwise arrive
     // too late for its own cleanup: the handler marks the poll active afterwards and nothing left
@@ -917,8 +937,20 @@ export async function serve({
     const detachRequestClose = () => req.off("close", onRequestClose);
     req.on("close", onRequestClose);
     try {
-      const file = await canonicalFile(String(req.query.file || ""));
-      const key = sessionKey(file);
+      const requestedFile = String(req.query.file || "");
+      let key;
+      try {
+        key = sessionKey(await canonicalFile(requestedFile));
+      } catch (error) {
+        if (error?.code !== "ENOENT") throw error;
+        const stored = await store.findByStoredFile(requestedFile);
+        if (!stored) {
+          detachRequestClose();
+          res.status(404).json({ status: "error", code: "NOT_FOUND", error: "session not found" });
+          return;
+        }
+        key = stored.key;
+      }
       const ownerValue = typeof req.query.owner === "string" ? req.query.owner.trim() : "";
       if (ownerValue.toLowerCase() === "none" || ownerValue.startsWith("-")) {
         detachRequestClose();
@@ -935,32 +967,66 @@ export async function serve({
         res.status(403).json({ error: "cross-origin poll takeover rejected" });
         return;
       }
-      const { holder, previousPresence, conflict, missing } = await pollOwnershipLock.runExclusive(async () => {
-        const currentHolder = activePolls.get(key);
-        if (currentHolder && !takeover) return { conflict: listenerConflict(currentHolder, "LISTENER_ACTIVE") };
-        const nextHolder = { key, owner, startedAt: Date.now(), replaced: false, replace: null };
-        claimedHolder = nextHolder;
-        const priorPresence = presenceSignature(key, activePolls, deliveredFeedback);
-        if (currentHolder) {
-          // Install the successor before releasing the old response so its cleanup cannot emit a
-          // transient "waiting" state or clear the successor's listener ownership.
-          currentHolder.replaced = true;
-          activePolls.set(key, nextHolder);
-          currentHolder.replace?.();
-        } else {
-          activePolls.set(key, nextHolder);
-        }
-        // Attaching a fresh round retires the prior delivery marker; releasing a poll never does.
-        deliveredFeedback.delete(key);
-        if (agentReply !== null) {
-          const session = await publishAgentReply(key, agentReply);
-          if (!session) {
-            activePolls.delete(key);
-            return { missing: true };
+      // Folio: feedback belongs to the agent session that opened the page. A poll from another
+      // session is refused unless it explicitly takes over, which also moves ownership.
+      const ackable = req.query.ack === "1";
+      const { holder, previousPresence, conflict, missing, invalidTakeover } = await pollOwnershipLock.runExclusive(
+        async () => {
+          const currentHolder = activePolls.get(key);
+          if (pollSessionId || ackable || takeover) {
+            const ownedSession = await store.findByKey(key);
+            const ownerSessionId = ownedSession?.owner_session_id || "";
+            if (takeover && !pollSessionId && ownerSessionId) return { invalidTakeover: true };
+            if (ownerSessionId && ownerSessionId !== pollSessionId && !takeover) {
+              return {
+                conflict: {
+                  status: "error",
+                  code: "NOT_OWNER",
+                  error: "this page belongs to another agent session",
+                  owner_session_id: ownerSessionId,
+                },
+              };
+            }
+            if (currentHolder && !takeover) return { conflict: listenerConflict(currentHolder, "LISTENER_ACTIVE") };
+            if (pollSessionId && ownedSession && ownerSessionId !== pollSessionId)
+              await store.setOwnerSession(key, pollSessionId);
+          } else if (currentHolder && !takeover) {
+            return { conflict: listenerConflict(currentHolder, "LISTENER_ACTIVE") };
           }
-        }
-        return { holder: nextHolder, previousPresence: priorPresence };
-      });
+          const nextHolder = { key, owner, startedAt: Date.now(), replaced: false, replace: null };
+          claimedHolder = nextHolder;
+          const priorPresence = presenceSignature(key, activePolls, deliveredFeedback);
+          if (currentHolder) {
+            // Install the successor before releasing the old response so its cleanup cannot emit a
+            // transient "waiting" state or clear the successor's listener ownership.
+            currentHolder.replaced = true;
+            activePolls.set(key, nextHolder);
+            currentHolder.replace?.();
+          } else {
+            activePolls.set(key, nextHolder);
+          }
+          // Attaching a fresh round retires the prior delivery marker; releasing a poll never does.
+          deliveredFeedback.delete(key);
+          if (agentReply !== null) {
+            const session = await publishAgentReply(key, agentReply);
+            if (!session) {
+              activePolls.delete(key);
+              return { missing: true };
+            }
+          }
+          return { holder: nextHolder, previousPresence: priorPresence };
+        },
+      );
+      if (invalidTakeover) {
+        detachRequestClose();
+        res.status(400).json({
+          status: "error",
+          code: "VALIDATION_ERROR",
+          error:
+            "Run inside a Claude Code session with the Folio SessionStart hook installed or set FOLIO_SESSION_ID before taking over",
+        });
+        return;
+      }
       if (conflict) {
         detachRequestClose();
         res.status(409).json(conflict);
@@ -973,39 +1039,50 @@ export async function serve({
       }
       const timeoutMs =
         req.query.timeoutMs === undefined ? null : Math.max(0, Math.min(Number(req.query.timeoutMs || 0), 2147483647));
-      const immediate = await store.takeFeedback(key);
-      if (immediate.status !== "waiting") {
+      const handledImmediately = await pollOwnershipLock.runExclusive(async () => {
+        if (holder.replaced || requestClosed || res.writableEnded) {
+          if (holder.replaced && !requestClosed && !res.writableEnded)
+            res.json(listenerConflict(holder, "LISTENER_REPLACED"));
+          releasePollListener(holder, activePolls, deliveredFeedback, events);
+          detachRequestClose();
+          return true;
+        }
+        const immediate = await store.takeFeedback(key, { ackable });
+        if (immediate.status !== "waiting") {
+          if (holder.replaced) {
+            await restoreClosedFeedback(key, immediate);
+            detachRequestClose();
+            res.json(listenerConflict(holder, "LISTENER_REPLACED"));
+            releasePollListener(holder, activePolls, deliveredFeedback, events);
+            return true;
+          }
+          if (requestClosed || res.writableEnded) {
+            await restoreClosedFeedback(key, immediate);
+            releasePollListener(holder, activePolls, deliveredFeedback, events);
+            detachRequestClose();
+            return true;
+          }
+          finishFeedbackDelivery(key, immediate);
+          releasePollListener(holder, activePolls, deliveredFeedback, events);
+          if (immediate.session_ended) clearFeedbackDelivery(key, activePolls, deliveredFeedback, events);
+          detachRequestClose();
+          res.json(agentFacingFeedback(immediate));
+          return true;
+        }
         if (holder.replaced) {
-          await restoreClosedFeedback(key, immediate);
           detachRequestClose();
           res.json(listenerConflict(holder, "LISTENER_REPLACED"));
           releasePollListener(holder, activePolls, deliveredFeedback, events);
-          return;
+          return true;
         }
         if (requestClosed || res.writableEnded) {
-          await restoreClosedFeedback(key, immediate);
           releasePollListener(holder, activePolls, deliveredFeedback, events);
           detachRequestClose();
-          return;
+          return true;
         }
-        finishFeedbackDelivery(key, immediate);
-        releasePollListener(holder, activePolls, deliveredFeedback, events);
-        if (immediate.session_ended) clearFeedbackDelivery(key, activePolls, deliveredFeedback, events);
-        detachRequestClose();
-        res.json(agentFacingFeedback(immediate));
-        return;
-      }
-      if (holder.replaced) {
-        detachRequestClose();
-        res.json(listenerConflict(holder, "LISTENER_REPLACED"));
-        releasePollListener(holder, activePolls, deliveredFeedback, events);
-        return;
-      }
-      if (requestClosed || res.writableEnded) {
-        releasePollListener(holder, activePolls, deliveredFeedback, events);
-        detachRequestClose();
-        return;
-      }
+        return false;
+      });
+      if (handledImmediately) return;
       const streamHeartbeat = timeoutMs === null;
       let heartbeat = null;
       if (streamHeartbeat) {
@@ -1055,30 +1132,39 @@ export async function serve({
         responding = true;
         let finalSessionEnded = false;
         try {
-          const result = await store.takeFeedback(key);
-          // Feedback or an explicit end that raced the grace timer wins. The disconnect result
-          // is only the non-terminal replacement for a poll that would otherwise keep waiting.
-          const responseResult = forcedResult && result.status === "waiting" ? forcedResult : result;
-          finalSessionEnded = responseResult?.session_ended === true;
-          if (holder.replaced) {
-            if (responseResult.status !== "waiting") await restoreClosedFeedback(key, responseResult);
-            if (!requestClosed && !res.writableEnded) {
-              if (streamHeartbeat) res.end(JSON.stringify(listenerConflict(holder, "LISTENER_REPLACED")));
-              else res.json(listenerConflict(holder, "LISTENER_REPLACED"));
+          await pollOwnershipLock.runExclusive(async () => {
+            if (holder.replaced || requestClosed || res.writableEnded) {
+              if (holder.replaced && !requestClosed && !res.writableEnded) {
+                if (streamHeartbeat) res.end(JSON.stringify(listenerConflict(holder, "LISTENER_REPLACED")));
+                else res.json(listenerConflict(holder, "LISTENER_REPLACED"));
+              }
+              return;
             }
-            return;
-          }
-          if (requestClosed || res.writableEnded) {
-            await restoreClosedFeedback(key, responseResult);
-            return;
-          }
-          finishFeedbackDelivery(key, responseResult);
-          const agentResponse = agentFacingFeedback(responseResult);
-          if (streamHeartbeat) {
-            res.end(JSON.stringify(agentResponse));
-          } else {
-            res.json(agentResponse);
-          }
+            const result = await store.takeFeedback(key, { ackable });
+            // Feedback or an explicit end that raced the grace timer wins. The disconnect result
+            // is only the non-terminal replacement for a poll that would otherwise keep waiting.
+            const responseResult = forcedResult && result.status === "waiting" ? forcedResult : result;
+            finalSessionEnded = responseResult?.session_ended === true;
+            if (holder.replaced) {
+              if (responseResult.status !== "waiting") await restoreClosedFeedback(key, responseResult);
+              if (!requestClosed && !res.writableEnded) {
+                if (streamHeartbeat) res.end(JSON.stringify(listenerConflict(holder, "LISTENER_REPLACED")));
+                else res.json(listenerConflict(holder, "LISTENER_REPLACED"));
+              }
+              return;
+            }
+            if (requestClosed || res.writableEnded) {
+              await restoreClosedFeedback(key, responseResult);
+              return;
+            }
+            finishFeedbackDelivery(key, responseResult);
+            const agentResponse = agentFacingFeedback(responseResult);
+            if (streamHeartbeat) {
+              res.end(JSON.stringify(agentResponse));
+            } else {
+              res.json(agentResponse);
+            }
+          });
         } finally {
           cleanup();
           if (finalSessionEnded) clearFeedbackDelivery(key, activePolls, deliveredFeedback, events);
@@ -1214,7 +1300,7 @@ export async function serve({
   });
 
   // Passive detection. A diagnostic pass updates the warning inbox and notifies open browser
-  // chromes - it never emits "feedback", so it can never make `lavish-axi poll` return and can
+  // chromes - it never emits "feedback", so it can never make `folio-axi poll` return and can
   // never wake an agent. Only the user's explicit "Queue selected fixes" does that, through the
   // ordinary prompt queue.
   app.post("/api/:key/layout-diagnostics", async (req, res, next) => {
@@ -1316,6 +1402,26 @@ export async function serve({
     }
   });
 
+  // Folio: the CLI acks a delivery only after it has written the feedback to its stdout. Until
+  // then the batch stays in `unacked_delivery` and the next poll gets it again.
+  app.post("/api/:key/ack", async (req, res, next) => {
+    try {
+      if (hasPresentOriginOrReferer(req) && !isSameOriginRequest(req, allowedHostnames, allowAnyHostname)) {
+        res.status(403).json({ error: "cross-origin ack rejected" });
+        return;
+      }
+      const result = await store.ackDelivery(req.params.key, String(req.body?.delivery_id || ""));
+      if (result.status === "missing") {
+        res.status(404).json({ error: "session not found" });
+        return;
+      }
+      if (result.status === "acked") await publishChatSync(req.params.key);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.post("/api/:key/agent-reply", async (req, res, next) => {
     try {
       const session = await publishAgentReply(req.params.key, String(req.body?.text || ""), {
@@ -1368,7 +1474,7 @@ export async function serve({
   });
 
   // Hosted share: build the local-inlined artifact and publish it to ht-ml.app, a third-party
-  // hosting service not part of Lavish, returning the share URL. Publishing sends the artifact
+  // hosting service not part of Folio, returning the share URL. Publishing sends the artifact
   // to ht-ml.app's servers. Remote CDN/font references are left intact for the viewer's browser
   // to load.
   // Publishing creates a public third-party page unless a password is supplied, so this is gated
@@ -1440,7 +1546,7 @@ export async function serve({
       const { unresolved, notices } = splitExportWarnings(warnings);
       res.json({
         ...site,
-        // Only a password Lavish minted goes back to the browser; one the user typed is already
+        // Only a password Folio minted goes back to the browser; one the user typed is already
         // theirs, and echoing it would put it in a field they did not ask to have filled.
         ...(generatePassword ? { password } : {}),
         ...(warnings.length ? { warnings: exportWarningSummaries(warnings) } : {}),
@@ -1454,8 +1560,19 @@ export async function serve({
 
   app.post("/api/end", async (req, res, next) => {
     try {
-      const file = await canonicalFile(req.body.file);
-      const key = sessionKey(file);
+      // Folio (#373): a deleted HTML file has no realpath any more; fall back to the stored path.
+      let key;
+      try {
+        key = sessionKey(await canonicalFile(req.body.file));
+      } catch (error) {
+        if (error?.code !== "ENOENT") throw error;
+        const stored = await store.findByStoredFile(req.body.file);
+        if (!stored) {
+          res.status(404).json({ status: "missing", error: "session not found" });
+          return;
+        }
+        key = stored.key;
+      }
       const session = await store.endSession(key, "agent");
       clearFeedbackDelivery(key, activePolls, deliveredFeedback, events);
       events.emit("ended", key, session?.ended_by);
@@ -1491,7 +1608,7 @@ export async function serve({
         createChromeHtml(session, {
           layoutGateEnabled: shouldEnableLayoutGate(req.query || {}),
           faviconTag,
-          title: title ? `${title} · Lavish` : "Lavish Editor",
+          title: title ? `${title} · Folio` : "Folio",
           artifactRevision: chromeLoad.artifact_revision,
           artifactLoadToken: chromeLoad.artifact_load_token,
           artifactLoadSequence: chromeLoad.artifact_load_sequence,
@@ -1569,7 +1686,7 @@ export async function serve({
           .status(409)
           .type("html")
           .send(
-            "<!doctype html><title>Artifact load expired</title><p>This artifact load is no longer current. Reload Lavish to continue.</p>",
+            "<!doctype html><title>Artifact load expired</title><p>This artifact load is no longer current. Reload Folio to continue.</p>",
           );
         return;
       }
@@ -1580,7 +1697,7 @@ export async function serve({
           .status(409)
           .type("html")
           .send(
-            "<!doctype html><title>Artifact load expired</title><p>This artifact load is no longer current. Reload Lavish to continue.</p>",
+            "<!doctype html><title>Artifact load expired</title><p>This artifact load is no longer current. Reload Folio to continue.</p>",
           );
         return;
       }
@@ -1759,7 +1876,7 @@ export async function serve({
   });
 
   // User-supplied Excalidraw libraries for every whiteboard's library panel and
-  // for `%% lavish-icon` nodes. Read-only: Lavish never writes that directory.
+  // for `%% lavish-icon` nodes. Read-only: Folio never writes that directory.
   app.get("/api/whiteboard-libraries", async (req, res, next) => {
     try {
       if (hasPresentOriginOrReferer(req) && !isSameOriginRequest(req, allowedHostnames, allowAnyHostname)) {
@@ -2010,7 +2127,7 @@ export async function serve({
         sendEvent(type, data) {
           if (webSocket.readyState === WebSocket.OPEN) webSocket.send(JSON.stringify({ type, data }));
         },
-        close(code = 1001, reason = "Lavish server shutdown") {
+        close(code = 1001, reason = "Folio server shutdown") {
           webSocket.close(code, reason);
           const terminateTimer = setTimeout(() => {
             if (webSocket.readyState !== WebSocket.CLOSED) webSocket.terminate();
@@ -2077,11 +2194,11 @@ export async function serve({
       }
     }
     const httpServer = await listenHttp(app, boundPort, address, (error) => {
-      writeLog(`[lavish] HTTP server error: ${error instanceof Error ? error.message : String(error)}`);
+      writeLog(`[folio] HTTP server error: ${error instanceof Error ? error.message : String(error)}`);
     });
     if (shuttingDown) {
       httpServer.close();
-      throw new Error("Lavish server is shutting down");
+      throw new Error("Folio server is shutting down");
     }
     httpServer.on("upgrade", handleEventUpgrade);
     if (boundPort === 0) boundPort = httpServer.address().port;
@@ -2153,7 +2270,7 @@ export async function serve({
             await listenOnce(listenHost);
             pendingBinds.delete(listenHost);
             bound = true;
-            writeLog(`[lavish] now listening on ${hostForUrl(listenHost)}:${boundPort} after an earlier bind failure.`);
+            writeLog(`[folio] now listening on ${hostForUrl(listenHost)}:${boundPort} after an earlier bind failure.`);
           } catch (error) {
             if (!shuttingDown) pendingBinds.set(listenHost, error instanceof Error ? error : new Error(String(error)));
           }
@@ -2181,7 +2298,7 @@ export async function serve({
   }
 
   // Loopback is bound first because it is this port's control address: every CLI probes it
-  // whatever its own LAVISH_AXI_HOST says. Whoever holds it owns the port, so a second Lavish
+  // whatever its own FOLIO_AXI_HOST says. Whoever holds it owns the port, so a second Folio
   // server started concurrently (two agents with different host settings) loses here and exits
   // instead of taking the remaining addresses and splitting one port across two daemons that share
   // one state file.
@@ -2196,8 +2313,8 @@ export async function serve({
       const owner = await probeLavishHealth(LOOPBACK_HOST, boundPort);
       throw new Error(
         owner
-          ? `Another Lavish server (version ${owner.version || "unknown"}) already owns port ${boundPort} on ${LOOPBACK_HOST}; not starting a second one.`
-          : `Loopback ${LOOPBACK_HOST}:${boundPort} is already in use; not starting a Lavish server on another address.`,
+          ? `Another Folio server (version ${owner.version || "unknown"}) already owns port ${boundPort} on ${LOOPBACK_HOST}; not starting a second one.`
+          : `Loopback ${LOOPBACK_HOST}:${boundPort} is already in use; not starting a Folio server on another address.`,
         { cause: error },
       );
     }
@@ -2214,7 +2331,7 @@ export async function serve({
   }
   if (httpServers.length === 0) {
     throw new Error(
-      `Lavish server failed to bind any address${lastBindError ? `: ${lastBindError.message}` : ""}`,
+      `Folio server failed to bind any address${lastBindError ? `: ${lastBindError.message}` : ""}`,
       lastBindError ? { cause: lastBindError } : undefined,
     );
   }
@@ -2222,7 +2339,7 @@ export async function serve({
   // bound neither is alive and unreachable, so close every listener already taken in this call.
   if (!boundHosts.includes(LOOPBACK_HOST) && !boundHosts.includes(listenHosts[0])) {
     const error = new Error(
-      `Lavish server failed to bind a control-channel address${lastBindError ? `: ${lastBindError.message}` : ""}`,
+      `Folio server failed to bind a control-channel address${lastBindError ? `: ${lastBindError.message}` : ""}`,
       lastBindError ? { cause: lastBindError } : undefined,
     );
     await Promise.all(
@@ -2241,7 +2358,7 @@ export async function serve({
   // Always logged, not only under --verbose: an address that silently stopped serving is what left
   // tailnet review links dead for most of an hour with nothing but a debug line to show for it.
   for (const [listenHost, error] of pendingBinds) {
-    writeLog(`[lavish] WARNING: ${describeBindFailure(listenHost, error)}`);
+    writeLog(`[folio] WARNING: ${describeBindFailure(listenHost, error)}`);
   }
   serverReady = true;
   scheduleBindRecovery();
@@ -2252,7 +2369,7 @@ export async function serve({
   function shutdown(reloadKey = "", reason = "", cause = "requested") {
     if (shuttingDown) return;
     shuttingDown = true;
-    writeLog(`[lavish] shutting down: ${cause}${reason ? ` (reason=${reason})` : ""}`);
+    writeLog(`[folio] shutting down: ${cause}${reason ? ` (reason=${reason})` : ""}`);
     if (idleTimer) {
       clearTimeout(idleTimer);
       idleTimer = null;
@@ -2451,7 +2568,7 @@ function isAddressInUseBindError(error) {
   return error instanceof Error && "code" in error && error.code === "EADDRINUSE";
 }
 
-// Whether a Lavish server answers /health at this address. Bounded, because a foreign process
+// Whether a Folio server answers /health at this address. Bounded, because a foreign process
 // that accepts the connection and never answers must not stall startup, and the socket is
 // destroyed on every exit path: a lingering probe connection keeps a failed server process alive
 // and holds the other process's close() open.
@@ -2468,7 +2585,7 @@ function probeLavishHealth(host, port) {
         request.destroy();
         try {
           const parsed = JSON.parse(body);
-          resolve(parsed && typeof parsed === "object" && parsed.app === "lavish-axi" ? parsed : null);
+          resolve(parsed && typeof parsed === "object" && parsed.app === "folio-axi" ? parsed : null);
         } catch {
           resolve(null);
         }
@@ -2490,14 +2607,14 @@ function wantsHtml(req) {
 }
 
 function createLandingHtml() {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lavish Editor</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f7f4ef;color:#25221f;font:16px/1.5 system-ui,sans-serif}.card{width:min(560px,calc(100% - 40px));padding:32px;border:1px solid #d9d0c5;border-radius:16px;background:#fffdf9;box-shadow:0 12px 40px #25221f18}h1{margin:0 0 12px;font-size:26px}p{margin:0}</style></head><body><main class="card"><h1>Lavish Editor is running</h1><p>Open the review session URL printed by your agent.</p></main></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Folio</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f7f4ef;color:#25221f;font:16px/1.5 system-ui,sans-serif}.card{width:min(560px,calc(100% - 40px));padding:32px;border:1px solid #d9d0c5;border-radius:16px;background:#fffdf9;box-shadow:0 12px 40px #25221f18}h1{margin:0 0 12px;font-size:26px}p{margin:0}</style></head><body><main class="card"><h1>Folio is running</h1><p>Open the review session URL printed by your agent.</p></main></body></html>`;
 }
 
 function createDeniedHtml({ title, message, workingUrl }) {
   const safeTitle = escapeHtml(title);
   const safeMessage = escapeHtml(message);
   const safeUrl = escapeHtml(workingUrl);
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeTitle} - Lavish Editor</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f7f4ef;color:#25221f;font:16px/1.5 system-ui,sans-serif}.card{width:min(560px,calc(100% - 40px));padding:32px;border:1px solid #d9d0c5;border-radius:16px;background:#fffdf9;box-shadow:0 12px 40px #25221f18}h1{margin:0 0 12px;font-size:26px}p{margin:0 0 18px}.url{display:block;padding:12px 14px;border-radius:10px;background:#f0ebe4;color:#25221f;overflow-wrap:anywhere}a{color:inherit;font-weight:700}</style></head><body><main class="card"><h1>${safeTitle}</h1><p>${safeMessage}</p><p>Open this working URL:</p><a class="url" href="${safeUrl}">${safeUrl}</a></main></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeTitle} - Folio</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f7f4ef;color:#25221f;font:16px/1.5 system-ui,sans-serif}.card{width:min(560px,calc(100% - 40px));padding:32px;border:1px solid #d9d0c5;border-radius:16px;background:#fffdf9;box-shadow:0 12px 40px #25221f18}h1{margin:0 0 12px;font-size:26px}p{margin:0 0 18px}.url{display:block;padding:12px 14px;border-radius:10px;background:#f0ebe4;color:#25221f;overflow-wrap:anywhere}a{color:inherit;font-weight:700}</style></head><body><main class="card"><h1>${safeTitle}</h1><p>${safeMessage}</p><p>Open this working URL:</p><a class="url" href="${safeUrl}">${safeUrl}</a></main></body></html>`;
 }
 
 async function readDesignAsset(asset) {
@@ -2560,7 +2677,7 @@ export function buildAllowedHostnames({ host, hosts = [], linkHost: linkHostName
   );
 }
 
-// A lone "*" in LAVISH_AXI_ALLOWED_HOSTS is an explicit opt-out of the Host
+// A lone "*" in FOLIO_AXI_ALLOWED_HOSTS is an explicit opt-out of the Host
 // allowlist, for operators who front the server with their own auth/proxy.
 export function allowsAllHosts(allowedHosts = []) {
   return allowedHosts.some((value) => String(value).trim() === "*");
@@ -2617,7 +2734,7 @@ export function isAllowedHostHeader(hostHeader, allowedHostnames) {
 // header is required and must be allowlisted. When an X-Forwarded-Host is present
 // - a reverse proxy in front of the loopback server - its outermost (last) value
 // must ALSO be allowlisted, so a proxy works once its public hostname is added to
-// LAVISH_AXI_ALLOWED_HOSTS. This is an AND check: a client-spoofed forwarded host
+// FOLIO_AXI_ALLOWED_HOSTS. This is an AND check: a client-spoofed forwarded host
 // can only narrow access (Host is still checked), never widen it into a bypass. A
 // blank forwarded host is treated as absent, matching how proxies omit it.
 /**
@@ -2629,6 +2746,14 @@ export function isAllowedRequestHost({ host, forwardedHost }, allowedHostnames) 
   const forwarded = forwardedHost === undefined || forwardedHost === null ? "" : String(forwardedHost).trim();
   if (forwarded === "") return true;
   return isAllowedHostHeader(forwarded.split(",").pop(), allowedHostnames);
+}
+
+const DEFAULT_ENDED_SESSION_RETENTION_DAYS = 7;
+
+function endedSessionRetentionMs(env = process.env) {
+  const days = Number(env.FOLIO_AXI_ENDED_RETENTION_DAYS);
+  const value = Number.isFinite(days) && days > 0 ? days : DEFAULT_ENDED_SESSION_RETENTION_DAYS;
+  return value * 24 * 60 * 60 * 1000;
 }
 
 function hasPresentOriginOrReferer(req) {
@@ -2770,7 +2895,7 @@ export async function resolveWatchTarget(session) {
         scope: "directory",
         options: {
           ...baseOptions,
-          ignored: /(^|[/\\])(\.git|node_modules|dist|build|\.lavish-axi)([/\\]|$)/,
+          ignored: /(^|[/\\])(\.git|node_modules|dist|build|\.folio-axi)([/\\]|$)/,
         },
       };
     }
@@ -2804,9 +2929,7 @@ function listenerConflict(holder, code) {
     status: "error",
     code,
     error:
-      code === "LISTENER_ACTIVE"
-        ? "Lavish Editor already has an active poll listener"
-        : "Lavish Editor poll listener was replaced",
+      code === "LISTENER_ACTIVE" ? "Folio already has an active poll listener" : "Folio poll listener was replaced",
     holder: { label: listenerLabel(holder), age_ms: Math.max(0, Date.now() - holder.startedAt) },
   };
 }
@@ -2975,10 +3098,10 @@ function readTagAttr(tag, name) {
   return "";
 }
 
-// Pull a tab favicon + title out of the artifact's own <head>. Lavish renders the
+// Pull a tab favicon + title out of the artifact's own <head>. Folio renders the
 // artifact in a sandboxed iframe, so the artifact's own <link rel="icon"> and
-// <title> never reach the browser tab; surfacing them here makes a wall of Lavish
-// tabs identifiable. Falls back to the Lavish default favicon. Only data: and
+// <title> never reach the browser tab; surfacing them here makes a wall of Folio
+// tabs identifiable. Falls back to the Folio default favicon. Only data: and
 // absolute (http/https/protocol-relative) icon hrefs are adopted verbatim;
 // artifact-relative hrefs would not resolve against the chrome page, so they fall
 // back to the default.
@@ -3030,8 +3153,8 @@ if(window.__lavishChromeReady||ended)return;
 h=document.getElementById("layoutGateTitle");
 c=document.getElementById("layoutGateCopy");
 a=document.getElementById("layoutGateAction");
-if(h)h.textContent="Lavish could not finish loading.";
-if(c)c.textContent="The Lavish editor script did not load. The server usually restarted while this page was opening. Check and reload to reconnect.";
+if(h)h.textContent="Folio could not finish loading.";
+if(c)c.textContent="The Folio editor script did not load. The server usually restarted while this page was opening. Check and reload to reconnect.";
 if(a){a.textContent="Check and reload";a.disabled=false;a.onclick=check;}
 showBypass();
 if(o)o.hidden=false;
@@ -3046,7 +3169,7 @@ fetch("/health",{cache:"no-store",signal:ctl.signal}).then(function(r){return r&
 clearTimeout(pt);
 if(outcome==="running"){location.reload();return;}
 if(a)a.disabled=false;
-if(c)c.textContent=outcome==="no-answer"?"Lavish did not answer the check, so this page cannot tell whether it is running. Try again in a moment.":"Lavish is still not running. Start it again with your agent, then use Check and reload.";
+if(c)c.textContent=outcome==="no-answer"?"Folio did not answer the check, so this page cannot tell whether it is running. Try again in a moment.":"Folio is still not running. Start it again with your agent, then use Check and reload.";
 });
 }
 })();`;
@@ -3056,7 +3179,7 @@ export function createChromeHtml(
   {
     layoutGateEnabled = true,
     faviconTag = LAVISH_DEFAULT_FAVICON,
-    title = "Lavish Editor",
+    title = "Folio",
     artifactRevision = 0,
     artifactLoadToken = "",
     artifactLoadSequence = 0,
@@ -3112,10 +3235,10 @@ ${faviconTag}
 <link rel="stylesheet" href="/chrome.css">
 </head>
 <body class="${bodyClass}">
-<div class="bar"><div class="brand"><span class="brand-mark">Lavish</span><span class="brand-support">Editor</span></div><div class="spacer" aria-hidden="true"></div><div class="warnings-wrap" id="warningsWrap" hidden><button class="warnings-button" id="warningsButton" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="warningsDrawer">${chromeIcons.warning}<span class="warnings-count" id="warningsCount">0</span></button><div class="menu warnings-drawer" id="warningsDrawer" role="dialog" aria-labelledby="warningsTitle" aria-describedby="warningsSummary" hidden><div class="warnings-head"><h2 class="warnings-title" id="warningsTitle">Layout issues</h2><p class="warnings-summary" id="warningsSummary"></p></div><div class="warnings-toolbar"><label class="warnings-selectall"><input type="checkbox" id="warningsSelectAll"><span>Select all</span></label><span class="warnings-selected" id="warningsSelected" role="status" aria-live="polite"></span></div><div class="warnings-list" id="warningsList"></div><div class="warnings-foot"><p class="warnings-note">Queueing sends a repair request with your next feedback. An issue is marked resolved only after a newer artifact load and a complete check at the same viewport no longer finds it.</p><button class="button" id="warningsQueueButton" type="button" disabled>Queue selected fixes</button></div></div></div><div class="revisions-wrap" id="revisionsWrap" hidden><button class="revisions-button" id="revisionsButton" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="revisionsDrawer"><span class="revisions-button-text">Revisions</span><span class="revisions-count" id="revisionsCount">0</span></button><div class="menu revisions-drawer" id="revisionsDrawer" role="dialog" aria-labelledby="revisionsTitle" aria-describedby="revisionsSummary" hidden><div class="revisions-head"><h2 class="revisions-title" id="revisionsTitle">Revisions</h2><p class="revisions-summary" id="revisionsSummary"></p></div><div class="revisions-list" id="revisionsList"></div><div class="revisions-foot"><p class="revisions-note">The agent declares these in the artifact itself. Reveal flashes the next block it marked for that revision; nothing about the page is restyled, so the saved file still looks the way it does here.</p></div></div></div><button class="annotate-switch" id="annotation" type="button" aria-pressed="true" title="${escapeHtml(modeToggleHint)}"><span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span><span>Annotate</span></button><button class="sidebar-toggle" id="sidebarToggle" type="button" aria-controls="panel" aria-expanded="true" aria-label="Hide conversation" title="Hide conversation">${chromeIcons.sidebar}<span class="sidebar-toggle-count" id="sidebarToggleCount" aria-hidden="true" hidden></span></button><div class="more-wrap" id="moreWrap"><button class="more-button" id="moreButton" type="button" title="More" aria-haspopup="menu" aria-expanded="false">${chromeIcons.more}</button><div class="menu more-menu" id="moreMenu" hidden><div class="menu-head"><div class="menu-label">Editing</div><button class="menu-file" id="copyPath" type="button" title="Copy path · ${escapeHtml(session.file)}">${chromeIcons.file}<span class="menu-file-text"><span class="path-head">${escapeHtml(pathHead)}</span><span class="path-tail">${escapeHtml(pathTail)}</span></span><span class="copy-hint" id="copyHint"><span class="icon-copy">${chromeIcons.copy}</span><span class="icon-check">${chromeIcons.check}</span><span id="copyHintText">Copy</span></span></button></div><div class="menu-rule"></div><button class="menu-item" id="reloadArtifact" type="button">${chromeIcons.refresh}<span>Reload artifact</span></button><button class="menu-item" id="copySnapshot" type="button">${chromeIcons.camera}<span>Copy DOM snapshot</span></button><button class="menu-item" id="exportArtifact" type="button">${chromeIcons.download}<span>Export standalone HTML</span></button><button class="menu-item" id="shareArtifact" type="button">${chromeIcons.globe}<span>Publish link</span></button><div class="menu-rule"></div><button class="menu-item danger" id="end" type="button">${chromeIcons.exit}<span>End session</span></button></div></div></div>
-<div class="layout"><div class="frame"><iframe id="artifact" sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads" data-artifact-src="/artifact/${session.key}/index.html"></iframe></div><div class="panel-scrim" id="panelScrim"></div><aside class="panel" id="panel"><div class="panel-head" id="panelHead"><span class="panel-handle" aria-hidden="true"></span><div class="panel-head-row"><h2>Conversation</h2><span class="panel-summary" id="panelSummary" role="status" aria-live="polite"></span><button class="panel-toggle" id="panelToggle" type="button" aria-expanded="false" aria-controls="panel" aria-label="Show conversation">${chromeIcons.chevronUp}</button></div></div><div class="panel-scroll" id="panelScroll"><div class="chat" id="chatLog"></div><div class="chat chat-queued" id="queuedLog"></div></div><div class="composer" id="chatComposer"><div class="presence-banner handoff-banner" id="handoffBanner" hidden><span>This review is open in another Lavish tab. Unsent answers stay in the tab or window where you entered them; taking over in another window does not bring them along.</span><button class="handoff-takeover" id="handoffTakeover" type="button">Take over here</button></div><div class="presence-banner handoff-banner" id="outdatedBanner" hidden><span id="outdatedText">The Lavish server this page was connected to is no longer running. Reloading will work once it is running again.</span><span class="outdated-actions"><button class="handoff-takeover" id="outdatedReload" type="button">Check and reload</button><button class="handoff-takeover" id="outdatedDismiss" type="button">Dismiss</button></span></div><div class="presence-banner" id="presenceBanner" hidden>Your agent is not listening. If this persists, ask your agent to poll for updates from Lavish.</div><textarea id="chatInput" placeholder="Write a message for the agent..."></textarea><div class="chat-attachments" id="chatAttachments"></div><div class="chat-attachment-toolbar"><button class="chat-attach" id="chatAttach" type="button">Attach images</button><input id="chatAttachInput" type="file" accept="${escapeHtml(acceptedMime.join(","))}" multiple hidden><span class="chat-attachment-notice" id="chatAttachmentNotice" role="status"></span></div><div class="send-hint" id="sendHint" hidden>Nothing queued in this tab. Unsent answers stay in the tab or window where you entered them; taking over in another window does not bring them along.</div><div class="actions" id="sendActions"><button class="button button-danger" id="sendAndEnd" type="button">${chromeIcons.exit}<span>Send &amp; End</span></button><button class="button" id="send">Send to Agent</button></div></div></aside></div>
-<div class="share-overlay" id="shareDialog" role="dialog" aria-modal="true" aria-labelledby="shareTitleText" hidden><form class="share-card" id="shareForm"><div class="share-head"><div><div class="share-kicker">Publish to <a class="share-link" href="https://ht-ml.app" target="_blank" rel="noopener noreferrer">ht-ml.app</a></div><h2 id="shareTitleText">Publish artifact</h2></div><button class="share-close" id="shareClose" type="button" aria-label="Close publish dialog"><svg width="14" height="14" viewBox="0 0 10 10" fill="none" aria-hidden="true" focusable="false"><path d="M1 1L9 9M9 1L1 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button></div><p class="share-note">ht-ml.app is a separate, third-party hosting service, not part of Lavish. Publishing sends this artifact to its servers.</p><p class="share-copy">This uploads this artifact to ht-ml.app with local assets inlined. Without a password, the page is PUBLIC and anyone with the link can open it. With a password, the page is PRIVATE and viewers must supply the password to view.</p><p class="share-note">Do not publish secrets. The Lavish annotation SDK is not included.</p><div class="share-grid"><label class="share-check"><input id="shareGenerate" type="checkbox"><span>Generate a password (makes this page private)</span></label><label>Password (optional)<input id="sharePassword" name="password" type="password" autocomplete="new-password" placeholder="Leave blank for a public page"></label></div><div class="share-status" id="shareStatus" role="status"></div><div class="share-result" id="shareResult" hidden><label id="shareUrlResult">Share URL<div class="share-copy-row"><input id="shareUrl" readonly><button class="share-copy-btn" id="copyShareUrl" type="button">Copy URL</button></div></label><label id="sharePasswordResult" hidden>Password (shared secret)<div class="share-copy-row"><input id="sharePasswordOut" readonly><button class="share-copy-btn" id="copySharePassword" type="button">Copy password</button></div></label><label id="shareSiteIdResult" hidden>Site ID<div class="share-copy-row"><input id="shareSiteId" readonly><button class="share-copy-btn" id="copyShareSiteId" type="button">Copy site ID</button></div></label><label id="shareUpdateKeyResult">Update key (secret)<div class="share-copy-row"><input id="shareUpdateKey" readonly><button class="share-copy-btn" id="copyUpdateKey" type="button">Copy key</button></div></label><p class="share-note" id="shareUpdateKeyNote">Keep the update key private. ht-ml.app returns it once and it is the only way to update this page later; the service has no delete. Republish this page&#39;s HTML with <code>lavish-axi share &lt;file&gt; --site &lt;site id&gt; --update-key &lt;key&gt;</code>, and add <code>--private</code> to also lock it behind a new generated password.</p></div><div class="share-actions"><button class="share-cancel" id="shareCancel" type="button">Cancel</button><button class="button" id="sharePublish" type="submit">Publish</button></div></form></div>
-<div class="ended-overlay layout-gate-overlay" id="layoutGateOverlay"${layoutGateHidden}><div class="ended-card"><div class="ended-title" id="layoutGateTitle">Checking layout.<br>One moment.</div><p class="ended-copy" id="layoutGateCopy">Lavish is waiting for fonts and final geometry before revealing this artifact.</p><button class="button ended-action" id="layoutGateAction" type="button">Show anyway</button><button class="button ended-action layout-gate-bypass" id="layoutGateBypass" type="button" hidden>Show anyway</button></div></div>
+<div class="bar"><div class="brand"><span class="brand-mark">Folio</span><span class="brand-support">Editor</span></div><div class="spacer" aria-hidden="true"></div><div class="warnings-wrap" id="warningsWrap" hidden><button class="warnings-button" id="warningsButton" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="warningsDrawer">${chromeIcons.warning}<span class="warnings-count" id="warningsCount">0</span></button><div class="menu warnings-drawer" id="warningsDrawer" role="dialog" aria-labelledby="warningsTitle" aria-describedby="warningsSummary" hidden><div class="warnings-head"><h2 class="warnings-title" id="warningsTitle">Layout issues</h2><p class="warnings-summary" id="warningsSummary"></p></div><div class="warnings-toolbar"><label class="warnings-selectall"><input type="checkbox" id="warningsSelectAll"><span>Select all</span></label><span class="warnings-selected" id="warningsSelected" role="status" aria-live="polite"></span></div><div class="warnings-list" id="warningsList"></div><div class="warnings-foot"><p class="warnings-note">Queueing sends a repair request with your next feedback. An issue is marked resolved only after a newer artifact load and a complete check at the same viewport no longer finds it.</p><button class="button" id="warningsQueueButton" type="button" disabled>Queue selected fixes</button></div></div></div><div class="revisions-wrap" id="revisionsWrap" hidden><button class="revisions-button" id="revisionsButton" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="revisionsDrawer"><span class="revisions-button-text">Revisions</span><span class="revisions-count" id="revisionsCount">0</span></button><div class="menu revisions-drawer" id="revisionsDrawer" role="dialog" aria-labelledby="revisionsTitle" aria-describedby="revisionsSummary" hidden><div class="revisions-head"><h2 class="revisions-title" id="revisionsTitle">Revisions</h2><p class="revisions-summary" id="revisionsSummary"></p></div><div class="revisions-list" id="revisionsList"></div><div class="revisions-foot"><p class="revisions-note">The agent declares these in the artifact itself. Reveal flashes the next block it marked for that revision; nothing about the page is restyled, so the saved file still looks the way it does here.</p></div></div></div><button class="annotate-switch" id="annotation" type="button" aria-pressed="true" title="${escapeHtml(modeToggleHint)}"><span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span><span>Annotate</span></button><button class="sidebar-toggle" id="sidebarToggle" type="button" aria-controls="panel" aria-expanded="true" aria-label="Hide conversation" title="Hide conversation">${chromeIcons.sidebar}<span class="sidebar-toggle-count" id="sidebarToggleCount" aria-hidden="true" hidden></span></button><div class="more-wrap" id="moreWrap"><button class="more-button" id="moreButton" type="button" title="More" aria-haspopup="menu" aria-expanded="false">${chromeIcons.more}</button><div class="menu more-menu" id="moreMenu" hidden><div class="menu-head"><div class="menu-label">Editing</div><button class="menu-file" id="copyPath" type="button" title="Copy path · ${escapeHtml(session.file)}">${chromeIcons.file}<span class="menu-file-text"><span class="path-head">${escapeHtml(pathHead)}</span><span class="path-tail">${escapeHtml(pathTail)}</span></span><span class="copy-hint" id="copyHint"><span class="icon-copy">${chromeIcons.copy}</span><span class="icon-check">${chromeIcons.check}</span><span id="copyHintText">Copy</span></span></button></div><div class="menu-rule"></div><button class="menu-item" id="reloadArtifact" type="button">${chromeIcons.refresh}<span>Reload artifact</span></button><button class="menu-item" id="copySnapshot" type="button">${chromeIcons.camera}<span>Copy DOM snapshot</span></button><button class="menu-item" id="exportArtifact" type="button">${chromeIcons.download}<span>Export standalone HTML</span></button><button class="menu-item" id="shareArtifact" type="button">${chromeIcons.globe}<span>Publish link</span></button><div class="menu-rule"></div><button class="menu-item danger" id="end" type="button">${chromeIcons.exit}<span>End session</span></button></div></div></div>
+<div class="layout"><div class="frame"><iframe id="artifact" sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads" data-artifact-src="/artifact/${session.key}/index.html"></iframe></div><div class="panel-scrim" id="panelScrim"></div><aside class="panel" id="panel"><div class="panel-head" id="panelHead"><span class="panel-handle" aria-hidden="true"></span><div class="panel-head-row"><h2>Conversation</h2><span class="panel-summary" id="panelSummary" role="status" aria-live="polite"></span><button class="panel-toggle" id="panelToggle" type="button" aria-expanded="false" aria-controls="panel" aria-label="Show conversation">${chromeIcons.chevronUp}</button></div></div><div class="panel-scroll" id="panelScroll"><div class="chat" id="chatLog"></div><div class="chat chat-queued" id="queuedLog"></div></div><div class="composer" id="chatComposer"><div class="presence-banner handoff-banner" id="handoffBanner" hidden><span>This review is open in another Folio tab. Unsent answers stay in the tab or window where you entered them; taking over in another window does not bring them along.</span><button class="handoff-takeover" id="handoffTakeover" type="button">Take over here</button></div><div class="presence-banner handoff-banner" id="outdatedBanner" hidden><span id="outdatedText">The Folio server this page was connected to is no longer running. Reloading will work once it is running again.</span><span class="outdated-actions"><button class="handoff-takeover" id="outdatedReload" type="button">Check and reload</button><button class="handoff-takeover" id="outdatedDismiss" type="button">Dismiss</button></span></div><div class="presence-banner" id="presenceBanner" hidden>Your agent is not listening. If this persists, ask your agent to poll for updates from Folio.</div><textarea id="chatInput" placeholder="Write a message for the agent..."></textarea><div class="chat-attachments" id="chatAttachments"></div><div class="chat-attachment-toolbar"><button class="chat-attach" id="chatAttach" type="button">Attach images</button><input id="chatAttachInput" type="file" accept="${escapeHtml(acceptedMime.join(","))}" multiple hidden><span class="chat-attachment-notice" id="chatAttachmentNotice" role="status"></span></div><div class="send-hint" id="sendHint" hidden>Nothing queued in this tab. Unsent answers stay in the tab or window where you entered them; taking over in another window does not bring them along.</div><div class="actions" id="sendActions"><button class="button button-danger" id="sendAndEnd" type="button">${chromeIcons.exit}<span>Send &amp; End</span></button><button class="button" id="send">Send to Agent</button></div></div></aside></div>
+<div class="share-overlay" id="shareDialog" role="dialog" aria-modal="true" aria-labelledby="shareTitleText" hidden><form class="share-card" id="shareForm"><div class="share-head"><div><div class="share-kicker">Publish to <a class="share-link" href="https://ht-ml.app" target="_blank" rel="noopener noreferrer">ht-ml.app</a></div><h2 id="shareTitleText">Publish artifact</h2></div><button class="share-close" id="shareClose" type="button" aria-label="Close publish dialog"><svg width="14" height="14" viewBox="0 0 10 10" fill="none" aria-hidden="true" focusable="false"><path d="M1 1L9 9M9 1L1 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button></div><p class="share-note">ht-ml.app is a separate, third-party hosting service, not part of Folio. Publishing sends this artifact to its servers.</p><p class="share-copy">This uploads this artifact to ht-ml.app with local assets inlined. Without a password, the page is PUBLIC and anyone with the link can open it. With a password, the page is PRIVATE and viewers must supply the password to view.</p><p class="share-note">Do not publish secrets. The Folio annotation SDK is not included.</p><div class="share-grid"><label class="share-check"><input id="shareGenerate" type="checkbox"><span>Generate a password (makes this page private)</span></label><label>Password (optional)<input id="sharePassword" name="password" type="password" autocomplete="new-password" placeholder="Leave blank for a public page"></label></div><div class="share-status" id="shareStatus" role="status"></div><div class="share-result" id="shareResult" hidden><label id="shareUrlResult">Share URL<div class="share-copy-row"><input id="shareUrl" readonly><button class="share-copy-btn" id="copyShareUrl" type="button">Copy URL</button></div></label><label id="sharePasswordResult" hidden>Password (shared secret)<div class="share-copy-row"><input id="sharePasswordOut" readonly><button class="share-copy-btn" id="copySharePassword" type="button">Copy password</button></div></label><label id="shareSiteIdResult" hidden>Site ID<div class="share-copy-row"><input id="shareSiteId" readonly><button class="share-copy-btn" id="copyShareSiteId" type="button">Copy site ID</button></div></label><label id="shareUpdateKeyResult">Update key (secret)<div class="share-copy-row"><input id="shareUpdateKey" readonly><button class="share-copy-btn" id="copyUpdateKey" type="button">Copy key</button></div></label><p class="share-note" id="shareUpdateKeyNote">Keep the update key private. ht-ml.app returns it once and it is the only way to update this page later; the service has no delete. Republish this page&#39;s HTML with <code>folio-axi share &lt;file&gt; --site &lt;site id&gt; --update-key &lt;key&gt;</code>, and add <code>--private</code> to also lock it behind a new generated password.</p></div><div class="share-actions"><button class="share-cancel" id="shareCancel" type="button">Cancel</button><button class="button" id="sharePublish" type="submit">Publish</button></div></form></div>
+<div class="ended-overlay layout-gate-overlay" id="layoutGateOverlay"${layoutGateHidden}><div class="ended-card"><div class="ended-title" id="layoutGateTitle">Checking layout.<br>One moment.</div><p class="ended-copy" id="layoutGateCopy">Folio is waiting for fonts and final geometry before revealing this artifact.</p><button class="button ended-action" id="layoutGateAction" type="button">Show anyway</button><button class="button ended-action layout-gate-bypass" id="layoutGateBypass" type="button" hidden>Show anyway</button></div></div>
 <div class="ended-overlay" id="endedOverlay" hidden><div class="ended-card"><div class="ended-title">Session ended.<br>Return to your agent to continue.</div><p class="ended-copy">${escapeHtml(session.file)}</p></div></div>
 <div class="whiteboard-overlay" id="whiteboardOverlay" hidden><div class="whiteboard-shell"><div class="whiteboard-error" id="whiteboardError" hidden></div><button class="whiteboard-close" id="whiteboardClose" type="button" aria-label="Close whiteboard"><svg width="14" height="14" viewBox="0 0 10 10" fill="none" aria-hidden="true" focusable="false"><path d="M1 1L9 9M9 1L1 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button><iframe id="whiteboardFrame" title="Excalidraw whiteboard" sandbox="allow-scripts allow-popups"></iframe></div></div>
 <script id="lavish-session" type="application/json">${sessionJson}</script>
@@ -3131,7 +3254,7 @@ export function createWhiteboardFrameHtml(channelToken = "") {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lavish Whiteboard</title>
+<title>Folio Whiteboard</title>
 <link rel="stylesheet" href="/whiteboard-assets/whiteboard.css">
 </head>
 <body>

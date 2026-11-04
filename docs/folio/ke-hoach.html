@@ -1,0 +1,163 @@
+<title>Kế hoạch Folio</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700&family=JetBrains+Mono:wght@400&display=swap">
+<style>
+/* Bố cục: một cột; mỗi giai đoạn là một khối có mục tiêu, việc, cách kiểm */
+:root{
+  --bg:#f5f6f4; --surface:#ffffff; --fg:#1f2421; --muted:#5d6762; --line:#d9dfdb;
+  --accent:#2e6b55; --accent-bg:#e4f0ea; --warn:#8a5a00; --warn-bg:#fbf0d9;
+  --f-body:"Be Vietnam Pro",system-ui,"Segoe UI",sans-serif; --f-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#131715; --surface:#1b201d; --fg:#e3e8e5; --muted:#9aa7a0; --line:#2f3833;
+  --accent:#86cfae; --accent-bg:#1c3229; --warn:#e8c070; --warn-bg:#352b17; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#131715; --surface:#1b201d; --fg:#e3e8e5; --muted:#9aa7a0; --line:#2f3833;
+  --accent:#86cfae; --accent-bg:#1c3229; --warn:#e8c070; --warn-bg:#352b17; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.6;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 48px}
+main{max-width:860px;margin:0 auto;display:grid;gap:28px}
+h1{font-size:1.75rem;line-height:1.25;margin:0;text-wrap:balance}
+h2{font-size:1.2rem;margin:0 0 10px;text-wrap:balance}
+h3{font-size:1rem;margin:0 0 6px}
+p{margin:0 0 10px;max-width:68ch}
+.meta{color:var(--muted);font-size:.85rem;margin-top:6px}
+ul{margin:0;padding-left:20px;display:grid;gap:4px}
+code{font-family:var(--f-mono);font-size:.84em;background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:0 4px;overflow-wrap:anywhere}
+.lead{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:8px;padding:16px 18px}
+.phase{display:grid;gap:8px;padding-block:14px;border-top:1px solid var(--line)}
+.phase header{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+.tag{font-size:.75rem;font-weight:600;padding:1px 8px;border-radius:99px;color:var(--accent);background:var(--accent-bg);white-space:nowrap}
+.tag.w{color:var(--warn);background:var(--warn-bg)}
+.check{color:var(--muted);font-size:.9rem}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:600px;font-size:.9rem}
+th,td{text-align:left;vertical-align:top;padding:9px 12px;border-bottom:1px solid var(--line)}
+th{font-size:.75rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:600}
+tr:last-child td{border-bottom:0}
+pre.mermaid{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px;overflow-x:auto}
+</style>
+
+<main>
+<header>
+  <h1>Folio: bản Lavish riêng cho Claude Code trên PC1</h1>
+  <div class="meta">04/11/2026 · nguồn: lavish-axi 0.1.96 (MIT), đã chép về <code>D:\code\folio-axi</code>, giữ lịch sử git, remote gốc tên <code>upstream</code> · mã nguồn ~28.300 dòng, test ~40.000 dòng</div>
+</header>
+
+<section class="lead">
+  <h2>Mục tiêu</h2>
+  <p>Giữ phần mạnh của Lavish (trang trình bày đẹp, ghi chú từng đoạn, form có cấu trúc). Sửa tận gốc chỗ yếu: <strong>câu trả lời của anh luôn tới đúng phiên Claude Code, không bao giờ mất im lặng</strong>. Hook gọn, chạy ổn trên Windows, và mở được trên điện thoại.</p>
+  <p style="margin:0">Cách làm chính: không để agent tự giữ poll nữa. Folio dựa vào cơ chế của chính Claude Code (hook có <code>session_id</code>, hook Stop, hook UserPromptSubmit), để harness đảm bảo phản hồi được xử lý.</p>
+</section>
+
+<section>
+  <h2>Gốc rễ trong mã hiện tại</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Vấn đề</th><th>Chỗ trong mã</th><th>Vì sao lỗi</th></tr></thead>
+    <tbody>
+      <tr><td>Poll nào tới trước thì lấy hết (#350)</td><td><code>src/server.js</code> handlePoll, activePolls</td><td>Mỗi trang chỉ có một người nghe, và người nghe không gắn danh tính phiên. <code>--owner</code> chỉ là nhãn hiển thị.</td></tr>
+      <tr><td>Mất câu trả lời khi poll chết (#296)</td><td><code>src/session-store.js</code> takeFeedback</td><td>Lấy là xoá luôn, không có xác nhận. Nếu đã ghi ra mà tiến trình agent chết thì phản hồi mất hẳn.</td></tr>
+      <tr><td>Không có poll thì không ai biết</td><td>thiết kế chung</td><td>Phản hồi nằm chờ trong <code>state.json</code>. Không có gì nhắc phiên Claude Code xử lý.</td></tr>
+      <tr><td>Tệp trạng thái có thể hỏng</td><td><code>session-store.js</code> writeState</td><td>Ghi thẳng đè tệp, không qua tệp tạm rồi đổi tên.</td></tr>
+      <tr><td>Hook dài (#388, #391)</td><td><code>src/cli.js</code> visibleSessions, createHomeOutput</td><td>Liệt kê mọi trang ở mọi dự án, kèm ~14 dòng hướng dẫn dài.</td></tr>
+      <tr><td>Không end được trang khi tệp đã mất (#373)</td><td><code>cli.js</code> poll/end, canonicalFile</td><td>Gọi <code>realpath</code> trên tệp đã mất nên báo lỗi trước khi tới server. Trang đã kết thúc cũng không bao giờ được dọn.</td></tr>
+      <tr><td>Windows chưa được hỗ trợ chính thức</td><td><code>cli.js</code> startServer, lavishListenerPids</td><td>Dò PID bằng <code>lsof</code>/<code>ps</code>. Khởi động server không có <code>windowsHide</code>.</td></tr>
+      <tr><td>Điện thoại</td><td><code>src/tailscale.js</code>, <code>paths.js</code></td><td>Chỉ có đường Tailscale, và server không có xác thực khi mở ra mạng.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>Thiết kế giao phản hồi mới</h2>
+<pre class="mermaid">
+sequenceDiagram
+  participant A as Anh (trình duyệt)
+  participant S as Folio server
+  participant H as Hook Claude Code
+  participant C as Phiên Claude Code
+  H->>S: SessionStart: đăng ký session_id + thư mục
+  C->>S: folio open trang (tự gắn session_id)
+  A->>S: Gửi câu trả lời
+  S-->>S: Lưu, trạng thái "chờ xử lý"
+  C->>S: poll nền (session_id) nhận lô + mã giao
+  C->>S: ack mã giao (hoặc reply)
+  Note over S: Chưa ack thì giao lại
+  H->>S: Stop hook: còn phản hồi chờ?
+  S-->>H: có, chặn dừng, đưa nội dung cho Claude
+  H->>S: UserPromptSubmit: còn chờ thì chèn vào lượt
+</pre>
+  <ul>
+    <li><strong>Gắn chủ:</strong> mỗi trang mang <code>session_id</code> của phiên mở nó. Hook SessionStart ghi biến môi trường qua <code>CLAUDE_ENV_FILE</code>, nên CLI tự biết mình thuộc phiên nào. Poll của phiên khác không lấy được phản hồi.</li>
+    <li><strong>Giao có xác nhận:</strong> lô phản hồi chỉ bị xoá khi agent ack hoặc reply. Lô chưa ack sẽ được giao lại ở lần poll sau.</li>
+    <li><strong>Lưới an toàn bằng hook:</strong> khi phiên định kết thúc lượt mà trang của nó còn phản hồi chờ, hook Stop chặn lại và đưa nội dung vào. Khi anh gõ chat, hook UserPromptSubmit chèn phản hồi chờ vào lượt. Như vậy chỉ cần phiên còn sống là phản hồi được xử lý, kể cả khi poll đã chết.</li>
+    <li><strong>Phiên đã đóng:</strong> trang báo rõ "phiên đã đóng", có nút chép câu trả lời. Phiên mới mở lại trong cùng thư mục sẽ thấy phản hồi chờ qua hook SessionStart.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Các giai đoạn</h2>
+
+  <div class="phase">
+    <header><h3>0. Dựng repo</h3><span class="tag">nửa ngày</span></header>
+    <ul>
+      <li>Đổi tên gói và CLI thành <code>folio-axi</code>, thư mục trạng thái <code>~/.folio-axi</code>, cổng 4388. Như vậy chạy song song được với lavish-axi đang cài.</li>
+      <li>Giữ <code>LICENSE</code> MIT và tên tác giả gốc, thêm ghi chú nguồn gốc. Bỏ <code>lavish-editor-marketing/</code>, <code>task-evidence/</code>, release-please.</li>
+      <li>Tắt hẳn telemetry (<code>src/telemetry.js</code>). Repo GitHub private <code>ngoviet/folio-axi</code>, CI bằng Woodpecker.</li>
+    </ul>
+    <p class="check">Kiểm: <code>pnpm run check</code> xanh trên Windows; <code>folio-axi open</code> mở được trang mẫu.</p>
+  </div>
+
+  <div class="phase">
+    <header><h3>1. Phản hồi chắc chắn về đúng phiên</h3><span class="tag">ưu tiên cao nhất</span><span class="tag">2–3 ngày</span></header>
+    <ul>
+      <li>Gắn chủ theo <code>session_id</code>; giao có ack và giao lại; ghi <code>state.json</code> an toàn (tệp tạm rồi đổi tên).</li>
+      <li>Ba hook Claude Code của Folio: SessionStart, Stop, UserPromptSubmit. Có trình cài riêng, không phụ thuộc <code>axi-sdk-js</code>.</li>
+    </ul>
+    <p class="check">Kiểm: test tự động cho các ca poll chết giữa chừng, hai phiên tranh một trang, server khởi động lại. Thử thật trong desktop app: gửi lúc không có poll thì hook Stop vẫn bắt được.</p>
+  </div>
+
+  <div class="phase">
+    <header><h3>2. Hook gọn, dọn trang</h3><span class="tag">1 ngày</span></header>
+    <ul>
+      <li>Output SessionStart dưới 1.500 ký tự: chỉ trang của thư mục đang mở, cộng trang có phản hồi chờ ở chỗ khác. Hướng dẫn chi tiết để trong skill.</li>
+      <li><code>end</code> nhận được khoá phiên khi tệp đã mất. Tự dọn trang đã kết thúc quá 7 ngày.</li>
+    </ul>
+    <p class="check">Kiểm: đo số ký tự hook với 40 trang giả; thay được hook bọc <code>lavish-session-hook.mjs</code>.</p>
+  </div>
+
+  <div class="phase">
+    <header><h3>3. Windows và gọn mã</h3><span class="tag">1 ngày</span></header>
+    <ul>
+      <li>Dò và dừng tiến trình server bằng <code>netstat</code>/<code>tasklist</code>, thêm <code>windowsHide</code>. Xử lý khác biệt giữa HOME của Git Bash và USERPROFILE.</li>
+      <li>Bỏ phần không dùng: hook Copilot/Codex/OpenCode, <code>setup plugin</code> (VS Code, Cursor), chuông herdr.</li>
+    </ul>
+    <p class="check">Kiểm: chạy CLI qua cả Git Bash lẫn PowerShell; không còn cửa sổ console nháy lên.</p>
+  </div>
+
+  <div class="phase">
+    <header><h3>4. Điện thoại</h3><span class="tag w">cần anh chọn cách</span><span class="tag">1–2 ngày</span></header>
+    <ul>
+      <li>Thêm mã truy cập cho mỗi trang khi server mở ra mạng. Hiện server hoàn toàn không có xác thực.</li>
+      <li>Cách mở từ xa: Tailscale (có sẵn trong mã, cần cài trên PC1 và điện thoại) hoặc Cloudflare Tunnel có đăng nhập. Sửa lỗi bàn phím điện thoại che ô ghi chú (#474).</li>
+    </ul>
+    <p class="check">Kiểm: anh mở một trang từ điện thoại qua 4G, gửi câu trả lời, phiên nhận được.</p>
+  </div>
+
+  <div class="phase">
+    <header><h3>5. Đưa vào dùng</h3><span class="tag">nửa ngày</span></header>
+    <ul>
+      <li>Skill <code>folio</code> toàn cục; cập nhật mục "Trình bày" trong CLAUDE.md toàn cục (chờ anh duyệt). Gỡ <code>lavish-axi</code> khi Folio đã ổn.</li>
+      <li>Thỉnh thoảng xem bản sửa của upstream, lấy về chỗ nào cần (<code>git fetch upstream</code>, cherry-pick).</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <h2>Rủi ro</h2>
+  <ul>
+    <li>Hook Stop chặn dừng có thể làm phiên chạy vòng lặp nếu phản hồi không được ack. Phải giới hạn số lần chặn liên tiếp và có công tắc tắt.</li>
+    <li>Tự bảo trì 28.000 dòng mã: chỉ sửa chỗ cần, giữ cấu trúc gần bản gốc để còn lấy được bản sửa của upstream.</li>
+    <li>Câu trả lời từ trang vẫn tới Claude dưới dạng dữ liệu công cụ hoặc hook. Việc cần duyệt thật vẫn xác nhận trong chat.</li>
+  </ul>
+</section>
+</main>

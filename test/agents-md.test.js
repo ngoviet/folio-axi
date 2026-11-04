@@ -2,10 +2,6 @@ import assert from "node:assert/strict";
 import { readFile, lstat } from "node:fs/promises";
 import test from "node:test";
 
-const CLAUDE_POINTER = `<!-- Points Claude at AGENTS.md via import; edit AGENTS.md, not this file. -->
-@AGENTS.md
-`;
-
 const MAINTENANCE_PREAMBLE = `## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
@@ -21,13 +17,14 @@ test("AGENTS.md ends with the canonical self-governance preamble", async () => {
   assert.ok(agents.endsWith(`\n\n${MAINTENANCE_PREAMBLE}`));
 });
 
-test("CLAUDE.md is a real pointer file importing AGENTS.md, not a symlink", async () => {
+test("CLAUDE.md is a real file importing AGENTS.md, not a symlink", async () => {
   const claude = new URL("../CLAUDE.md", import.meta.url);
   const [stats, contents] = await Promise.all([lstat(claude), readFile(claude, "utf8")]);
 
   // A symlink here is a footgun: writing to CLAUDE.md would follow it and
   // destroy AGENTS.md. The `@AGENTS.md` import loads the same content with no
-  // extra turns, and a stray write only clobbers this two-line file.
+  // extra turns, and a stray write only clobbers this small file. Folio keeps
+  // its own preface above the import.
   assert.equal(stats.isSymbolicLink(), false);
-  assert.equal(contents, CLAUDE_POINTER);
+  assert.match(contents, /^@AGENTS\.md$/m);
 });

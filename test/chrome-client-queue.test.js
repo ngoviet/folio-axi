@@ -100,7 +100,7 @@ async function createChromeHarness({
   const source = await readFile(sourceUrl, "utf8");
   // Seed sessionStorage before the client boots, to model a tab whose queue was
   // already persisted by an earlier page load.
-  if (storedQueue) storage.set(`lavish-axi:queued:${sessionData.key}`, JSON.stringify(storedQueue));
+  if (storedQueue) storage.set(`folio-axi:queued:${sessionData.key}`, JSON.stringify(storedQueue));
   const postedToFrame = [];
   const postedToWhiteboard = [];
   const inlineWhiteboards = [];
@@ -453,7 +453,7 @@ async function createChromeHarness({
     },
     document: {
       // The tab as the server served it: the artifact's title and its icon link.
-      title: "Plan \u00b7 Lavish",
+      title: "Plan \u00b7 Folio",
       body: element("body"),
       head: { appendChild: (link) => (tabIcon = link) },
       querySelector: (selector) => (selector === 'link[rel~="icon"]' ? tabIcon : null),
@@ -660,7 +660,7 @@ async function createChromeHarness({
       return event;
     },
     queued() {
-      return JSON.parse(storage.get("lavish-axi:queued:abc") || "[]");
+      return JSON.parse(storage.get("folio-axi:queued:abc") || "[]");
     },
     reloadCount() {
       return reloadCount;
@@ -1474,7 +1474,7 @@ test("reload during terminal preparation cannot restore an incomplete terminal b
   chrome.element("sendAndEnd").click();
 
   assert.equal(
-    storage.has("lavish-axi:terminal:abc"),
+    storage.has("folio-axi:terminal:abc"),
     false,
     "a terminal reservation is not durable until all in-flight preparation joins the batch",
   );
@@ -1519,7 +1519,7 @@ test("reload restores a completed terminal reservation after its prompt was deli
   await flushPromises();
 
   assert.equal(chrome.queued().length, 0);
-  assert.equal(storage.get("lavish-axi:terminal:abc"), "true");
+  assert.equal(storage.get("folio-axi:terminal:abc"), "true");
   assert.equal(originalEndAttempts, 1);
 
   const reloadedRequests = [];
@@ -1540,7 +1540,7 @@ test("reload restores a completed terminal reservation after its prompt was deli
   await flushPromises();
 
   assert.deepEqual(reloadedRequests, [{ url: "/api/abc/end", body: null }]);
-  assert.equal(storage.has("lavish-axi:terminal:abc"), false);
+  assert.equal(storage.has("folio-axi:terminal:abc"), false);
   assert.equal(reloaded.element("sendAndEnd").disabled, true);
 });
 
@@ -3793,7 +3793,7 @@ test("an indeterminate publish keeps the password it minted and shows no credent
 
 test("an incomplete 200 reports a landed publish and shows the fields the host did return", async () => {
   // The host answered 200, so the page IS live. Hedging that as "may or may not have published"
-  // also threw away the url Lavish was holding for a page that is public by default.
+  // also threw away the url Folio was holding for a page that is public by default.
   const chrome = await createChromeHarness({
     fetchImpl: async () => ({
       ok: false,
@@ -4254,7 +4254,7 @@ test("a first begin-load that never recovers surfaces a reloadable failure inste
 
   assert.equal(chrome.frame.src, "");
   assert.equal(chrome.element("layoutGateOverlay").hidden, false);
-  assert.equal(chrome.element("layoutGateTitle").textContent, "Lavish could not load this artifact.");
+  assert.equal(chrome.element("layoutGateTitle").textContent, "Folio could not load this artifact.");
   assert.equal(chrome.element("layoutGateAction").textContent, "Check and reload");
 
   // This card is raised in the state where the server may be gone, so it must not navigate into
@@ -4289,7 +4289,7 @@ test("a load that asks for the artifact again gets the whole recovery backoff ag
     await exhaustOneBeginLoadAttempt(chrome);
   }
   assert.equal(chrome.artifactBeginRequests.length, 15);
-  assert.equal(chrome.element("layoutGateTitle").textContent, "Lavish could not load this artifact.");
+  assert.equal(chrome.element("layoutGateTitle").textContent, "Folio could not load this artifact.");
 
   // A fresh attempt whose own begin fails must schedule the backoff again instead of giving up.
   chrome.element("reloadArtifact").click();
@@ -4317,7 +4317,7 @@ test("empty Send names this tab's queue without importing another window's answe
     type: "lavish:queuePrompt",
     prompt: { prompt: "Keep my answer", selector: "#answer", tag: "input", text: "Answer" },
   });
-  const savedQueue = firstStorage.get("lavish-axi:queued:abc");
+  const savedQueue = firstStorage.get("folio-axi:queued:abc");
   const second = await createChromeHarness({
     storage: secondStorage,
     fetchImpl,
@@ -4333,7 +4333,7 @@ test("empty Send names this tab's queue without importing another window's answe
   assert.equal(second.element("layoutGateCopy").textContent, UNSENT_OWNERSHIP_COPY);
   assert.equal(second.queued().length, 0);
   assert.equal(first.queued().length, 1);
-  assert.equal(firstStorage.get("lavish-axi:queued:abc"), savedQueue);
+  assert.equal(firstStorage.get("folio-axi:queued:abc"), savedQueue);
   assert.equal(second.reloadCount(), 0, "empty Send never takes over");
 
   second.element("handoffTakeover").click();
@@ -4344,7 +4344,7 @@ test("empty Send names this tab's queue without importing another window's answe
   const originalReloaded = await createChromeHarness({ storage: firstStorage, fetchImpl });
   assert.equal(takenOver.queued().length, 0);
   assert.equal(originalReloaded.queued()[0].prompt, "Keep my answer");
-  assert.equal(firstStorage.get("lavish-axi:queued:abc"), savedQueue);
+  assert.equal(firstStorage.get("folio-axi:queued:abc"), savedQueue);
   assert.equal(postedBodies.length, 0, "neither empty Send nor takeover submits another window's answers");
 });
 
@@ -4463,7 +4463,7 @@ test("a chrome whose replacement server never returns says so instead of reloadi
 
   assert.equal(chrome.reloadCount(), 0);
   assert.equal(chrome.element("layoutGateOverlay").hidden, false);
-  assert.equal(chrome.element("layoutGateTitle").textContent, "Lavish is not running.");
+  assert.equal(chrome.element("layoutGateTitle").textContent, "Folio is not running.");
   assert.equal(chrome.element("layoutGateAction").textContent, "Check and reload");
 });
 
@@ -4495,7 +4495,7 @@ test("a chrome confirms the server is gone before saying it never came back", as
   }
 
   assert.equal(chrome.reloadCount(), 1);
-  assert.notEqual(chrome.element("layoutGateTitle").textContent, "Lavish is not running.");
+  assert.notEqual(chrome.element("layoutGateTitle").textContent, "Folio is not running.");
 });
 
 test("the not-running card reloads only once the server answers again", async () => {
@@ -4519,7 +4519,7 @@ test("the not-running card reloads only once the server answers again", async ()
     chrome.runTimers(100);
     await flushPromises();
   }
-  assert.equal(chrome.element("layoutGateTitle").textContent, "Lavish is not running.");
+  assert.equal(chrome.element("layoutGateTitle").textContent, "Folio is not running.");
 
   // Clicking while nothing is listening must not navigate into the dead port - that is the
   // browser connection-error page this whole path exists to avoid.
@@ -4564,7 +4564,7 @@ test("a chrome re-checks a stale healthy probe before reloading", async () => {
   }
 
   assert.equal(chrome.reloadCount(), 0, "never reload into a port nothing is listening on");
-  assert.equal(chrome.element("layoutGateTitle").textContent, "Lavish is not running.");
+  assert.equal(chrome.element("layoutGateTitle").textContent, "Folio is not running.");
 });
 
 test("the not-running card survives a later successful artifact load", async () => {
@@ -4588,7 +4588,7 @@ test("the not-running card survives a later successful artifact load", async () 
     chrome.runTimers(100);
     await flushPromises();
   }
-  assert.equal(chrome.element("layoutGateTitle").textContent, "Lavish is not running.");
+  assert.equal(chrome.element("layoutGateTitle").textContent, "Folio is not running.");
 
   // The replacement server binds and serves this artifact again. The page is still running the
   // pre-upgrade client, so the card the user was told to act on must stay up.
@@ -4598,7 +4598,7 @@ test("the not-running card survives a later successful artifact load", async () 
   await flushPromises();
 
   assert.match(chrome.frame.src, /artifact_load_token=/, "the artifact still reloads");
-  assert.equal(chrome.element("layoutGateTitle").textContent, "Lavish is not running.");
+  assert.equal(chrome.element("layoutGateTitle").textContent, "Folio is not running.");
   assert.match(chrome.element("layoutGateCopy").textContent, /did not come back/);
   assert.equal(chrome.element("layoutGateAction").textContent, "Check and reload");
   assert.equal(chrome.element("layoutGateOverlay").hidden, false);
@@ -4612,7 +4612,7 @@ test("the not-running card survives a later successful artifact load", async () 
     findings: [],
   });
   assert.equal(chrome.element("layoutGateOverlay").hidden, true);
-  assert.equal(chrome.element("layoutGateTitle").textContent, "Lavish is not running.");
+  assert.equal(chrome.element("layoutGateTitle").textContent, "Folio is not running.");
 
   chrome.eventSource().listeners.get("reload")();
   await flushPromises();
@@ -4640,7 +4640,7 @@ test("a sticky failure cannot outlive the layout gate timeout", async () => {
     chrome.runTimers(100);
     await flushPromises();
   }
-  assert.equal(chrome.element("layoutGateTitle").textContent, "Lavish is not running.");
+  assert.equal(chrome.element("layoutGateTitle").textContent, "Folio is not running.");
   assert.equal(chrome.element("layoutGateOverlay").hidden, false);
 
   // setLayoutGateFailure() is sticky here; its hold timer must still release the visual gate.
@@ -4668,7 +4668,7 @@ test("a no-gate sticky failure reveals by pass, manual bypass, or timeout", asyn
       chrome.runTimers(100);
       await flushPromises();
     }
-    assert.equal(chrome.element("layoutGateTitle").textContent, "Lavish is not running.");
+    assert.equal(chrome.element("layoutGateTitle").textContent, "Folio is not running.");
     assert.equal(chrome.element("layoutGateOverlay").hidden, false);
     return chrome;
   }
@@ -4754,11 +4754,11 @@ test("the outdated banner says what actually happened to the server", async () =
   sendChromeOutdated(chrome, "upgrade");
   assert.equal(
     chrome.element("outdatedText").textContent,
-    "Lavish was updated. This page is running the previous version.",
+    "Folio was updated. This page is running the previous version.",
   );
 
   sendChromeOutdated(chrome, "stop");
-  assert.equal(chrome.element("outdatedText").textContent, "Lavish was stopped. Reload after you start it again.");
+  assert.equal(chrome.element("outdatedText").textContent, "Folio was stopped. Reload after you start it again.");
 
   sendChromeOutdated(chrome, "local-build");
   const localBuild = chrome.element("outdatedText").textContent;
@@ -4787,7 +4787,7 @@ test("the outdated banner's reload asks the server before navigating", async () 
     },
   });
 
-  // `lavish-axi stop` leaves no replacement behind, so this button must not navigate into a port
+  // `folio-axi stop` leaves no replacement behind, so this button must not navigate into a port
   // nothing is listening on.
   sendChromeOutdated(chrome, "stop");
   await chrome.element("outdatedReload").click();
@@ -4878,7 +4878,7 @@ test("a restart wait whose port never answers still reaches the not-running card
   }
 
   assert.equal(chrome.reloadCount(), 0);
-  assert.equal(chrome.element("layoutGateTitle").textContent, "Lavish is not running.");
+  assert.equal(chrome.element("layoutGateTitle").textContent, "Folio is not running.");
 });
 
 // A probe can take until its timeout, and by then the overlay may have moved on to a different
@@ -4899,7 +4899,7 @@ test("a slow probe does not write its failure copy over a card that moved on", a
     chrome.runTimers(delay);
     await exhaustOneBeginLoadAttempt(chrome);
   }
-  assert.equal(chrome.element("layoutGateTitle").textContent, "Lavish could not load this artifact.");
+  assert.equal(chrome.element("layoutGateTitle").textContent, "Folio could not load this artifact.");
 
   chrome.element("layoutGateAction").click();
   await flushPromises();
@@ -4954,7 +4954,7 @@ test("a health check that never answers hands the failure card's button back", a
     chrome.runTimers(delay);
     await exhaustOneBeginLoadAttempt(chrome);
   }
-  assert.equal(chrome.element("layoutGateTitle").textContent, "Lavish could not load this artifact.");
+  assert.equal(chrome.element("layoutGateTitle").textContent, "Folio could not load this artifact.");
 
   chrome.element("layoutGateAction").click();
   await flushPromises();
@@ -4996,7 +4996,7 @@ test("an ordinary load failure cannot replace the not-running card", async () =>
     chrome.runTimers(100);
     await flushPromises();
   }
-  assert.equal(chrome.element("layoutGateTitle").textContent, "Lavish is not running.");
+  assert.equal(chrome.element("layoutGateTitle").textContent, "Folio is not running.");
 
   // The replacement binds late; a live reload then fails its begin-loads for the whole backoff.
   chrome.eventSource().listeners.get("reload")();
@@ -5006,7 +5006,7 @@ test("an ordinary load failure cannot replace the not-running card", async () =>
     await exhaustOneBeginLoadAttempt(chrome);
   }
 
-  assert.equal(chrome.element("layoutGateTitle").textContent, "Lavish is not running.");
+  assert.equal(chrome.element("layoutGateTitle").textContent, "Folio is not running.");
   assert.match(chrome.element("layoutGateCopy").textContent, /did not come back/);
 });
 
@@ -5067,7 +5067,7 @@ test("a draft the artifact can no longer anchor is retired after a second revisi
   await flushPromises();
 
   assert.deepEqual(await restoredDraft(storage), []);
-  // Retiring ends Lavish's ability to replay the note, so the text is handed back where the user
+  // Retiring ends Folio's ability to replay the note, so the text is handed back where the user
   // can read and copy it instead of disappearing.
   assert.equal(retiredDraftNotes(chrome).length, 1);
   assert.match(retiredDraftNotes(chrome)[0].innerHTML, /needs a shorter headline/);
@@ -5116,7 +5116,7 @@ test("a probe that never answers leaves the not-running card's title and body ag
     chrome.runTimers(4000);
     await flushPromises();
   }
-  assert.equal(chrome.element("layoutGateTitle").textContent, "Lavish is not running.");
+  assert.equal(chrome.element("layoutGateTitle").textContent, "Folio is not running.");
 
   chrome.element("layoutGateAction").click();
   await flushPromises();
@@ -5135,7 +5135,7 @@ test("a probe that never answers leaves the not-running card's title and body ag
   chrome.element("layoutGateAction").click();
   await flushPromises();
   await flushPromises();
-  assert.equal(chrome.element("layoutGateTitle").textContent, "Lavish is not running.");
+  assert.equal(chrome.element("layoutGateTitle").textContent, "Folio is not running.");
   assert.match(chrome.element("layoutGateCopy").textContent, /still not running/);
 });
 
@@ -5202,7 +5202,7 @@ test("no retired draft is dropped to make room for a later one", async () => {
 test("a retired draft the browser refuses to store says so in its own note", async () => {
   const storage = new (class extends Map {
     set(storageKey, value) {
-      if (String(storageKey).startsWith("lavish-axi:retired-drafts:")) throw new Error("quota exceeded");
+      if (String(storageKey).startsWith("folio-axi:retired-drafts:")) throw new Error("quota exceeded");
       return super.set(storageKey, value);
     }
   })();
@@ -5330,7 +5330,7 @@ test("a restart reload with an unsent draft offers the banner instead of reloadi
   assert.equal(chrome.element("outdatedBanner").hidden, false);
   assert.equal(
     chrome.element("outdatedText").textContent,
-    "Lavish was updated. This page is running the previous version.",
+    "Folio was updated. This page is running the previous version.",
   );
 });
 
@@ -6017,7 +6017,7 @@ test("chrome send and end during an in-flight submit still ends after the submit
   assert.equal(chrome.element("chatInput").disabled, true);
 });
 
-// #171: a tab left open across `lavish-axi end` (or the browser's own End in another tab) must go
+// #171: a tab left open across `folio-axi end` (or the browser's own End in another tab) must go
 // visibly read-only the moment the server tells it, instead of leaving Send enabled for feedback
 // nobody will ever poll for.
 test("chrome goes read-only when the server forwards an ended SSE event (#171)", async () => {
@@ -6878,7 +6878,7 @@ test("chrome renders queued-prompt attachment thumbnails from the server endpoin
 });
 
 test("a queued prompt over the thumbnail limit shows the hidden images as a +N badge (W-A)", async () => {
-  // LAVISH_AXI_MAX_ATTACHMENTS_PER_PROMPT is configurable, so a prompt can legitimately
+  // FOLIO_AXI_MAX_ATTACHMENTS_PER_PROMPT is configurable, so a prompt can legitimately
   // carry more images than the compact bubble can show. The overflow must be counted, not
   // silently dropped - otherwise the queue looks like it lost the extra attachments.
   const chrome = await createChromeHarness();
@@ -7167,7 +7167,7 @@ test("a load that recovers after the failure card retires it even when the gate 
     await exhaustOneBeginLoadAttempt(chrome);
   }
   assert.equal(chrome.element("layoutGateOverlay").hidden, false);
-  assert.equal(chrome.element("layoutGateTitle").textContent, "Lavish could not load this artifact.");
+  assert.equal(chrome.element("layoutGateTitle").textContent, "Folio could not load this artifact.");
 
   // An explicit reload-artifact action is a fresh attempt, and the harness answers it. The card
   // must come down even though the bypass keeps startLayoutGateCycle from running its body.
@@ -7190,7 +7190,7 @@ function sheetState(chrome) {
     label: toggle["aria-label"],
     summary: chrome.element("panelSummary").textContent,
     summaryClass: String(chrome.element("panelSummary").classList),
-    stored: chrome.storage.get("lavish-axi:sheet-open:abc") || null,
+    stored: chrome.storage.get("folio-axi:sheet-open:abc") || null,
   };
 }
 
@@ -7248,7 +7248,7 @@ test("phone chrome boots with the conversation docked and raises it on tap", asy
 });
 
 test("phone chrome restores an open sheet across a chrome reload", async () => {
-  const storage = new Map([["lavish-axi:sheet-open:abc", "1"]]);
+  const storage = new Map([["folio-axi:sheet-open:abc", "1"]]);
   const chrome = await createChromeHarness({ mobile: true, storage });
 
   const state = sheetState(chrome);
@@ -7369,7 +7369,7 @@ test("crossing the breakpoint in either direction leaves no sheet state behind",
   const chrome = await createChromeHarness({ mobile: true });
   chrome.element("panelHead").dispatch("click", {});
   assert.equal(sheetState(chrome).open, true);
-  assert.equal(chrome.storage.get("lavish-axi:sheet-open:abc"), "1");
+  assert.equal(chrome.storage.get("folio-axi:sheet-open:abc"), "1");
 
   // Widening to desktop: the panel is a plain side panel again, never inert, never "open".
   chrome.setMobile(false);
@@ -7377,7 +7377,7 @@ test("crossing the breakpoint in either direction leaves no sheet state behind",
   assert.equal(state.open, false);
   assert.equal(state.scrollInert, false);
   assert.equal(state.composerInert, false);
-  assert.equal(chrome.storage.has("lavish-axi:sheet-open:abc"), false);
+  assert.equal(chrome.storage.has("folio-axi:sheet-open:abc"), false);
 
   // Narrowing back docks it again and moves focus out of the content becoming inert.
   chrome.element("chatInput").focus();
@@ -7386,7 +7386,7 @@ test("crossing the breakpoint in either direction leaves no sheet state behind",
   assert.equal(state.open, false);
   assert.equal(state.scrollInert, true);
   assert.equal(chrome.focusLog.at(-1), "panelToggle");
-  assert.equal(chrome.storage.has("lavish-axi:sheet-open:abc"), false);
+  assert.equal(chrome.storage.has("folio-axi:sheet-open:abc"), false);
 });
 
 // ---- Queued and sent notes are one conversation ----
@@ -7431,13 +7431,13 @@ test("a queued note's remove control clears memory, storage, and its bubble", as
     prompt: { prompt: "Remove this", selector: "h2", tag: "h2", text: "Heading" },
   });
   assert.equal(chrome.queued().length, 1);
-  assert.equal(chrome.storage.has("lavish-axi:queued:abc"), true);
+  assert.equal(chrome.storage.has("folio-axi:queued:abc"), true);
 
   const [removeButton] = chrome.element("queuedLog").querySelectorAll(".queued-remove");
   removeButton.click({ stopPropagation() {} });
 
   assert.deepEqual(chrome.queued(), []);
-  assert.equal(chrome.storage.has("lavish-axi:queued:abc"), false);
+  assert.equal(chrome.storage.has("folio-axi:queued:abc"), false);
   assert.equal(chrome.element("queuedLog").innerHTML, "");
 });
 
@@ -8505,14 +8505,14 @@ test("a reconnect does not retire the banner a server replacement raised", async
   const banner = chrome.element("outdatedBanner");
   chrome.webSocket().listeners.get("chrome-outdated")({ data: JSON.stringify({ reason: "upgrade" }) });
   assert.equal(banner.hidden, false);
-  assert.match(chrome.element("outdatedText").textContent, /Lavish was updated/);
+  assert.match(chrome.element("outdatedText").textContent, /Folio was updated/);
 
   // The server really was replaced; reconnecting to its successor does not make that untrue, and
   // the page is still running the previous chrome.
   dropLiveStream(chrome, LIVE_EVENT_RECONNECT_DELAYS_MS[0]);
   recoverLiveStream(chrome);
   assert.equal(banner.hidden, false);
-  assert.match(chrome.element("outdatedText").textContent, /Lavish was updated/);
+  assert.match(chrome.element("outdatedText").textContent, /Folio was updated/);
 });
 
 // ---------------------------------------------------------------------------
@@ -9172,7 +9172,7 @@ function sidebarState(chrome) {
     title: toggle.title,
     unread: toggle.classList.contains("is-unread"),
     count: count.hidden ? null : count.textContent,
-    stored: chrome.localStore.get("lavish-axi:panel-collapsed") || null,
+    stored: chrome.localStore.get("folio-axi:panel-collapsed") || null,
   };
 }
 
@@ -9193,7 +9193,7 @@ test("desktop sidebar toggle hides and restores the conversation panel", async (
   assert.equal(collapsed.label, "Show conversation");
   // The preference is the viewer's, not the review's: one key shared by every session.
   assert.equal(collapsed.stored, "1");
-  assert.equal(chrome.storage.has("lavish-axi:panel-collapsed"), false, "never per-tab sessionStorage");
+  assert.equal(chrome.storage.has("folio-axi:panel-collapsed"), false, "never per-tab sessionStorage");
 
   chrome.element("sidebarToggle").dispatch("click", {});
   const reopened = sidebarState(chrome);
@@ -9203,7 +9203,7 @@ test("desktop sidebar toggle hides and restores the conversation panel", async (
 });
 
 test("a collapsed panel stays collapsed across a chrome reload and across sessions", async () => {
-  const localStore = new Map([["lavish-axi:panel-collapsed", "1"]]);
+  const localStore = new Map([["folio-axi:panel-collapsed", "1"]]);
   const chrome = await createChromeHarness({
     localStore,
     sessionData: { ...defaultSessionData, key: "another-review" },
@@ -9311,7 +9311,7 @@ test("an expanded desktop panel never marks a reply as unread", async () => {
 });
 
 test("the stored desktop collapse never hides the phone sheet", async () => {
-  const localStore = new Map([["lavish-axi:panel-collapsed", "1"]]);
+  const localStore = new Map([["folio-axi:panel-collapsed", "1"]]);
   const chrome = await createChromeHarness({ mobile: true, localStore });
 
   assert.equal(sidebarState(chrome).collapsed, false, "phone width keeps its own dock");
@@ -9336,34 +9336,34 @@ async function sendDocumentMeta(chrome, meta, { token = chrome.artifactLoadToken
 
 test("a page can set the tab title and icon after it loaded", async () => {
   const chrome = await createChromeHarness({ artifactSrc: "/artifact/abc/index.html" });
-  assert.deepEqual(chrome.tab(), { title: "Plan \u00b7 Lavish", icon: SERVED_TAB_ICON });
+  assert.deepEqual(chrome.tab(), { title: "Plan \u00b7 Folio", icon: SERVED_TAB_ICON });
   await sendDocumentMeta(chrome, { title: "(2) Agent canvas", icon: PAGE_ICON });
-  assert.deepEqual(chrome.tab(), { title: "(2) Agent canvas \u00b7 Lavish", icon: PAGE_ICON });
+  assert.deepEqual(chrome.tab(), { title: "(2) Agent canvas \u00b7 Folio", icon: PAGE_ICON });
 });
 
 test("a field the page leaves out stays as it was", async () => {
   const chrome = await createChromeHarness({ artifactSrc: "/artifact/abc/index.html" });
   await sendDocumentMeta(chrome, { title: "Only title" });
-  assert.deepEqual(chrome.tab(), { title: "Only title \u00b7 Lavish", icon: SERVED_TAB_ICON });
+  assert.deepEqual(chrome.tab(), { title: "Only title \u00b7 Folio", icon: SERVED_TAB_ICON });
   await sendDocumentMeta(chrome, { icon: PAGE_ICON });
-  assert.deepEqual(chrome.tab(), { title: "Only title \u00b7 Lavish", icon: PAGE_ICON });
+  assert.deepEqual(chrome.tab(), { title: "Only title \u00b7 Folio", icon: PAGE_ICON });
 });
 
 test("null puts back the title and icon the tab loaded with", async () => {
   const chrome = await createChromeHarness({ artifactSrc: "/artifact/abc/index.html" });
   await sendDocumentMeta(chrome, { title: "Changed", icon: PAGE_ICON });
   await sendDocumentMeta(chrome, { title: null, icon: null });
-  assert.deepEqual(chrome.tab(), { title: "Plan \u00b7 Lavish", icon: SERVED_TAB_ICON });
+  assert.deepEqual(chrome.tab(), { title: "Plan \u00b7 Folio", icon: SERVED_TAB_ICON });
 });
 
 test("the tab title is flattened, trimmed and capped; a blank one restores the load-time title", async () => {
   const chrome = await createChromeHarness({ artifactSrc: "/artifact/abc/index.html" });
   await sendDocumentMeta(chrome, { title: "  two\n\tlines\u0000 here  " });
-  assert.equal(chrome.tab().title, "two lines here \u00b7 Lavish");
+  assert.equal(chrome.tab().title, "two lines here \u00b7 Folio");
   await sendDocumentMeta(chrome, { title: "x".repeat(500) });
-  assert.equal(chrome.tab().title, "x".repeat(120) + " \u00b7 Lavish");
+  assert.equal(chrome.tab().title, "x".repeat(120) + " \u00b7 Folio");
   await sendDocumentMeta(chrome, { title: " \n " });
-  assert.equal(chrome.tab().title, "Plan \u00b7 Lavish");
+  assert.equal(chrome.tab().title, "Plan \u00b7 Folio");
 });
 
 for (const [label, icon] of [
@@ -9377,7 +9377,7 @@ for (const [label, icon] of [
   test(`the tab icon refuses ${label}`, async () => {
     const chrome = await createChromeHarness({ artifactSrc: "/artifact/abc/index.html" });
     await sendDocumentMeta(chrome, { icon, title: "still applies" });
-    assert.deepEqual(chrome.tab(), { title: "still applies \u00b7 Lavish", icon: SERVED_TAB_ICON });
+    assert.deepEqual(chrome.tab(), { title: "still applies \u00b7 Folio", icon: SERVED_TAB_ICON });
   });
 }
 
@@ -9392,7 +9392,7 @@ test("a document-meta message without the current load token is ignored", async 
   const chrome = await createChromeHarness({ artifactSrc: "/artifact/abc/index.html" });
   await sendDocumentMeta(chrome, { title: "stale", icon: PAGE_ICON }, { token: "an-old-load" });
   await sendDocumentMeta(chrome, { title: "tokenless" }, { token: "" });
-  assert.deepEqual(chrome.tab(), { title: "Plan \u00b7 Lavish", icon: SERVED_TAB_ICON });
+  assert.deepEqual(chrome.tab(), { title: "Plan \u00b7 Folio", icon: SERVED_TAB_ICON });
 });
 
 test("a window that is not the artifact frame cannot set the tab", async () => {
@@ -9404,5 +9404,5 @@ test("a window that is not the artifact frame cannot set the tab", async () => {
       data: { type: "lavish:documentMeta", artifact_load_token: chrome.artifactLoadToken(), title: "spoof" },
     });
   }
-  assert.equal(chrome.tab().title, "Plan \u00b7 Lavish");
+  assert.equal(chrome.tab().title, "Plan \u00b7 Folio");
 });

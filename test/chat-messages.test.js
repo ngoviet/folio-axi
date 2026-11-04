@@ -6,10 +6,12 @@ import {
   boundStoredChat,
   chatEntryForPrompt,
   collectChatAckIds,
+  confirmDelivery,
   markPreReceipt,
   MAX_CHAT_STORED_BYTES,
   RECEIPT_NONE,
   renderChatMarkdown,
+  reserveDelivery,
   serializeChat,
   stampDelivered,
   stampDone,
@@ -414,6 +416,22 @@ test("delivery stamps mark only undelivered user entries and tie them to one tak
   assert.equal(chat[2].delivered_seq, 3);
   assert.equal(stampDelivered(chat, 4, "2026-09-15T12:02:00.000Z"), false, "nothing left to stamp");
   assert.equal(chat[0].delivered_seq, 3);
+});
+
+test("an ackable delivery reserves its batch and the ack stamps only that batch", () => {
+  const chat = [userEntry("A"), userEntry("B")];
+  reserveDelivery(chat, 2);
+  assert.equal(stampDone(chat, at), false, "a reserved note has not been seen");
+  chat.push(userEntry("C"));
+  assert.equal(stampDelivered(chat, 3, "2026-09-15T12:01:00.000Z"), true, "a later take skips the reserved batch");
+  assert.deepEqual(chat[2], userEntry("C", { delivered_at: "2026-09-15T12:01:00.000Z", delivered_seq: 3 }));
+  chat.push(userEntry("D"));
+  assert.equal(confirmDelivery(chat, 2, "2026-09-15T12:02:00.000Z"), true);
+  assert.deepEqual(chat[0], userEntry("A", { delivered_at: "2026-09-15T12:02:00.000Z", delivered_seq: 2 }));
+  assert.equal(chat[1].delivered_at, "2026-09-15T12:02:00.000Z");
+  assert.equal(chat[2].delivered_at, "2026-09-15T12:01:00.000Z");
+  assert.deepEqual(chat[3], userEntry("D"));
+  assert.equal(confirmDelivery(chat, 2, "2026-09-15T12:03:00.000Z"), false, "nothing left to confirm");
 });
 
 test("unstamping a take deletes that take's stamps and leaves other takes and unsent entries intact", () => {
