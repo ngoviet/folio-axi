@@ -18,11 +18,12 @@ test("a disconnected raw poll restores fresh feedback while preserving the unack
     const first = await poll(base, artifact, { ack: "1", session_id: "sess-a" }).then((r) => r.json());
     await sendPrompt(base, key, "new");
     const original = SessionStore.prototype.takeFeedback;
-    let release;
+    let release = () => {};
     let started;
     const taken = new Promise((resolve) => {
       started = resolve;
     });
+    /** @type {Promise<void>} */
     const resume = new Promise((resolve) => {
       release = resolve;
     });
