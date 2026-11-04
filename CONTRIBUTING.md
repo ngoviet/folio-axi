@@ -9,32 +9,19 @@ We require this to reduce the maintainer's burden of reviewing and merging contr
 `no-mistakes` puts a local git proxy in front of your real remote.
 Pushing through it runs an AI-driven review/test/lint pipeline in an isolated worktree, forwards the push upstream only after every check passes, and opens a clean PR automatically.
 
-A GitHub Actions check (`Require no-mistakes`) runs on PRs targeting `main` and fails if the body is missing the deterministic signature that no-mistakes writes.
-It also requires the machine-readable pipeline attestation that no-mistakes >= 1.46.0 writes next to that signature: the `review`, `test`, and `document` steps must all be recorded as `completed`, and the attested `head_sha` must be the PR's current head.
-The check runs on opened, edited, synchronize, and reopened, including pushed commits. That is safe because no-mistakes #994 writes the attestation before it pushes, so a pipeline-pushed head already has a matching body; a commit pushed outside the pipeline still fails until you `git push no-mistakes` again so the body carries an attestation for the new head.
-The release and dependency bots are exempt so their automation keeps working, but regular contributor PRs without the signature and a current attestation will not be reviewed or merged.
-
-`.github/workflows/no-mistakes-required.yml` is a thin caller of the shared `kunchenguid/no-mistakes` composite action, pinned to an immutable commit SHA and never `@main`.
-Enforcement logic and its tests live upstream. Change them there, and bump this repo's pin in a deliberate separate PR.
-This repo still owns its `on:`, `paths-ignore`, `concurrency`, `permissions`, job name, and author-exemption `if:`.
+CI runs on the self-hosted Woodpecker pipeline in `.woodpecker/ci.yaml`; this repository does not use GitHub Actions.
 
 ## Workflow
 
-Workflow requires `no-mistakes` v1.46.0 or newer.
-Earlier versions can route pushes to a fork, but they do not write the pipeline attestation required by this repository's PR gate.
-
-1. Fork the repo, then clone the parent repo or set your local `origin` back to the parent repo (`git@github.com:kunchenguid/lavish-axi.git`).
-2. Create a branch and make your changes.
-3. Initialize or refresh the gate with your fork as the push target: `no-mistakes init --fork-url git@github.com:<you>/folio-axi.git`.
-4. Commit your changes.
-5. Push through the gate instead of pushing to `origin`:
+1. Create a branch and make your changes.
+2. Commit your changes.
+3. Push through the configured gate instead of pushing directly:
 
    ```sh
    git push no-mistakes
    ```
 
-6. Run `no-mistakes` to attach to the pipeline, watch findings, and auto-fix or review as needed.
-7. Once the pipeline passes, it pushes the branch to your fork and opens the PR against this parent repo for you.
+4. Run `no-mistakes` to attach to the pipeline, watch findings, and auto-fix or review as needed.
 
 See the [no-mistakes quick start](https://kunchenguid.github.io/no-mistakes/start-here/quick-start/) for the full first-run walkthrough.
 
@@ -43,8 +30,7 @@ See the [no-mistakes quick start](https://kunchenguid.github.io/no-mistakes/star
 - Node 22+, ESM-only JavaScript, and TypeScript `checkJs` validation.
 - Run `pnpm run check` before pushing.
 - Do not reformat repo-provided `.agents/` skill content; `.prettierignore` excludes it intentionally.
-- Do not hand-edit `CHANGELOG.md` or `.release-please-manifest.json`.
-- User-facing telemetry docs should stay minimal: anonymous usage telemetry, no sensitive content, and `FOLIO_AXI_TELEMETRY=0` opt-out.
+- `CHANGELOG.md` is upstream history through 0.1.96; record Folio changes in [docs/folio/README.md](docs/folio/README.md).
 
 ## Questions
 
