@@ -12,7 +12,7 @@ This file is loaded every session. It keeps only rules that apply to almost ever
 
 ```sh
 pnpm run check          # build, lint, format check, typecheck, tests, and skill freshness
-pnpm run build          # bundle dist/cli.mjs and copy chrome/design assets into dist
+pnpm run build          # bundle dist/cli.mjs (dispatcher), cli-main.mjs, hook.mjs and copy chrome/design assets into dist
 pnpm run build:skill    # regenerate skills/folio/SKILL.md from src/skill.js
 pnpm test               # node:test runner (test/*.test.js)
 pnpm run lint           # ESLint over bin src test scripts
@@ -34,7 +34,7 @@ Seven-tab pool regression: `FOLIO_AXI_BROWSER_E2E=1 node --test test/event-trans
 - `CHANGELOG.md` is upstream history up to 0.1.96. Folio has no release-please; record Folio changes in `docs/folio/README.md`.
 - Pushes go through [no-mistakes](https://github.com/kunchenguid/no-mistakes). CI is the self-hosted Woodpecker pipeline in `.woodpecker/ci.yaml`; there is no GitHub Actions workflow.
 - Tests that start the server set `FOLIO_AXI_STATE_DIR` and use an ephemeral port.
-- `run()` returns on `--version` / `-v` / `-V` before `ensureStateDir` (`test/cli-version.test.js`). `folio-axi hook <event>` also returns before it and prints raw hook JSON, never AXI output. New startup work goes after that short-circuit.
+- `run()` returns on `--version` / `-v` / `-V` before `ensureStateDir` (`test/cli-version.test.js`). `folio-axi hook <event>` never reaches `run()` and prints raw hook JSON, never AXI output. `bin/folio-axi.js` dispatches hooks to `src/hook-main.js`, which must stay free of package imports while idle and loads `src/cli.js` only when feedback is waiting (`test/hook-startup.test.js`). New startup work goes after that short-circuit.
 - `canonicalFile` runs `realpath`. Two paths to the same file are one session.
 - `normalizeArgv` must let AXI `RESERVED_COMMANDS` (including `update`) pass through. A bare `folio-axi update` must not become `open update`.
 

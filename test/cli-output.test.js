@@ -2351,7 +2351,7 @@ test("setup hooks previews the Claude Code hooks without writing", async () => {
     const result = runSetupHooks(homeDir, stateDir);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /not-installed/);
-    assert.match(result.stdout, /folio-axi hook stop/);
+    assert.match(result.stdout, /bin\/folio-axi\.js\\" hook stop/);
     assert.equal(existsSync(path.join(homeDir, ".claude", "settings.json")), false);
   } finally {
     await rm(stateDir, { force: true, recursive: true });
@@ -2373,9 +2373,9 @@ test("setup hooks --write merges Folio hooks and keeps the user's other hooks", 
     const settings = JSON.parse(await readFile(settingsFile, "utf8"));
     assert.equal(settings.model, "x");
     assert.deepEqual(settings.hooks.Stop[0], other);
-    assert.match(settings.hooks.Stop[1].hooks[0].command, /folio-axi hook stop/);
-    assert.match(settings.hooks.SessionStart[0].hooks[0].command, /folio-axi hook session-start/);
-    assert.match(settings.hooks.UserPromptSubmit[0].hooks[0].command, /folio-axi hook prompt-submit/);
+    assert.match(settings.hooks.Stop[1].hooks[0].command, /folio-axi.js" hook stop/);
+    assert.match(settings.hooks.SessionStart[0].hooks[0].command, /folio-axi.js" hook session-start/);
+    assert.match(settings.hooks.UserPromptSubmit[0].hooks[0].command, /folio-axi.js" hook prompt-submit/);
 
     const again = runSetupHooks(homeDir, stateDir, ["--write"]);
     assert.match(again.stdout, /unchanged/);

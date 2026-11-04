@@ -308,3 +308,13 @@ test("hook preserves structured feedback and does not acknowledge a cut batch", 
     assert.deepEqual(cut.acks, []);
   });
 });
+
+test("switching hooks to the direct node form replaces the PATH form without duplicates", () => {
+  const nodeForm = folioHookEntries('node "D:/code/folio-axi/bin/folio-axi.js"');
+  const [installed] = computeClaudeHookUpdate({ hooks: {} }, folioHookEntries());
+  const [switched, changed] = computeClaudeHookUpdate(installed, nodeForm);
+  assert.equal(changed, true);
+  for (const event of Object.keys(nodeForm)) assert.deepEqual(switched.hooks[event], [nodeForm[event]]);
+  const [back] = computeClaudeHookUpdate(switched, folioHookEntries());
+  for (const event of Object.keys(nodeForm)) assert.deepEqual(back.hooks[event], [folioHookEntries()[event]]);
+});
