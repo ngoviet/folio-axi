@@ -191,10 +191,73 @@ test("pruneEndedSessions drops only long-ended sessions with nothing pending", a
         b: { key: "b", file: "/b.html", status: "ended", updated_at: new Date().toISOString(), delivery_seq: 0 },
         c: { key: "c", file: "/c.html", status: "open", updated_at: old, delivery_seq: 0 },
         d: { key: "d", file: "/d.html", status: "ended", updated_at: old, prompts: [{ prompt: "x" }], delivery_seq: 0 },
+        e: {
+          key: "e",
+          file: "/e.html",
+          status: "ended",
+          updated_at: old,
+          artifact_failures: [{ kind: "artifact-unavailable" }],
+          delivery_seq: 0,
+        },
       },
     });
     const removed = await store.pruneEndedSessions(7 * 24 * 3600 * 1000);
     assert.deepEqual(removed, ["a"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("opening as a new owner replaces the active listener", async () => {
+  await withServer(async ({ base, artifact }) => {
+    const { key } = await open(base, artifact, "sess-a");
+    const waiting = poll(base, artifact, { session_id: "sess-a", timeoutMs: "10000" });
+    while (!(await fetch(`${base}/health`).then((r) => r.json())).listeners?.some((entry) => entry.key === key)) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    await open(base, artifact, "sess-b");
+    assert.equal((await (await waiting).json()).code, "LISTENER_REPLACED");
+    await sendPrompt(base, key, "for b");
+    assert.equal((await (await poll(base, artifact, { session_id: "sess-b" })).json()).prompts[0].prompt, "for b");
+  });
+});
+
+test("unacknowledged attachments stay referenced after delivery grace", async () => {
+  await withServer(async ({ stateFile, artifact }) => {
+    const store = new SessionStore(stateFile);
+    const session = await store.upsertSession(artifact, "http://localhost");
+    await store.queuePrompts(
+      session.key,
+      { prompts: [{ prompt: "image", attachments: [{ id: "img", name: "image" }] }] },
+      {
+        resolveAttachment: async () => ({
+          id: "img",
+          path: "/image",
+          mime: "image/png",
+          bytes: 1,
+          width: 1,
+          height: 1,
+        }),
+      },
+    );
+    const delivery = await store.takeFeedback(session.key, { ackable: true });
+    const later = Date.now() + 365 * 24 * 3600 * 1000;
+    assert.ok((await store.referencedAttachmentIds({ now: later })).has(`${session.key}/img`));
+    await store.ackDelivery(session.key, delivery.delivery_id);
+    assert.equal((await store.referencedAttachmentIds({ now: later })).has(`${session.key}/img`), false);
+  });
+});
+
+test("failed state replacement leaves the existing destination intact and removes its temporary file", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "folio-rename-"));
+  try {
+    const { mkdir, readdir } = await import("node:fs/promises");
+    const destination = path.join(dir, "state.json");
+    await mkdir(destination);
+    await writeFile(path.join(destination, "sentinel"), "intact");
+    await assert.rejects(new SessionStore(destination).writeState({ sessions: {} }));
+    assert.equal(await readFile(path.join(destination, "sentinel"), "utf8"), "intact");
+    assert.deepEqual(await readdir(dir), ["state.json"]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

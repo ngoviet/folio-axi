@@ -827,28 +827,35 @@ export async function serve({
       const file = await resolveAllowedArtifactFile(req.body?.file);
       const key = sessionKey(file);
       const reopen = Boolean(req.body.reopen);
-      const existing = await store.findByKey(key);
       const sessionUrl = `http://${hostForUrl(resolvedLinkHost)}:${publicPort}/session/${key}`;
       // A user-initiated end (ending or send-and-ending from the browser) means the human
       // deliberately closed the review surface. Silently reopening it on the next
       // `folio-axi <file>` is the exact behavior this route exists to prevent - require an
       // explicit `reopen` opt-in instead of reviving it automatically. Agent-initiated ends
       // (`folio-axi end`) keep reviving on the next open, same as before this change.
-      if (existing?.status === "ended" && existing.ended_by === "user" && !reopen) {
-        logEvent?.(`session open blocked (user-ended) key=${key} file=${file}`);
-        res.json({
-          key,
-          file,
-          url: sessionUrl,
-          status: "user-ended",
-          ...networkWarningField(),
+      const { session, existing, blocked } = await pollOwnershipLock.runExclusive(async () => {
+        const existing = await store.findByKey(key);
+        if (existing?.status === "ended" && existing.ended_by === "user" && !reopen) {
+          return { existing, blocked: true };
+        }
+        const session = await store.upsertSession(file, sessionUrl, {
+          ownerSessionId: typeof req.body?.owner_session_id === "string" ? req.body.owner_session_id : "",
         });
+        if (session.owner_session_id && session.owner_session_id !== existing?.owner_session_id) {
+          const holder = activePolls.get(key);
+          if (holder) {
+            holder.replaced = true;
+            holder.replace?.();
+            releasePollListener(holder, activePolls, deliveredFeedback, events);
+          }
+        }
+        return { session, existing, blocked: false };
+      });
+      if (blocked) {
+        res.json({ key, file, url: sessionUrl, status: "user-ended", ...networkWarningField() });
         return;
       }
       const url = shouldDisableLayoutGateOpen(req.body || {}) ? appendNoGateParam(sessionUrl) : sessionUrl;
-      const session = await store.upsertSession(file, sessionUrl, {
-        ownerSessionId: typeof req.body?.owner_session_id === "string" ? req.body.owner_session_id : "",
-      });
       if (existing?.status === "ended") {
         clearFeedbackDelivery(key, activePolls, deliveredFeedback, events);
       }
@@ -951,28 +958,26 @@ export async function serve({
       // session is refused unless it explicitly takes over, which also moves ownership.
       const pollSessionId = normalizeOwnerSessionId(req.query.session_id);
       const ackable = req.query.ack === "1";
-      if (pollSessionId) {
-        const ownedSession = await store.findByKey(key);
-        const ownerSessionId = ownedSession?.owner_session_id || "";
-        if (ownerSessionId && ownerSessionId !== pollSessionId) {
-          if (!takeover) {
-            detachRequestClose();
-            res.status(409).json({
-              status: "error",
-              code: "NOT_OWNER",
-              error: "this page belongs to another agent session",
-              owner_session_id: ownerSessionId,
-            });
-            return;
-          }
-          await store.setOwnerSession(key, pollSessionId);
-        } else if (!ownerSessionId && ownedSession) {
-          await store.setOwnerSession(key, pollSessionId);
-        }
-      }
       const { holder, previousPresence, conflict, missing } = await pollOwnershipLock.runExclusive(async () => {
         const currentHolder = activePolls.get(key);
-        if (currentHolder && !takeover) return { conflict: listenerConflict(currentHolder, "LISTENER_ACTIVE") };
+        if (pollSessionId) {
+          const ownedSession = await store.findByKey(key);
+          const ownerSessionId = ownedSession?.owner_session_id || "";
+          if (ownerSessionId && ownerSessionId !== pollSessionId && !takeover) {
+            return {
+              conflict: {
+                status: "error",
+                code: "NOT_OWNER",
+                error: "this page belongs to another agent session",
+                owner_session_id: ownerSessionId,
+              },
+            };
+          }
+          if (currentHolder && !takeover) return { conflict: listenerConflict(currentHolder, "LISTENER_ACTIVE") };
+          if (ownedSession && ownerSessionId !== pollSessionId) await store.setOwnerSession(key, pollSessionId);
+        } else if (currentHolder && !takeover) {
+          return { conflict: listenerConflict(currentHolder, "LISTENER_ACTIVE") };
+        }
         const nextHolder = { key, owner, startedAt: Date.now(), replaced: false, replace: null };
         claimedHolder = nextHolder;
         const priorPresence = presenceSignature(key, activePolls, deliveredFeedback);

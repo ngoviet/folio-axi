@@ -767,6 +767,7 @@ export class SessionStore {
         if (session?.status !== "ended") continue;
         if (Array.isArray(session.prompts) && session.prompts.length > 0) continue;
         if (isUnackedDelivery(session.unacked_delivery)) continue;
+        if (Array.isArray(session.artifact_failures) && session.artifact_failures.length > 0) continue;
         const updated = Date.parse(session.updated_at || "");
         if (!Number.isFinite(updated) || now - updated < maxAgeMs) continue;
         delete state.sessions[key];
@@ -859,7 +860,7 @@ export class SessionStore {
     const state = await this.readState();
     const referenced = new Set();
     for (const session of Object.values(state.sessions)) {
-      for (const prompt of session.prompts || []) {
+      for (const prompt of [...(session.prompts || []), ...(session.unacked_delivery?.prompts || [])]) {
         for (const attachment of prompt.attachments || []) {
           if (attachment && attachment.id) referenced.add(`${session.key}/${attachment.id}`);
         }
@@ -907,8 +908,7 @@ export class SessionStore {
 
   // Folio: write a sibling temp file and rename it over state.json, so a crash mid-write never
   // leaves a truncated file. Windows can refuse the rename for a moment while another process
-  // (an antivirus scan, a reader) holds the target open, so retry briefly before falling back
-  // to the old in-place write.
+  // (an antivirus scan, a reader) holds the target open.
   async writeState(state) {
     const body = `${JSON.stringify(state, null, 2)}\n`;
     const temp = `${this.file}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`;
@@ -919,14 +919,12 @@ export class SessionStore {
         return;
       } catch (error) {
         const retryable = ["EPERM", "EACCES", "EBUSY"].includes(error?.code);
-        if (retryable && attempt < 5) {
-          await new Promise((resolve) => setTimeout(resolve, 20 * (attempt + 1)));
+        if (retryable && attempt < 20) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
           continue;
         }
         await rm(temp, { force: true }).catch(() => {});
-        if (!retryable) throw error;
-        await writeFile(this.file, body);
-        return;
+        throw error;
       }
     }
   }

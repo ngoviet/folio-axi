@@ -177,3 +177,39 @@ test("computeClaudeHookUpdate replaces old Folio and bare lavish hooks only", ()
   const [, again] = computeClaudeHookUpdate(updated);
   assert.equal(again, false);
 });
+
+test("hook preserves structured feedback and does not acknowledge a cut batch", async () => {
+  await withStateDir(async (stateDirectory) => {
+    const response = {
+      status: "feedback",
+      delivery_id: "d",
+      prompts: [
+        {
+          prompt: "x".repeat(2100),
+          selector: "s".repeat(200),
+          text: "a\nb",
+          target: { row: 2 },
+          attachments: [{ id: "i", path: "/image", name: "name" }],
+        },
+      ],
+      artifact_failures: [{ kind: "fatal", detail: "z".repeat(300) }],
+      dom_snapshot: "snapshot",
+    };
+    const options = {
+      input: { session_id: "s1", cwd },
+      env: {},
+      stateDirectory,
+      readSessions: async () => [page("mine", { owner_session_id: "s1", prompts: [{}] })],
+      pollOnce: async () => response,
+    };
+    const result = await runHookEvent("prompt-submit", options);
+    const context = JSON.parse(result.output).hookSpecificOutput.additionalContext;
+    assert.ok(context.includes(JSON.stringify(response.prompts)));
+    assert.ok(context.includes(JSON.stringify(response.artifact_failures)));
+    assert.ok(context.includes("snapshot"));
+    assert.equal(result.acks.length, 1);
+    response.dom_snapshot = "z".repeat(50000);
+    const cut = await runHookEvent("prompt-submit", options);
+    assert.deepEqual(cut.acks, []);
+  });
+});

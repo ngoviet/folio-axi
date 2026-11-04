@@ -93,13 +93,6 @@ export function createSessionStartContext({ sessions, cwd, sessionId }) {
   return lines.join("\n").slice(0, HOOK_CONTEXT_LIMIT);
 }
 
-function excerpt(value, limit = 240) {
-  const text = String(value || "")
-    .replace(/\s+/g, " ")
-    .trim();
-  return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
-}
-
 /**
  * Turns one delivered poll response into plain text for a hook. The batch is acked only when
  * all of it fits; a cut batch stays unacked so `folio-axi poll` hands it out whole.
@@ -111,16 +104,7 @@ export function formatHookFeedback(file, response, budget = HOOK_FEEDBACK_LIMIT)
   const prompts = Array.isArray(response?.prompts) ? response.prompts : [];
   const failures = Array.isArray(response?.artifact_failures) ? response.artifact_failures : [];
   const lines = [`Feedback from the folio-axi review page ${file}:`];
-  for (const prompt of prompts) {
-    const parts = [`- ${prompt.tag ? `[${prompt.tag}] ` : ""}${excerpt(prompt.prompt, 2000) || "(no text)"}`];
-    if (prompt.selector) parts.push(`  on: ${excerpt(prompt.selector, 160)}`);
-    if (prompt.text) parts.push(`  selected text: "${excerpt(prompt.text)}"`);
-    for (const attachment of Array.isArray(prompt.attachments) ? prompt.attachments : []) {
-      if (attachment?.path) parts.push(`  image: ${attachment.path}`);
-    }
-    lines.push(...parts);
-  }
-  for (const failure of failures) lines.push(`- fatal artifact failure: ${failure.kind}: ${excerpt(failure.detail)}`);
+  lines.push(JSON.stringify({ prompts, artifact_failures: failures, dom_snapshot: response?.dom_snapshot || "" }));
   if (response?.session_ended) {
     lines.push(
       response.ended_by === "user"
@@ -135,7 +119,10 @@ export function formatHookFeedback(file, response, budget = HOOK_FEEDBACK_LIMIT)
   const text = lines.join("\n");
   if (text.length <= budget) return { text, complete: true };
   return {
-    text: `${text.slice(0, Math.max(0, budget - 160))}\n[cut] Run \`folio-axi poll ${file}\` to read the whole batch.`,
+    text: `${text.slice(0, Math.max(0, budget - 160))}\n[cut] Run \`folio-axi poll ${file}\` to read the whole batch.`.slice(
+      0,
+      budget,
+    ),
     complete: false,
   };
 }
