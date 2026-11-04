@@ -155,7 +155,7 @@ export class SessionStore {
       // Compact prompt_id acks for bubbles evicted by the stored-chat byte bound. Reopening
       // must keep them: they are the settlement/dedup source once the visible entry is gone.
       chat_ack_ids: Array.isArray(existing.chat_ack_ids) ? existing.chat_ack_ids : [],
-      // Counts the takes that stamped Seen on chat entries (docs/delivery-acks.md). Reset on reopen
+      // Counts the takes that stamped or reserved chat entries (docs/delivery-acks.md). Reset on reopen
       // and a later restore could un-stamp an older take's entries, so it is carried like chat.
       delivery_seq: normalizeRevision(existing.delivery_seq),
       // The last take of the rounds that have ended. Reopening starts a new round: a note an ended

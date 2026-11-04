@@ -30,7 +30,7 @@ true, not a gap.
 ## States per request
 
 ```
-queued ──send──> sent ──poll takes it──> seen ──artifact changes──> working ──agent reply──> done
+queued ──send──> sent ──poll received──> seen ──artifact changes──> working ──agent reply──> done
  (tab)          (server)                 (agent)                    (agent)                  (agent)
 ```
 
@@ -52,8 +52,9 @@ the stamps with no new wire shape.
 - **Delivery stamps by position, not by id.** `agentFacingPrompt` strips `prompt_id` from stored
   prompts at queue time, so ids are gone by the time `takeFeedback` runs. A take drains every
   pending prompt, and `queuePrompts` runs under the same store lock, so inside `takeFeedback` the
-  set "user entries with no `delivered_at`" is exactly the batch being delivered. Each take increments
-  `session.delivery_seq` and writes it as `delivered_seq` on the entries it stamps.
+  set "user entries with neither `delivered_at` nor `delivered_seq`" is exactly the batch being
+  delivered. Each take increments `session.delivery_seq` and writes it as `delivered_seq` on the
+  entries it stamps or reserves.
 - **An ackable take reserves, its ack stamps.** The take writes only `delivered_seq` and keeps that
   sequence on `unacked_delivery.seq`; `ackDelivery` then stamps exactly those entries. A note queued
   before the ack has no sequence and waits for its own take. A closed poll or a CLI that died before
