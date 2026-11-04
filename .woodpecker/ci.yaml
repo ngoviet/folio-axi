@@ -19,6 +19,7 @@ steps:
       FOLIO_AXI_NO_OPEN: "1"
     commands:
       - corepack enable
-      - corepack prepare pnpm@11.1.1 --activate
-      - pnpm install --frozen-lockfile
-      - pnpm run check
+      - chown -R node:node .
+      - runuser -u node -- env HOME=/home/node corepack prepare pnpm@11.1.1 --activate
+      - runuser -u node -- env HOME=/home/node pnpm install --frozen-lockfile
+      - runuser -u node -- env HOME=/home/node pnpm run check
