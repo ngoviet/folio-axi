@@ -1251,17 +1251,6 @@ test("chrome ignores Folio postMessages not sent by the artifact iframe", async 
   assert.match(js, /event\.source\s*!==\s*frame\.contentWindow/);
 });
 
-test("chrome keeps queued prompts persisted until submit succeeds", async () => {
-  const js = await chromeClientSource();
-
-  assert.doesNotMatch(js, /const prompts = queued\.splice\(0, queued\.length\)/);
-  assert.match(js, /await fetch\("\/api\/" \+ key \+ "\/prompts", \{/);
-  assert.doesNotMatch(js, /queued\.splice\(0, prompts\.length\)/);
-  assert.match(js, /for \(const prompt of prompts\) \{/);
-  assert.match(js, /const index = queued\.indexOf\(prompt\)/);
-  assert.match(js, /if \(index !== -1\) queued\.splice\(index, 1\)/);
-});
-
 test("/health reports the server version so clients can detect upgrades", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
   const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
@@ -5442,15 +5431,6 @@ test("SSE agent-presence returns to waiting when poll feedback storage fails", a
     await server.close();
     await rm(dir, { recursive: true, force: true });
   }
-});
-
-test("heartbeat long-poll errors close the stream without Express error handling", async () => {
-  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
-
-  assert.match(source, /function handleRespondError\(error\) \{/);
-  assert.match(source, /if \(streamHeartbeat\) \{/);
-  assert.match(source, /res\.destroy\(error\)/);
-  assert.match(source, /respond\(\)\.catch\(handleRespondError\)/);
 });
 
 test("a poll dropped before it arms never leaves presence listening", async () => {

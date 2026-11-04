@@ -240,6 +240,56 @@ test("poll rejects over-limit agent reply files and stdin with an actionable err
   }
 });
 
+test("poll recovers unacknowledged feedback after the artifact is deleted", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "folio-poll-deleted-"));
+  const stateDir = path.join(dir, "state");
+  await mkdir(stateDir);
+  const artifact = path.join(dir, "artifact.html");
+  await writeFile(artifact, "<!doctype html><html><body>ok</body></html>");
+  const server = await serve({
+    port: 0,
+    host: "127.0.0.1",
+    stateFile: path.join(stateDir, "state.json"),
+    version: VERSION,
+  });
+  const env = {
+    ...process.env,
+    FOLIO_AXI_STATE_DIR: stateDir,
+    FOLIO_AXI_PORT: String(server.port),
+    FOLIO_AXI_HOST: "127.0.0.1",
+    FOLIO_AXI_LINK_HOST: "127.0.0.1",
+    FOLIO_SESSION_ID: "deleted-artifact-owner",
+  };
+  try {
+    const base = `http://127.0.0.1:${server.port}`;
+    const opened = await fetch(`${base}/api/sessions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ file: artifact, owner_session_id: env.FOLIO_SESSION_ID }),
+    }).then((response) => response.json());
+    const message = "feedback survives a deleted artifact";
+    const queued = await fetch(`${base}/api/${opened.key}/prompts`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompts: [{ prompt: message, tag: "message" }] }),
+    });
+    assert.equal(queued.status, 200);
+    await rm(artifact);
+    const query = new URLSearchParams({ file: artifact, ack: "1", session_id: env.FOLIO_SESSION_ID, timeoutMs: "0" });
+    const taken = await fetch(`${base}/api/poll?${query}`).then((response) => response.json());
+    assert.ok(taken.delivery_id);
+    assert.equal(taken.prompts[0].prompt, message);
+    const result = await runCli(["poll", artifact, "--timeout-ms", "0"], { env });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /feedback survives a deleted artifact/);
+    const after = await fetch(`${base}/api/poll?${query}`).then((response) => response.json());
+    assert.equal(after.status, "waiting");
+  } finally {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("poll --agent-reply-file and stdin land multiline Markdown in the transcript and chrome html", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "lavish-agent-reply-e2e-"));
   const stateDir = path.join(dir, "state");
