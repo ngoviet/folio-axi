@@ -2079,10 +2079,10 @@ export function createArtifactSdk(
 
   // ---------------------------------------------------------------------------
   // Review-context preservation. A live reload replaces this document wholesale, so anything the
-  // user typed or answered inside it is lost unless the chrome replays it. Lavish only ever
+  // user typed or answered inside it is lost unless the chrome replays it. Folio only ever
   // replays state it owns: an open annotation card, and controls inside a `data-lavish-question`
-  // scope (the documented Lavish input contract). Application-owned form state is left alone
-  // because Lavish cannot tell an intentional reset from a preserved answer.
+  // scope (the documented Folio input contract). Application-owned form state is left alone
+  // because Folio cannot tell an intentional reset from a preserved answer.
   // ---------------------------------------------------------------------------
 
   let activeCardContext = null;
@@ -2230,7 +2230,7 @@ export function createArtifactSdk(
     document.documentElement.appendChild(host);
 
     shadow = host.attachShadow({ mode: "open" });
-    // Keep the artifact's own key handlers from seeing, and cancelling, typing in Lavish controls.
+    // Keep the artifact's own key handlers from seeing, and cancelling, typing in Folio controls.
     for (const type of ["keydown", "keypress", "keyup"]) {
       shadow.addEventListener(type, (event) => event.stopPropagation());
     }
@@ -2454,7 +2454,7 @@ export function createArtifactSdk(
         closeCard();
       }
     });
-    // Unsent annotation text is review context Lavish owns, so it is reported to the chrome and
+    // Unsent annotation text is review context Folio owns, so it is reported to the chrome and
     // replayed after a live reload.
     textarea.addEventListener("input", scheduleReviewStateReport);
     if (typeof options.restoreText === "string") {
@@ -2529,7 +2529,7 @@ export function createArtifactSdk(
     }
   });
 
-  // Bring a warning's element into view and flash it. The marker is Lavish UI, so it is excluded
+  // Bring a warning's element into view and flash it. The marker is Folio UI, so it is excluded
   // from the layout audit and never becomes a finding of its own.
   function revealElement(selector) {
     const target = selector === "html" ? document.documentElement : safeQuerySelector(selector);
@@ -2689,7 +2689,7 @@ export function createArtifactSdk(
   // Report the agent-declared revision registry so the chrome can offer its
   // legend. Read-only: the SDK never marks up the page for it, because a
   // highlight painted here would make the served artifact differ from the file
-  // opened without Lavish. The message is sent even when the artifact declares
+  // opened without Folio. The message is sent even when the artifact declares
   // nothing, so a reload that removed the registry clears a stale legend.
   function reportArtifactRevisions() {
     let payload = { revisions: [], marks: [] };

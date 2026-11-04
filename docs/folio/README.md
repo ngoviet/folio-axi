@@ -45,7 +45,7 @@ Kế hoạch đầy đủ có sơ đồ: [ke-hoach.html](ke-hoach.html) (bản t
 ## Quy tắc khi làm việc ở repo này
 
 - Luôn giao tiếp với chủ bằng tiếng Việt. Không thêm attribution Claude/Anthropic vào commit, PR hay tệp.
-- Đây là repo private. CI dùng **Woodpecker tự host** (https://ci.bepmamnon.com), không dùng GitHub Actions. Xem `~/.claude/rules/woodpecker-ci.md`; workflow `.github/workflows/ci.yml` của upstream sẽ không chạy.
+- Repo **public** từ 04/11/2026 (chủ quyết). CI dùng **Woodpecker tự host**, repo 83 (https://ci.bepmamnon.com/repos/83), không dùng GitHub Actions. Woodpecker đặt `require_approval: forks`: PR từ fork chỉ chạy khi chủ bấm duyệt, nên đọc `.woodpecker/` và script `package.json` của PR trước khi duyệt (pipeline chạy trên PC4, cùng máy prod). Xem `~/.claude/rules/woodpecker-ci.md`; workflow `.github/workflows/ci.yml` của upstream sẽ không chạy.
 - CLI agent đọc output thì theo chuẩn AXI (output gọn, có tổng, lỗi + mã thoát, gợi ý bước tiếp). Checklist: `D:\code\claude_optimize\docs\axi-design-reference.md`.
 - Sửa ít nhất có thể, giữ cấu trúc gần bản gốc để còn lấy được bản sửa của upstream.
 - Bài học về Lavish trên PC1: `D:\code\claude_optimize\docs\lessons-learned.md`, các mục vòng 90, 92, 93, 95, 97.
@@ -62,6 +62,7 @@ Kế hoạch đầy đủ có sơ đồ: [ke-hoach.html](ke-hoach.html) (bản t
 - [x] Test: 11 test hỏng sẵn trên Windows vì không tạo được symlink nay tự bỏ qua (`test/helpers/symlinks.js`); thêm `test/folio-delivery.test.js`, `test/hooks.test.js`. `pnpm run check` sạch. Đã chạy thử thật CLI trên PC1 (mở, NOT_OWNER, poll + ack, hook Stop, SessionStart, `end` khi tệp đã xoá).
 - [ ] **GĐ 4** (điện thoại): chờ chủ chọn Tailscale hay Cloudflare Tunnel; mã truy cập theo trang và #474 làm sau khi chọn.
 - [ ] **GĐ 5:** chờ chủ duyệt sửa mục "Trình bày" trong `~/.claude/CLAUDE.md`; chưa gỡ lavish-axi 0.1.93. Cài thử: `npm link` trong repo rồi `folio-axi setup hooks --write` (chủ tự chạy hoặc duyệt).
+- [x] Đổi tên hiển thị: mọi chữ "Lavish" / "Lavish Editor" trong giao diện, help CLI, playbook, README và tài liệu thành "Folio". Giữ tên API của SDK trang (`window.lavish.*`, `data-lavish-*`, `lavish:*`, `%% lavish-icon`) để trang viết cho Lavish vẫn chạy và còn lấy được bản sửa upstream. `CHANGELOG.md` và `docs/folio/` giữ nguyên vì là lịch sử.
 - Chưa làm: hiển thị trên trang "phiên đã đóng, có nút chép câu trả lời" (thiết kế mục 6) và cho phép `reply` sau Send & End.
 
 ## Liên quan ở nơi khác

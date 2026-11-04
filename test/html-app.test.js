@@ -153,7 +153,7 @@ test("hostRejectedShareWrite separates an answered rejection from an unknown out
   }
 });
 
-test("a site_id the host echoes cannot smuggle flags into what Lavish reports", async () => {
+test("a site_id the host echoes cannot smuggle flags into what Folio reports", async () => {
   // The echoed id reaches a backticked republish command an agent may run, so `abc123 --password
   // evil` must not survive. It is a path segment; anything normalizeSiteId refuses is not one.
   const { fetchImpl } = recordingFetch(jsonResponse(200, { site_id: "abc123 --password evil", url: "https://x/" }));
@@ -251,7 +251,7 @@ test("createHtmlAppUpdatePayload omits the password to preserve it and sends one
 
 test("createHtmlAppUpdatePayload never sends an empty password the host accepts and ignores", () => {
   // Probed live: PUT with password "" answers 200 and leaves the original password working, so
-  // sending one would make Lavish report a page as public while it is still gated.
+  // sending one would make Folio report a page as public while it is still gated.
   for (const password of ["", "   ", null, undefined]) {
     assert.deepEqual(createHtmlAppUpdatePayload("<h1>Hi</h1>", { password }), { html_content: "<h1>Hi</h1>" });
   }

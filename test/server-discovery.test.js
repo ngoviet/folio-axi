@@ -343,7 +343,7 @@ test(
   },
 );
 
-test("a second server for a port whose loopback a Lavish server owns refuses to start", async (t) => {
+test("a second server for a port whose loopback a Folio server owns refuses to start", async (t) => {
   const otherHost = otherLocalIpv4();
   if (!otherHost) {
     t.skip("host has no non-loopback IPv4 address");
@@ -370,7 +370,7 @@ test("a second server for a port whose loopback a Lavish server owns refuses to 
           log: () => {},
           idleTimeoutMs: null,
         }),
-        /Another Lavish server .* already owns port/,
+        /Another Folio server .* already owns port/,
       );
       // The loser must not have taken the other address on its way out: a split daemon pair on one
       // port is exactly what the loopback owner check exists to prevent.
@@ -767,7 +767,7 @@ test(
       const artifact = await writeArtifact(dir);
       const port = await freePort(otherHost);
       // A loopback-only server of this installation that another CLI restarts every time this one
-      // shuts it down: after each /shutdown it answers like a Lavish server still starting (503),
+      // shuts it down: after each /shutdown it answers like a Folio server still starting (503),
       // which frees the port for this CLI's probes but makes the server it spawns stand down.
       let shutdowns = 0;
       let startingUntil = 0;
@@ -1115,7 +1115,7 @@ function lsofAvailable() {
 }
 
 // A child process listening at host:port. The script's file name is what `ps` shows, so a
-// pre-handshake Lavish server is one whose name says folio-axi and an unrelated one is not.
+// pre-handshake Folio server is one whose name says folio-axi and an unrelated one is not.
 async function spawnListener(dir, name, host, port, source) {
   const script = path.join(dir, name);
   await writeFile(script, source);

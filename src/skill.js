@@ -26,7 +26,7 @@ export const ALLOWED_SKILL_FRONTMATTER_KEYS = Object.freeze([
  *
  * This is a discovery stub, not a copy of CLI guidance. Installed skills go stale;
  * `folio-axi --help`, `folio-axi design`, and `folio-axi playbook <id>` do not.
- * Keep the body to what Lavish is, when to reach for it, how to invoke the CLI,
+ * Keep the body to what Folio is, when to reach for it, how to invoke the CLI,
  * slash-command request handling, and pointers at those commands.
  *
  * The frontmatter is deliberately plain: block-style YAML only (the reference
@@ -47,7 +47,7 @@ metadata:
   hermes-category: productivity
 ---
 
-# Folio (Lavish Editor)
+# Folio (Folio)
 
 Folio opens agent-generated HTML in the browser so a human can annotate it and send feedback back to the agent.
 Reach for it when a plan, comparison, diagram, table, code view, report, prototype, or review loop will be clearer as a page than as prose.

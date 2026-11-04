@@ -59,7 +59,7 @@ Authorization: Bearer <update_key>
 }
 ```
 
-There is no way to remove a page's password. Lavish never sends an empty `password`, and offers no
+There is no way to remove a page's password. Folio never sends an empty `password`, and offers no
 flag that would: ht-ml.app answers `200` to a clear and leaves the page gated, so a backend that
 implements one cannot be told apart from one that does not, and the CLI would report a page as
 public while it is still private.

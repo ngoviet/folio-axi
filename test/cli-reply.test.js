@@ -275,7 +275,7 @@ test("reply refuses a missing session, an unreachable server, and a non-success 
     async ({ artifact, env }) => {
       const missing = await runCli(["reply", artifact, "--agent-reply", "nobody is reviewing"], { env });
       assert.notEqual(missing.status, 0);
-      assert.match(missing.stdout, /No active Lavish Editor session for this file/);
+      assert.match(missing.stdout, /No active Folio session for this file/);
       assert.match(missing.stdout, /NOT_FOUND/);
       assert.match(missing.stdout, /folio-axi/);
       assert.doesNotMatch(missing.stdout, /status: sent/);
@@ -297,7 +297,7 @@ test("reply refuses a missing session, an unreachable server, and a non-success 
       env: cliEnv(path.join(dir, "state"), port),
     });
     assert.notEqual(down.status, 0);
-    assert.match(down.stdout, /occupied by a non-Lavish server|server connection failed|server did not start/);
+    assert.match(down.stdout, /occupied by a non-Folio server|server connection failed|server did not start/);
     assert.match(down.stdout, /SERVER_ERROR/);
     assert.doesNotMatch(down.stdout, /status: sent/);
   } finally {

@@ -576,7 +576,7 @@ test("artifact SDK script is valid JavaScript", () => {
   assert.doesNotThrow(() => new Function(js));
 });
 
-test("artifact SDK ignores Lavish-owned annotation UI", () => {
+test("artifact SDK ignores Folio-owned annotation UI", () => {
   const js = createSdkJs("abc");
 
   assert.match(js, /function isLavishUi/);
@@ -584,7 +584,7 @@ test("artifact SDK ignores Lavish-owned annotation UI", () => {
   assert.match(js, /data-lavish-ui/);
 });
 
-test("artifact SDK isolates Lavish annotation UI in Shadow DOM", () => {
+test("artifact SDK isolates Folio annotation UI in Shadow DOM", () => {
   const js = createSdkJs("abc");
 
   assert.match(js, /attachShadow\(\{\s*mode:\s*["']open["'],?\s*\}\)/);
@@ -769,7 +769,7 @@ test("annotation card title renders selected tag as an html element name", () =>
   assert.match(js, /"Annotate &lt;" \+ c\.tag \+ "&gt;"/);
 });
 
-test("annotation card shadow styles use Lavish design-system variables", () => {
+test("annotation card shadow styles use Folio design-system variables", () => {
   const js = createSdkJs("abc");
 
   assert.match(js, /--ink-900:#0f1115/);
@@ -798,7 +798,7 @@ test("annotate switch shows a brass track and ink knob when enabled", async () =
   assert.match(js, /annotationSwitch\.setAttribute\("aria-pressed", String\(annotation\)\)/);
 });
 
-test("chrome declares the Lavish design-system tokens", async () => {
+test("chrome declares the Folio design-system tokens", async () => {
   const css = await chromeCssSource();
 
   assert.match(css, /--ink-900:#0f1115/);
@@ -860,7 +860,7 @@ test("chrome top bar follows the design mock wordmark and overflow menu treatmen
   const html = createChromeHtml({ key: "abc", file: "/tmp/artifact.html" });
   const css = await chromeCssSource();
 
-  assert.match(html, /class="brand-mark">Lavish/);
+  assert.match(html, /class="brand-mark">Folio/);
   assert.match(html, /class="brand-support">Editor/);
   assert.match(css, /font-family:var\(--font-serif\)/);
   assert.match(css, /letter-spacing:\.18em/);
@@ -957,7 +957,7 @@ test("overflow menu offers publishing an ht-ml.app link via a share dialog", asy
     html,
     /Publish to <a class="share-link" href="https:\/\/ht-ml\.app" target="_blank" rel="noopener noreferrer">ht-ml\.app<\/a>/,
   );
-  assert.match(html, /third-party hosting service, not part of Lavish/);
+  assert.match(html, /third-party hosting service, not part of Folio/);
   assert.match(html, /id="sharePassword"/);
   assert.match(html, /id="shareUpdateKey"/);
   assert.match(html, /Without a password, the page is PUBLIC/);
@@ -1082,7 +1082,7 @@ test("takeover banner explains draft ownership before offering takeover", () => 
   const banner = html.match(/id="handoffBanner"[^>]*>([\s\S]*?)<\/div>/)?.[1] || "";
   assert.match(
     banner,
-    /<span>This review is open in another Lavish tab\. Unsent answers stay in the tab or window where you entered them; taking over in another window does not bring them along\.<\/span>/,
+    /<span>This review is open in another Folio tab\. Unsent answers stay in the tab or window where you entered them; taking over in another window does not bring them along\.<\/span>/,
   );
   assert.doesNotMatch(banner, /switch back there/i);
   assert.match(banner, /id="handoffTakeover"[^>]*>Take over here/);
@@ -1245,7 +1245,7 @@ test("chrome remembers the artifact scroll position across reloads", async () =>
   assert.match(js, /x:\s*lastScroll\.x,\s*y:\s*lastScroll\.y/);
 });
 
-test("chrome ignores Lavish postMessages not sent by the artifact iframe", async () => {
+test("chrome ignores Folio postMessages not sent by the artifact iframe", async () => {
   const js = await chromeClientSource();
 
   assert.match(js, /event\.source\s*!==\s*frame\.contentWindow/);
@@ -1582,7 +1582,7 @@ test("Tailscale mode binds concrete listeners, serves the MagicDNS link, and tea
       headers: { accept: "text/html" },
     });
     assert.equal(landing.status, 200);
-    assert.match(landing.body, /Lavish Editor is running/);
+    assert.match(landing.body, /Folio is running/);
 
     const shutdown = await rawRequest(server.port, "/shutdown", {
       method: "POST",
@@ -3947,7 +3947,7 @@ test("POST /api/:key/share reports an incomplete 200 as published, not as an unk
   await writeFile(artifact, "<!doctype html><html><body><h1>Ship</h1></body></html>");
 
   // The host answered 200, so the page landed. Classifying it as indeterminate contradicted the
-  // error text beside it AND dropped the url Lavish was holding for a page that is public by
+  // error text beside it AND dropped the url Folio was holding for a page that is public by
   // default and, without the update_key, unmanageable forever.
   const requests = [];
   const htmlApp = await startFakeHtmlApp(requests, { site_id: "abc123", url: "https://abc123.ht-ml.app/" });
@@ -6401,7 +6401,7 @@ test("/health and the landing page stay responsive after opening two back-to-bac
       new Promise((_, reject) => setTimeout(() => reject(new Error("/ timed out")), 1000)),
     ]);
     assert.equal(rootRes.status, 200);
-    assert.match(await rootRes.text(), /Lavish Editor/);
+    assert.match(await rootRes.text(), /Folio/);
 
     assert.ok(Date.now() - start < 1000, "both probes should return well under one second");
   } finally {
@@ -6560,7 +6560,7 @@ test("chrome falls back to a default favicon and title when none are provided", 
   const html = createChromeHtml({ key: "abc", file: "/tmp/artifact.html" });
 
   assert.match(html, /<link rel="icon" href="data:image\/svg\+xml,/);
-  assert.match(html, /<title>Lavish Editor<\/title>/);
+  assert.match(html, /<title>Folio<\/title>/);
 });
 
 test("chrome adopts a favicon tag and tab title passed from the artifact", () => {
@@ -6568,11 +6568,11 @@ test("chrome adopts a favicon tag and tab title passed from the artifact", () =>
     '<link rel="icon" href="data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\'><text>🗂️</text></svg>">';
   const html = createChromeHtml(
     { key: "abc", file: "/tmp/artifact.html" },
-    { faviconTag, title: "Project Board · Lavish" },
+    { faviconTag, title: "Project Board · Folio" },
   );
 
   assert.ok(html.includes(faviconTag), "artifact favicon tag is injected verbatim");
-  assert.match(html, /<title>Project Board · Lavish<\/title>/);
+  assert.match(html, /<title>Project Board · Folio<\/title>/);
 });
 
 test("chrome tab title from the artifact is HTML-escaped", () => {

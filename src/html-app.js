@@ -1,5 +1,5 @@
 // Hosted sharing transport: publish a self-contained HTML page to ht-ml.app
-// (https://ht-ml.app), a third-party hosting service not part of Lavish, and return a visitable
+// (https://ht-ml.app), a third-party hosting service not part of Folio, and return a visitable
 // share URL. Creation needs no account or API key - `POST /v1/sites` sends the HTML to
 // ht-ml.app's servers with an optional password, then returns a `url` plus a secret
 // `update_key` (the only credential, returned once, used later to update the page).
@@ -36,7 +36,7 @@ export function createHtmlAppPayload(html, options = {}) {
  *   ORIGINAL password, while serving the new HTML. Preservation is observed, not assumed.
  * - `password: "<new>"`: the old password stopped working and the new one opened the page.
  * - `password: ""`: answered 200 and changed nothing - the original password still opened the
- *   page. The host silently ignores a clear despite documenting one, which is why Lavish has no
+ *   page. The host silently ignores a clear despite documenting one, which is why Folio has no
  *   clear-password path: reporting a page as public while it is still gated is the worse failure.
  *
  * The none -> set transition was probed separately, on a page published with NO password, because
@@ -55,7 +55,7 @@ export function createHtmlAppPayload(html, options = {}) {
  * performs it: `--unpublish` and a `--private`/`--password` republish both hit it, so EVERY
  * surface reporting a page as newly gated carries the caveat. It is also no wider than that - a
  * page that was already private has no publicly cached copy, so rotating its password leaks
- * nothing, and Lavish cannot tell the two apart because it persists no site state.
+ * nothing, and Folio cannot tell the two apart because it persists no site state.
  *
  * The PUT response shape was observed in the same probes: a successful update answers 200 with
  * `url`, `site_id`, `status`, and `update_key`, so the republish and unpublish surfaces get a real

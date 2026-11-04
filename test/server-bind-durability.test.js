@@ -151,7 +151,7 @@ test("a stale control-channel server is replaced only once per CLI invocation", 
 
 test("an occupied loopback control address prevents binding another listener", async () => {
   await withTempDir(async (dir) => {
-    // Drops each connection: startup probes an occupied loopback port for a Lavish owner, and a
+    // Drops each connection: startup probes an occupied loopback port for a Folio owner, and a
     // connection nobody reads would hold this server's close() open.
     const squatter = createServer((socket) => socket.destroy());
     await new Promise((resolve) => squatter.listen({ port: 0, host: "127.0.0.1" }, () => resolve(undefined)));
@@ -188,7 +188,7 @@ test("an occupied loopback control address prevents binding another listener", a
 test("an occupied requested address does not report network_stale after loopback fallback", async () => {
   await withTempDir(async (dir) => {
     const occupiedHost = "::1";
-    // Drops each connection: startup probes an occupied loopback port for a Lavish owner, and a
+    // Drops each connection: startup probes an occupied loopback port for a Folio owner, and a
     // connection nobody reads would hold this server's close() open.
     const squatter = createServer((socket) => socket.destroy());
     await new Promise((resolve, reject) => {
@@ -228,7 +228,7 @@ test("a sole unbindable host falls back to loopback instead of leaving no listen
     const logs = [];
     // Before the fix this rejected: the "has anything bound yet" guard ran before the retry and
     // before any fallback, so a single pinned host that could not bind exited with no listener at
-    // all and the CLI reported "Lavish Editor server did not start".
+    // all and the CLI reported "Folio server did not start".
     const server = await serve({
       port: 0,
       stateFile: path.join(dir, "state.json"),
@@ -267,7 +267,7 @@ test("a bind that cannot succeed anywhere still fails loudly and names the cause
   await withTempDir(async (dir) => {
     // Occupy loopback so even the fallback has nowhere to go: the retry must terminate and the
     // failure must still surface, rather than the loop spinning or swallowing the reason.
-    // Drops each connection: startup probes an occupied loopback port for a Lavish owner, and a
+    // Drops each connection: startup probes an occupied loopback port for a Folio owner, and a
     // connection nobody reads would hold this server's close() open.
     const squatter = createServer((socket) => socket.destroy());
     await new Promise((resolve) => squatter.listen({ port: 0, host: "127.0.0.1" }, () => resolve(undefined)));
@@ -462,7 +462,7 @@ test("a clean detached-server shutdown exits 0 without an error in server.log", 
 
 test("a detached server crash writes a timestamped line to server.log", async () => {
   await withTempDir(async (dir) => {
-    // Drops each connection: startup probes an occupied loopback port for a Lavish owner, and a
+    // Drops each connection: startup probes an occupied loopback port for a Folio owner, and a
     // connection nobody reads would hold this server's close() open.
     const squatter = createServer((socket) => socket.destroy());
     await new Promise((resolve) => squatter.listen({ port: 0, host: "127.0.0.1" }, () => resolve(undefined)));
@@ -641,7 +641,7 @@ test("the control channel finds a fallen-back server on loopback", async () => {
 });
 
 test(
-  "discovery prefers Lavish on loopback over a hanging or foreign requested address",
+  "discovery prefers Folio on loopback over a hanging or foreign requested address",
   { timeout: 10_000 },
   async () => {
     await withTempDir(async (dir) => {

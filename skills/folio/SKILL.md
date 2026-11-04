@@ -9,7 +9,7 @@ metadata:
   hermes-category: productivity
 ---
 
-# Folio (Lavish Editor)
+# Folio (Folio)
 
 Folio opens agent-generated HTML in the browser so a human can annotate it and send feedback back to the agent.
 Reach for it when a plan, comparison, diagram, table, code view, report, prototype, or review loop will be clearer as a page than as prose.

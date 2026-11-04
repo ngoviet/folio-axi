@@ -2,7 +2,7 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Builds a portable copy of a Lavish artifact by inlining only its LOCAL assets - files on disk
+// Builds a portable copy of a Folio artifact by inlining only its LOCAL assets - files on disk
 // the artifact references by relative path, fetchable file:// URL, or a trusted root-absolute
 // resolver - as inline <style>/<script> blocks and data URIs. Remote references (http(s) CDN/font URLs,
 // protocol-relative URLs, CSS url() pointing at the network) are deliberately LEFT AS-IS: the

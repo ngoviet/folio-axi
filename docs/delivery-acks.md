@@ -10,7 +10,7 @@ session-wide signal - the `agent-presence` stream (`waiting` / `listening` / `wo
 "Working..." bubble - and a sent note looks identical whether it is sitting undelivered in
 `state.json`, has been handed to a poll, or was answered an hour ago.
 
-## What Lavish can already observe
+## What Folio can already observe
 
 Every state below is a fact the server records anyway. None of them asks the agent to do anything new.
 

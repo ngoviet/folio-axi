@@ -420,7 +420,7 @@ test(
   },
 );
 
-test("a live reload preserves the review context Lavish owns", { skip: !runBrowserE2e, timeout: 240_000 }, async () => {
+test("a live reload preserves the review context Folio owns", { skip: !runBrowserE2e, timeout: 240_000 }, async () => {
   const temp = await mkdtemp(path.join(tmpdir(), "lavish-review-context-"));
   const port = await freePort();
   const lavishEnv = {
@@ -464,7 +464,7 @@ test("a live reload preserves the review context Lavish owns", { skip: !runBrows
     run("chrome-devtools-axi", ["open", url], chromeEnv);
     wait(4500);
 
-    // Lavish-owned answers: a radio and a checkbox inside a data-lavish-question scope.
+    // Folio-owned answers: a radio and a checkbox inside a data-lavish-question scope.
     click(/radio " Pro"/);
     click(/checkbox " Include beta cohort"/);
     // Unsent annotation text on an element the reload will replace.
@@ -481,7 +481,7 @@ test("a live reload preserves the review context Lavish owns", { skip: !runBrows
     wait(5000);
 
     const after = snapshot();
-    assert.match(after, /radio " Pro" checked/, "a Lavish-owned answer survives the reload");
+    assert.match(after, /radio " Pro" checked/, "a Folio-owned answer survives the reload");
     assert.match(after, /checkbox " Include beta cohort" checked/);
     assert.match(after, /Annotate <p>/, "the open annotation card comes back");
 

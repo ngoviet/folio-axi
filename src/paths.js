@@ -145,7 +145,7 @@ export function stateFile() {
   return path.join(stateDir(), "state.json");
 }
 
-// Which Lavish installation a server belongs to, reported by /health. A CLI only ever stops a
+// Which Folio installation a server belongs to, reported by /health. A CLI only ever stops a
 // duplicate daemon that shares its own state file, so another user's (or another test's) server on
 // the same port at a different address is never touched. Resolve the directory, not the state file:
 // state.json may not exist yet when the server first reports its identity.

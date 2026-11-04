@@ -3,7 +3,7 @@
 This file is loaded every session. It keeps only rules that apply to almost every change. Detail lives in the doc that owns it.
 
 - [README.md](README.md) owns the user-facing contract: features, CLI flags, environment variables, keyboard shortcuts, export and share, and session-end etiquette.
-- CLI output owns what agents are told while using Lavish: `folio-axi --help`, `folio-axi design`, and `folio-axi playbook <id>` (`src/cli.js`, `src/design-reference.js`, `src/playbooks.js`). The generated skill (`src/skill.js` to `skills/folio/SKILL.md`) stays a stub that points at those commands. Do not copy CLI-owned instructions into the skill.
+- CLI output owns what agents are told while using Folio: `folio-axi --help`, `folio-axi design`, and `folio-axi playbook <id>` (`src/cli.js`, `src/design-reference.js`, `src/playbooks.js`). The generated skill (`src/skill.js` to `skills/folio/SKILL.md`) stays a stub that points at those commands. Do not copy CLI-owned instructions into the skill.
 - [VISION.md](VISION.md) owns the acceptance policy. Change it only through the author.
 - [docs/invariants.md](docs/invariants.md) owns architecture internals, security rationale, and easy-to-reintroduce failure modes. Read the section for the area you are editing before changing it.
 - Update the owner when a contract changes. Edit this file only when an every-session rule changes.
@@ -43,7 +43,7 @@ Seven-tab pool regression: `FOLIO_AXI_BROWSER_E2E=1 node --test test/event-trans
 Each line is the rule. [docs/invariants.md](docs/invariants.md) has the failure mode.
 
 - The session key is the canonical artifact path. It is not a secret. No route may treat key possession as authorization. [Process model](docs/invariants.md#process-model).
-- Never signal a listener by port alone. Stop only a Lavish PID bound to that exact address, or `POST /shutdown` on an owned server. [Process model](docs/invariants.md#process-model).
+- Never signal a listener by port alone. Stop only a Folio PID bound to that exact address, or `POST /shutdown` on an owned server. [Process model](docs/invariants.md#process-model).
 - Adopt, replace, or stop only a server `isOwnedServer` owns. Another installation's server at a control address is a `SERVER_ERROR`, never used, replaced, or stopped. [Process model](docs/invariants.md#process-model).
 - Every server replacement passes all previously requested hosts through `inheritedListenHosts` (`--also-listen`), dropping only IPs no longer on a local interface. [Process model](docs/invariants.md#process-model).
 - Loopback is always requested. An unresolvable `FOLIO_AXI_HOST` is kept (`keepUnresolved`) and retried, never silently dropped. [Process model](docs/invariants.md#process-model).
@@ -77,7 +77,7 @@ Each line is the rule. [docs/invariants.md](docs/invariants.md) has the failure 
 - A layout warning clears only on a newer artifact revision plus a complete pass at the same viewport class. Do not emit `feedback` for a detection. [Passive layout-warning inbox](docs/invariants.md#passive-layout-warning-inbox).
 - The chrome never decides that a warning went away. Display strings come from `serializeLayoutWarnings`. [Passive layout-warning inbox](docs/invariants.md#passive-layout-warning-inbox).
 - The active artifact load is durable in `session.artifact_load`. Only a newer `beginArtifactLoad` retires it, and only an explicit takeover reload replaces a superseded reviewer. [Passive layout-warning inbox](docs/invariants.md#passive-layout-warning-inbox).
-- Reload and gate recovery probe `/health` before navigating. Do not call `location.reload()` directly for these recovery actions; the superseded-reviewer takeover card may reload directly after its 409 response. Sticky "Lavish is not running." copy is never cleared by a later successful load. [Live reload](docs/invariants.md#live-reload).
+- Reload and gate recovery probe `/health` before navigating. Do not call `location.reload()` directly for these recovery actions; the superseded-reviewer takeover card may reload directly after its 409 response. Sticky "Folio is not running." copy is never cleared by a later successful load. [Live reload](docs/invariants.md#live-reload).
 - Every recovery `/health` probe is bounded by an abort timeout, and its caller restores the control whether the probe answers, fails, or times out. [Live reload](docs/invariants.md#live-reload).
 - Sticky copy never makes the gate overlay sticky. Every failure card keeps the bounded timeout and the **Show anyway** bypass. [Live reload](docs/invariants.md#live-reload).
 - Shutdown banner text must be true for the `reason` that fired. Idle shutdown reloads nothing. [Live reload](docs/invariants.md#live-reload).
@@ -106,7 +106,7 @@ Each line is the rule. [docs/invariants.md](docs/invariants.md) has the failure 
 - Export and share inline confined same-directory resources and redact every other absolute `file://` URL to `about:blank` so local paths never leak. [Export (local-asset inlining)](docs/invariants.md#export-local-asset-inlining).
 - Exports strip the injected SDK and escape inlined `</script>`/`</style>`. Hosted shares never include the SDK. [Export (local-asset inlining)](docs/invariants.md#export-local-asset-inlining).
 - `--unpublish` is not a deletion. There is no clear-password path. Empty share flag values are refused. A lost create response must not offer a recovery the host cannot perform. Suggested commands never contain a password placeholder. [Hosted sharing (ht-ml.app)](docs/invariants.md#hosted-sharing-ht-mlapp).
-- Share passwords are minted only in `src/share-password.js`. Lavish persists neither the password nor `update_key`. [Hosted sharing (ht-ml.app)](docs/invariants.md#hosted-sharing-ht-mlapp).
+- Share passwords are minted only in `src/share-password.js`. Folio persists neither the password nor `update_key`. [Hosted sharing (ht-ml.app)](docs/invariants.md#hosted-sharing-ht-mlapp).
 - The share route echoes a password only when it minted one. [Hosted sharing (ht-ml.app)](docs/invariants.md#hosted-sharing-ht-mlapp).
 - Share writes classify failure through `hostRejectedShareWrite`, where only a 4xx proves nothing landed. An echoed `site_id` is untrusted, and recovery commands come only from `republishCommand`/`unpublishCommand`. [Hosted sharing (ht-ml.app)](docs/invariants.md#hosted-sharing-ht-mlapp).
 - Every surface reporting a page as newly gated carries the CDN public-to-private caveat. [Hosted sharing (ht-ml.app)](docs/invariants.md#hosted-sharing-ht-mlapp).

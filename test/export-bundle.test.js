@@ -2243,7 +2243,7 @@ test("records a warning and leaves the reference when a local resource cannot be
   assert.equal(warnings[0].kind, "load-failed");
 });
 
-test("strips the injected Lavish SDK script so exports do not phone home to the server", async () => {
+test("strips the injected Folio SDK script so exports do not phone home to the server", async () => {
   const html = '<!doctype html><html><body><h1>Hi</h1><script src="/sdk.js?key=abc"></script></body></html>';
   const { html: out } = await buildSelfContainedHtml(html, { baseDir: "/art", readLocalFile: localReader({}) });
 

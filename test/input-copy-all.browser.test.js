@@ -256,7 +256,7 @@ const expected =
   "plan:\n  plan: Starter\n  billing: Annual\n\n" +
   "delivery:\n  goal: Ship the review\n  context: Keep the scope opt-in";
 
-test("clipboard API copies checked and filled answers from two forms without Lavish", async (t) => {
+test("clipboard API copies checked and filled answers from two forms without Folio", async (t) => {
   const result = await runBrowserScenario(t, "clipboard", true);
   if (!result) return;
   assert.equal(result.noLavish, true);

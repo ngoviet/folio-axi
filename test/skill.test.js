@@ -82,7 +82,7 @@ test("createSkillMarkdown stays a short stub that defers to the CLI", () => {
   const md = createSkillMarkdown();
 
   assert.ok(md.length <= MAX_SKILL_MARKDOWN_CHARS, "the generated skill stays drastically smaller than CLI guidance");
-  assert.match(md, /Lavish Editor/);
+  assert.match(md, /Folio/);
   assert.match(md, /`folio-axi --help`/);
   assert.match(md, /`folio-axi reply --help`/);
   assert.match(md, /not about to long-poll/);

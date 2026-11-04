@@ -1,7 +1,7 @@
 const HARDCODED_FALLBACK_HOST = "https://a.kunchenguid.com";
 const UMAMI_PATH = "/api/send";
 const DEFAULT_HOSTNAME = "cli";
-const DEFAULT_TITLE = "Lavish Editor CLI";
+const DEFAULT_TITLE = "Folio CLI";
 const DEFAULT_REQUEST_TIMEOUT_MS = 1_000;
 
 export function resolveTelemetryConfig(input) {

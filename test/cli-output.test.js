@@ -132,13 +132,13 @@ test("CLI version tracks package.json so release-please bumps reach the publishe
   assert.equal(VERSION, packageJson.version);
 });
 
-test("home output teaches agents when and how to use Lavish Editor", () => {
+test("home output teaches agents when and how to use Folio", () => {
   const output = createHomeOutput({ bin: `${os.homedir()}/.local/bin/folio-axi`, sessions: [] });
 
   assert.equal(output.bin, "~/.local/bin/folio-axi");
-  assert.match(output.description, /Lavish Editor/);
+  assert.match(output.description, /Folio/);
   assert.match(output.description, /complex response/);
-  assert.match(output.description, /consider using Lavish Editor/);
+  assert.match(output.description, /consider using Folio/);
   assert.match(output.description, /First generate an interactive HTML artifact/);
   assert.deepEqual(output.sessions, []);
   assert.equal("use_cases" in output, false);
@@ -267,7 +267,7 @@ test("export and share outputs flag an unpainted page surface before it reaches 
   });
   assert.equal(exported.self_paint_warning, SELF_PAINT_WARNING);
   assert.match(exported.next_step, /^Fix the unpainted page surface flagged in self_paint_warning/);
-  assert.match(exported.next_step, /no Lavish server/, "the export contract stays intact");
+  assert.match(exported.next_step, /no Folio server/, "the export contract stays intact");
 
   const shared = createShareOutput({
     source: "/tmp/report.html",
@@ -768,7 +768,7 @@ test("theme-aware Mermaid snippet serializes rapid theme-change renders", async 
   await Promise.resolve();
 });
 
-test("playbook detail output returns focused Lavish-native guidance", () => {
+test("playbook detail output returns focused Folio-native guidance", () => {
   const output = createPlaybookOutput(["input"]);
 
   assert.equal(output.playbook.id, "input");
@@ -786,7 +786,7 @@ test("playbook detail output returns focused Lavish-native guidance", () => {
   assert.ok(output.playbook.lavish_notes.some((item) => item.includes("onsubmit")));
   assert.ok(output.playbook.pitfalls.some((item) => item.includes("unclear")));
   assert.ok(output.playbook.pitfalls.some((item) => item.includes("radio change")));
-  assert.ok(output.playbook.lavish_notes.some((item) => item.includes("Lavish")));
+  assert.ok(output.playbook.lavish_notes.some((item) => item.includes("Folio")));
 });
 
 test("input playbook defines an opt-in tracked batch handoff", () => {
@@ -920,7 +920,7 @@ test("a user-ended open refuses with a status agents can branch on, not a URL to
 
   assert.equal(output.session.file, "/tmp/artifact.html");
   assert.equal(output.session.status, "user-ended");
-  assert.match(output.next_step, /user explicitly ended this Lavish Editor session from the browser/);
+  assert.match(output.next_step, /user explicitly ended this Folio session from the browser/);
   assert.match(output.next_step, /did not reopen it/);
   assert.match(output.next_step, /Do not reopen unless the user asks for further review/);
   assert.match(output.next_step, /folio-axi \/tmp\/artifact\.html --reopen/);
@@ -938,7 +938,7 @@ test("export output reports the written file and reassures it needs no server", 
   assert.equal(output.export.output, "/tmp/report.export.html");
   assert.equal(output.export.unresolved_local_assets, 0);
   assert.equal(output.export.bytes, Buffer.byteLength("<html></html>"));
-  assert.match(output.next_step, /no Lavish server/);
+  assert.match(output.next_step, /no Folio server/);
   assert.match(output.next_step, /remote CDN\/font references are left as links/);
 });
 
@@ -1061,7 +1061,7 @@ test("share output reports the public url and the secret update key", () => {
   assert.match(output.next_step, /PUBLIC/);
   assert.match(output.next_step, /update_key/);
   assert.match(output.next_step, /x\.ht-ml\.app/);
-  assert.match(output.next_step, /ht-ml\.app \(https:\/\/ht-ml\.app\), a third-party host not part of Lavish/);
+  assert.match(output.next_step, /ht-ml\.app \(https:\/\/ht-ml\.app\), a third-party host not part of Folio/);
 });
 
 test("password-protected share output tells viewers they also need the password", () => {
@@ -1077,7 +1077,7 @@ test("password-protected share output tells viewers they also need the password"
   assert.equal(output.share.visibility, "private");
   assert.match(output.next_step, /PASSWORD-PROTECTED/);
   assert.match(output.next_step, /viewers also need the password/);
-  assert.match(output.next_step, /ht-ml\.app \(https:\/\/ht-ml\.app\), a third-party host not part of Lavish/);
+  assert.match(output.next_step, /ht-ml\.app \(https:\/\/ht-ml\.app\), a third-party host not part of Folio/);
   assert.doesNotMatch(output.next_step, /anyone with the link can view/);
 });
 
@@ -1091,7 +1091,7 @@ test("share output surfaces local assets that could not be inlined", () => {
   assert.equal(output.share.unresolved_local_assets, 1);
   assert.deepEqual(output.unresolved_local_assets, [{ kind: "load-failed", ref: "./missing.png" }]);
   assert.match(output.next_step, /LOCAL assets could not be inlined/);
-  assert.match(output.next_step, /ht-ml\.app \(https:\/\/ht-ml\.app\), a third-party host not part of Lavish/);
+  assert.match(output.next_step, /ht-ml\.app \(https:\/\/ht-ml\.app\), a third-party host not part of Folio/);
   assert.doesNotMatch(output.next_step, /share this URL/);
 });
 
@@ -1129,7 +1129,7 @@ test("password-protected share output with unresolved assets still mentions the 
   assert.equal(output.share.visibility, "private");
   assert.match(output.next_step, /PASSWORD-PROTECTED/);
   assert.match(output.next_step, /viewers also need the password/);
-  assert.match(output.next_step, /ht-ml\.app \(https:\/\/ht-ml\.app\), a third-party host not part of Lavish/);
+  assert.match(output.next_step, /ht-ml\.app \(https:\/\/ht-ml\.app\), a third-party host not part of Folio/);
   assert.doesNotMatch(output.next_step, /anyone with the link can view/);
 });
 
@@ -1199,7 +1199,7 @@ async function startFailingHtmlApp(status, detail) {
 
 const PASSWORD_SHAPE = /[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}/;
 
-// A recovery hint is only recovery if the CLI accepts it. Pull the command Lavish printed out of
+// A recovery hint is only recovery if the CLI accepts it. Pull the command Folio printed out of
 // the text it printed and run it back through the real argument parser, so a hint that drifts into
 // a usage error - `--site`/`--update-key` with no HTML file was one - fails here instead of on the
 // user's next paste.
@@ -1468,7 +1468,7 @@ test("a 200 with a malformed body is reported as published, not as an unknown ou
         const hints = (error.suggestions || []).join(" ");
         assert.doesNotMatch(hints, /may or may not have published/i, "a 200 is not an unknown outcome");
         assert.match(hints, /the page IS live/i);
-        assert.match(hints, /https:\/\/abc123\.ht-ml\.app\//, "the URL Lavish knows must be handed over");
+        assert.match(hints, /https:\/\/abc123\.ht-ml\.app\//, "the URL Folio knows must be handed over");
         assert.match(hints, /no recovery/i, "the lost update_key has none");
         assert.match(hints, /SECOND page/);
         return true;
@@ -1557,7 +1557,7 @@ test("a site_id the host echoes cannot inject flags into the suggested republish
       assert.doesNotMatch(output.next_step, /--password/, "no flag may be smuggled in through the echo");
       const suggested = parseSuggestedShareCommand(output.next_step);
       assert.equal(suggested.siteId, "abc123", "the command names the id the request was addressed to");
-      assert.equal(suggested.generatedPassword, true, "only --private, whose password Lavish mints and reports");
+      assert.equal(suggested.generatedPassword, true, "only --private, whose password Folio mints and reports");
     } finally {
       await hostile.close();
       if (previousApiUrl === undefined) delete process.env.FOLIO_AXI_HTML_APP_API_URL;
@@ -1763,7 +1763,7 @@ test("share help distinguishes public default from password-protected shares", (
   assert.doesNotMatch(help, /EVERYTHING PUBLISHED IS PUBLIC/);
   assert.doesNotMatch(help, /load fine/);
   assert.match(homeShareHelp, /PUBLIC by default/);
-  assert.match(homeShareHelp, /Pass --private to publish a PRIVATE page behind a password Lavish generates/);
+  assert.match(homeShareHelp, /Pass --private to publish a PRIVATE page behind a password Folio generates/);
   assert.match(homeShareHelp, /shared secret/);
   assert.doesNotMatch(homeShareHelp, /Everything published is public/);
 });
@@ -2070,7 +2070,7 @@ test("a poll reporting the session ended by the user tells the agent to stop and
 
   assert.equal(output.session.status, "ended");
   assert.equal(output.session.ended_by, "user");
-  assert.match(output.next_step, /user ended this Lavish Editor session/);
+  assert.match(output.next_step, /user ended this Folio session/);
   assert.match(output.next_step, /Stop polling/);
   assert.match(output.next_step, /do not run `folio-axi \/tmp\/report\.html` to reopen it/);
   assert.match(output.next_step, /deliver any remaining updates directly in this conversation/i);
@@ -2123,10 +2123,10 @@ test("the final feedback batch before an agent end preserves ended_by and allows
 
   assert.equal(output.session.session_ended, true);
   assert.equal(output.session.ended_by, "agent");
-  assert.match(output.next_step, /last feedback before the Lavish Editor session ended/);
+  assert.match(output.next_step, /last feedback before the Folio session ended/);
   assert.match(output.next_step, /folio-axi \/tmp\/report\.html`\s+to open a fresh session/);
   assert.doesNotMatch(output.next_step, /--reopen/);
-  assert.doesNotMatch(output.next_step, /user ended this Lavish Editor session/);
+  assert.doesNotMatch(output.next_step, /user ended this Folio session/);
 });
 
 test("final user-ended feedback still reports a fatal artifact failure without reopening", () => {
@@ -2142,7 +2142,7 @@ test("final user-ended feedback still reports a fatal artifact failure without r
   });
 
   assert.match(output.next_step, /fatal artifact failure/);
-  assert.match(output.next_step, /confirm it renders without reopening this ended Lavish session/);
+  assert.match(output.next_step, /confirm it renders without reopening this ended Folio session/);
   assert.doesNotMatch(output.next_step, /--reopen/);
 });
 
@@ -2471,7 +2471,7 @@ test("shouldRestartServer restarts a same-version server after a Tailscale trans
   assert.equal(serverReplacementReason("0.1.4", health), "");
 });
 
-test("shouldRestartServer restarts same-version Lavish servers when forced", () => {
+test("shouldRestartServer restarts same-version Folio servers when forced", () => {
   assert.equal(shouldRestartServer("0.1.4", { ok: true, app: "folio-axi", version: "0.1.4" }, true), true);
   assert.equal(shouldRestartServer("0.1.4", { ok: true, app: "other", version: "0.1.4" }, true), false);
 });
@@ -2548,21 +2548,21 @@ test("shouldKillProcessOnPort does not kill unidentified health responders", () 
   assert.equal(shouldKillProcessOnPort("0.1.4", { ok: true, app: "other", version: "0.1.3" }), false);
 });
 
-test("shouldKillProcessOnPort kills pre-handshake Lavish servers after shutdown fails", () => {
+test("shouldKillProcessOnPort kills pre-handshake Folio servers after shutdown fails", () => {
   assert.equal(shouldKillProcessOnPort("0.1.4", { ok: true }), true);
 });
 
-test("shouldKillProcessOnPort only kills Lavish servers with a mismatched version", () => {
+test("shouldKillProcessOnPort only kills Folio servers with a mismatched version", () => {
   assert.equal(shouldKillProcessOnPort("0.1.4", { ok: true, app: "folio-axi", version: "0.1.3" }), true);
   assert.equal(shouldKillProcessOnPort("0.1.4", { ok: true, app: "folio-axi", version: "0.1.4" }), false);
 });
 
-test("shouldKillProcessOnPort leaves a Lavish server that is newer than the CLI", () => {
+test("shouldKillProcessOnPort leaves a Folio server that is newer than the CLI", () => {
   assert.equal(shouldKillProcessOnPort("0.1.4", { ok: true, app: "folio-axi", version: "0.1.5" }), false);
   assert.equal(shouldKillProcessOnPort("0.1.10", { ok: true, app: "folio-axi", version: "0.1.9" }), true);
 });
 
-test("shutdownServerOnPort kills pre-handshake Lavish servers when shutdown does not free the port", async () => {
+test("shutdownServerOnPort kills pre-handshake Folio servers when shutdown does not free the port", async () => {
   let shutdowns = 0;
   let kills = 0;
   const portFreeResults = [false, true];
@@ -2640,20 +2640,20 @@ test("polling a file without an active session tells the agent to open it first"
     (error) => {
       assert.ok(error instanceof AxiError);
       assert.equal(error.code, "NOT_FOUND");
-      assert.match(error.message, /No active Lavish Editor session/);
+      assert.match(error.message, /No active Folio session/);
       assert.ok(error.suggestions.some((item) => item.includes("folio-axi /tmp/report.html")));
       return true;
     },
   );
 });
 
-test("network fetch failures become structured Lavish server errors", async () => {
+test("network fetch failures become structured Folio server errors", async () => {
   await assert.rejects(
     () => fetchJson("http://127.0.0.1:1/api/poll"),
     (error) => {
       assert.ok(error instanceof AxiError);
       assert.equal(error.code, "SERVER_ERROR");
-      assert.match(error.message, /Lavish Editor server connection failed/);
+      assert.match(error.message, /Folio server connection failed/);
       assert.ok(error.suggestions.some((item) => item.includes("folio-axi server --verbose")));
       return true;
     },
@@ -2706,7 +2706,7 @@ test("fetchJson reports interrupted response body failures without retrying", as
       (error) => {
         assert.ok(error instanceof AxiError);
         assert.equal(error.code, "SERVER_ERROR");
-        assert.match(error.message, /Lavish Editor poll response was interrupted/);
+        assert.match(error.message, /Folio poll response was interrupted/);
         return true;
       },
     );
@@ -3019,7 +3019,7 @@ test("createShareOutput never echoes a password the caller chose", () => {
 });
 
 test("createShareUpdateOutput reports what a plain republish did, not a password state it cannot know", () => {
-  // Lavish persists no site state, so a republish of a page created without a password would be
+  // Folio persists no site state, so a republish of a page created without a password would be
   // misreported by any claim that "the password was left unchanged".
   const output = createShareUpdateOutput({
     source: "/tmp/report.html",
@@ -3059,7 +3059,7 @@ test("createShareUpdateOutput surfaces a rotated password and never claims a pag
 
 test("createShareUpdateOutput does not present a newly set password as an instant gate", () => {
   // Probed live: locking a page that was public left it answering uncredentialed CDN requests for
-  // minutes, and Lavish persists no site state, so it cannot know the page was not public.
+  // minutes, and Folio persists no site state, so it cannot know the page was not public.
   const locked = createShareUpdateOutput({
     source: "/tmp/report.html",
     site: { url: "https://x.ht-ml.app/", site_id: "x", status: "active" },

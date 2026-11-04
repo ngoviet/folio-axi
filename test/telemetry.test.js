@@ -93,7 +93,7 @@ test("telemetry sends anonymous Umami event payloads", async () => {
   assert.match(requests[0].headers["User-Agent"], /^folio-axi\/1\.2\.3 telemetry$/);
   assert.deepEqual(requests[0].body.payload.website, "site-1");
   assert.deepEqual(requests[0].body.payload.hostname, "cli");
-  assert.deepEqual(requests[0].body.payload.title, "Lavish Editor CLI");
+  assert.deepEqual(requests[0].body.payload.title, "Folio CLI");
   assert.deepEqual(requests[0].body.payload.url, "app://folio-axi/command");
   assert.deepEqual(requests[0].body.payload.name, "command");
   assert.deepEqual(requests[0].body.payload.data.command, "poll");
