@@ -31,7 +31,7 @@ Kế hoạch đầy đủ có sơ đồ: [ke-hoach.html](ke-hoach.html) (bản t
 | 2   | Hook SessionStart < 1.500 ký tự, lọc theo thư mục; `end` theo khoá khi tệp đã mất; tự dọn trang đã kết thúc                                                                                                                                                                    | 1 ngày    |
 | 3   | Windows: dò/dừng server bằng `netstat`/`tasklist`, `windowsHide`, khác biệt HOME giữa Git Bash và USERPROFILE; bỏ hook Copilot/Codex/OpenCode, `setup plugin`, herdr                                                                                                           | 1 ngày    |
 | 4   | Điện thoại: mã truy cập theo trang; Tailscale hoặc Cloudflare Tunnel (**chủ chưa chọn**); sửa #474                                                                                                                                                                             | 1–2 ngày  |
-| 5   | Skill `folio` toàn cục; cập nhật mục "Trình bày" trong `~/.claude/CLAUDE.md` (**chờ chủ duyệt**); gỡ lavish-axi                                                                                                                                                                | nửa ngày  |
+| 5   | Skill `folio` toàn cục; cập nhật mục "Trình bày" trong `~/.claude/CLAUDE.md`; gỡ lavish-axi                                                                                                                                                                                    | nửa ngày  |
 
 ### Thiết kế giao phản hồi (GĐ 1)
 

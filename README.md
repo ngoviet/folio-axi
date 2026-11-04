@@ -54,7 +54,7 @@ folio-axi setup hooks          # preview
 folio-axi setup hooks --write  # merge Claude Code hooks into settings
 ```
 
-Restart the Claude Code session after installing hooks. They run this checkout's `bin/folio-axi.js` with `node` directly, skipping the npm shim, so re-run `folio-axi setup hooks --write` if you move the checkout. The repository's `skills/folio` skill directs agents to the CLI's current help, design guidance, and playbooks. You can also ask your agent to use `folio-axi` directly.
+Restart the Claude Code session after installing hooks. They run this checkout's `bin/folio-axi.js` with `node` directly, skipping the npm shim (a path with shell-unsafe characters falls back to `folio-axi` on PATH), so re-run `folio-axi setup hooks --write` if you move the checkout. The repository's `skills/folio` skill directs agents to the CLI's current help, design guidance, and playbooks. You can also ask your agent to use `folio-axi` directly.
 
 ## How It Works
 
