@@ -378,7 +378,7 @@ export function normalizeLayoutWarningsTarget(target) {
 }
 
 export function resolveDiagnosticViewportClasses(env = process.env) {
-  const raw = String(env.LAVISH_AXI_DIAGNOSTIC_VIEWPORTS || "").trim();
+  const raw = String(env.FOLIO_AXI_DIAGNOSTIC_VIEWPORTS || "").trim();
   if (!raw) return [...DEFAULT_DIAGNOSTIC_VIEWPORT_CLASSES];
   const configured = raw
     .split(",")

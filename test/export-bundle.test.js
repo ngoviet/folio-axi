@@ -6,6 +6,7 @@ import test from "node:test";
 import { pathToFileURL } from "node:url";
 
 import { buildSelfContainedHtml, exportFileName, splitExportWarnings } from "../src/export-bundle.js";
+import { NO_SYMLINKS } from "./helpers/symlinks.js";
 
 function portablePathKey(absPath) {
   return String(absPath)
@@ -3249,7 +3250,7 @@ test("does not treat property import calls as module imports", async () => {
   );
 });
 
-test("refuses to inline a local symlink that escapes the artifact directory", async () => {
+test("refuses to inline a local symlink that escapes the artifact directory", { skip: NO_SYMLINKS }, async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "lavish-export-"));
   try {
     const artDir = path.join(root, "art");

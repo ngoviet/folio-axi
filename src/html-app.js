@@ -17,7 +17,7 @@ const PUBLISH_TIMEOUT_MS = 30_000;
 const SITE_ID_RE = /^[A-Za-z0-9._-]+$/;
 
 export function htmlAppApiUrl(env = process.env) {
-  return String(env.LAVISH_AXI_HTML_APP_API_URL || DEFAULT_API_URL).replace(/\/+$/, "");
+  return String(env.FOLIO_AXI_HTML_APP_API_URL || DEFAULT_API_URL).replace(/\/+$/, "");
 }
 
 export function createHtmlAppPayload(html, options = {}) {
@@ -113,7 +113,7 @@ export function createUnpublishedPageHtml() {
  * @param {object} [options]
  * @param {string} [options.password] Make the site private behind this password.
  * @param {string} [options.token] Optional bearer token (never required to create a site).
- * @param {string} [options.apiUrl] Override the API base (defaults to LAVISH_AXI_HTML_APP_API_URL or ht-ml.app).
+ * @param {string} [options.apiUrl] Override the API base (defaults to FOLIO_AXI_HTML_APP_API_URL or ht-ml.app).
  * @param {typeof fetch} [options.fetch] Injected fetch for testing.
  * @param {NodeJS.ProcessEnv} [options.env]
  * @param {number} [options.timeoutMs]
@@ -121,7 +121,7 @@ export function createUnpublishedPageHtml() {
  */
 export async function publishToHtmlApp(html, options = {}) {
   const env = options.env || process.env;
-  const token = optionalString(options.token ?? env.LAVISH_AXI_HTML_APP_TOKEN);
+  const token = optionalString(options.token ?? env.FOLIO_AXI_HTML_APP_TOKEN);
   const data = await requestHtmlApp({
     method: "POST",
     path: "/v1/sites",
@@ -263,7 +263,7 @@ async function requestHtmlApp({ method, path, body, bearer, options, env, action
   const apiUrl = (options.apiUrl ? String(options.apiUrl).replace(/\/+$/, "") : "") || htmlAppApiUrl(env);
   const fetchImpl = options.fetch || fetch;
 
-  const headers = { "content-type": "application/json", "user-agent": "lavish-axi" };
+  const headers = { "content-type": "application/json", "user-agent": "folio-axi" };
   if (bearer) headers.authorization = `Bearer ${bearer}`;
 
   const controller = new AbortController();

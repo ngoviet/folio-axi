@@ -17,7 +17,7 @@ function handleFatalServerError(kind, error) {
 process.on("uncaughtException", (error) => handleFatalServerError("uncaught exception", error));
 
 try {
-  await import("./lavish-axi.js");
+  await import("./folio-axi.js");
 } catch (error) {
   handleFatalServerError("server startup failed", error);
 }

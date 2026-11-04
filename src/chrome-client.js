@@ -4,18 +4,18 @@ const sessionDataElement = document.getElementById("lavish-session");
 const sessionData = JSON.parse(sessionDataElement?.textContent || "{}");
 const key = String(sessionData.key || "");
 const filePath = String(sessionData.file || "");
-const queueStorageKey = "lavish-axi:queued:" + key;
-const terminalStorageKey = "lavish-axi:terminal:" + key;
+const queueStorageKey = "folio-axi:queued:" + key;
+const terminalStorageKey = "folio-axi:terminal:" + key;
 // Review-chrome state that must survive a browser refresh. Keyed per session so one review's
 // triage can never leak into another artifact's.
-const warningSelectionStorageKey = "lavish-axi:warning-selection:" + key;
+const warningSelectionStorageKey = "folio-axi:warning-selection:" + key;
 // Unsent annotation-card text lives only in the sandboxed iframe, so a full page reload would
 // destroy it unless the chrome persists what the SDK reports. Keyed per session like the queue,
 // so a draft can never reappear over a different artifact.
-const reviewStateStorageKey = "lavish-axi:review-state:" + key;
+const reviewStateStorageKey = "folio-axi:review-state:" + key;
 // Drafts Lavish could not replay. The text outlives the draft that carried it, so the user can
 // still read and copy it after the anchor it was written against is gone for good.
-const retiredDraftStorageKey = "lavish-axi:retired-drafts:" + key;
+const retiredDraftStorageKey = "folio-axi:retired-drafts:" + key;
 /** @type {any[]} */
 const retiredDraftNodes = [];
 const internalQueueKeyField = "_lavishQueueKey";
@@ -282,7 +282,7 @@ const ARTIFACT_SILENCE_PROBE_MS = 8000;
 const ARTIFACT_LOAD_BEGIN_RETRY_DELAYS_MS = [100, 300];
 // Backoff for retrying a whole begin-load attempt after its in-call retries ran out. The
 // in-call retries span 400ms, which only covers a slow response - not the multi-second window
-// where the server is being replaced (a version-driven restart, or another `lavish-axi <file>`
+// where the server is being replaced (a version-driven restart, or another `folio-axi <file>`
 // invocation restarting the shared server). Without these the chrome abandons the artifact for
 // good: the frame is never navigated, `artifact_revision` never advances, and the page sits on
 // the layout gate and then on an empty frame with nothing to click.
@@ -736,7 +736,7 @@ const BUBBLE_THUMBNAIL_LIMIT = 4;
 
 // Thumbnails for a note's images, served straight from the same-origin attachment endpoint (the
 // ids are already server-vetted at upload time). The bubble has room for only a few, but the
-// per-prompt cap is configurable (LAVISH_AXI_MAX_ATTACHMENTS_PER_PROMPT), so a note can
+// per-prompt cap is configurable (FOLIO_AXI_MAX_ATTACHMENTS_PER_PROMPT), so a note can
 // legitimately carry more than fit: the remainder collapses into a +N badge rather than being
 // dropped from the preview, which would make the queue look like it lost the extra images (W-A).
 function bubbleAttachmentsHtml(entry) {
@@ -1295,7 +1295,7 @@ function scrollPanelToBottom() {
 const MOBILE_SHEET_MEDIA = "(max-width: 860px)";
 // How far a drag on the dock must travel before it counts as a gesture rather than a tap.
 const SHEET_DRAG_THRESHOLD_PX = 48;
-const sheetStorageKey = "lavish-axi:sheet-open:" + key;
+const sheetStorageKey = "folio-axi:sheet-open:" + key;
 const sheetMedia = typeof window.matchMedia === "function" ? window.matchMedia(MOBILE_SHEET_MEDIA) : null;
 // The user's intent, kept across a chrome reload so a live-reload or server upgrade does not drop
 // them back onto a closed dock mid-conversation.
@@ -1491,7 +1491,7 @@ syncVisualViewport();
 // per-review state, so it lives in localStorage under one key for every session. chrome.css only
 // honours `panel-collapsed` outside the phone breakpoint, and this controller never sets it there,
 // so a stored preference cannot hide the phone dock.
-const panelCollapsedStorageKey = "lavish-axi:panel-collapsed";
+const panelCollapsedStorageKey = "folio-axi:panel-collapsed";
 let panelCollapsed = readPanelCollapsed();
 
 function readPanelCollapsed() {
@@ -4193,7 +4193,7 @@ async function probeChromeHealth() {
 }
 
 // The replacement server usually binds within a second, but it is a fresh node process competing
-// with whatever else the machine is doing, and several `lavish-axi` invocations can be racing for
+// with whatever else the machine is doing, and several `folio-axi` invocations can be racing for
 // the same port. Reloading on a fixed short deadline regardless of whether anything is listening
 // trades a recoverable page for the browser's connection-error page, which no Lavish code can
 // recover from. So wait for the port to answer, and if it never does, say so instead.

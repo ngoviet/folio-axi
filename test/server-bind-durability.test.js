@@ -15,7 +15,7 @@ import WebSocket from "ws";
 import { run, stopCommand, VERSION } from "../src/cli.js";
 import { serve } from "../src/server.js";
 
-const SERVER_ENTRY = fileURLToPath(new URL("../bin/lavish-axi-server.js", import.meta.url));
+const SERVER_ENTRY = fileURLToPath(new URL("../bin/folio-axi-server.js", import.meta.url));
 
 // 192.0.2.0/24 is TEST-NET-1: routable nowhere and assigned to no interface, so binding it fails
 // with EADDRNOTAVAIL exactly the way a pinned Tailscale address does once Tailscale goes down.
@@ -76,7 +76,7 @@ test("a degraded bind stays quiet while the requested address is still unavailab
       port: 0,
       stateFile: path.join(dir, "state.json"),
       version: "9.9.9-test",
-      env: { LAVISH_AXI_HOST: UNBINDABLE_HOST },
+      env: { FOLIO_AXI_HOST: UNBINDABLE_HOST },
       log: () => {},
       idleTimeoutMs: null,
     });
@@ -119,14 +119,14 @@ test("a stale control-channel server is replaced only once per CLI invocation", 
       try {
         await withEnv(
           {
-            LAVISH_AXI_PORT: String(port),
-            LAVISH_AXI_HOST: "127.0.0.1",
-            LAVISH_AXI_STATE_DIR: dir,
-            LAVISH_AXI_NO_OPEN: "1",
-            LAVISH_AXI_TELEMETRY: "0",
+            FOLIO_AXI_PORT: String(port),
+            FOLIO_AXI_HOST: "127.0.0.1",
+            FOLIO_AXI_STATE_DIR: dir,
+            FOLIO_AXI_NO_OPEN: "1",
+            FOLIO_AXI_TELEMETRY: "0",
             // The real server this spawns can take the port once the fake closes; let it idle out
             // instead of outliving the test.
-            LAVISH_AXI_IDLE_TIMEOUT_MS: "1000",
+            FOLIO_AXI_IDLE_TIMEOUT_MS: "1000",
           },
           async () => {
             try {
@@ -143,9 +143,9 @@ test("a stale control-channel server is replaced only once per CLI invocation", 
       return shutdowns;
     }
 
-    assert.equal(await countShutdowns({ ok: true, app: "lavish-axi", version: VERSION, network_stale: true }), 1);
-    assert.equal(await countShutdowns({ ok: true, app: "lavish-axi", version: "0.0.1", network_stale: true }), 2);
-    assert.equal(await countShutdowns({ ok: true, app: "lavish-axi", version: "999.0.0", network_stale: true }), 1);
+    assert.equal(await countShutdowns({ ok: true, app: "folio-axi", version: VERSION, network_stale: true }), 1);
+    assert.equal(await countShutdowns({ ok: true, app: "folio-axi", version: "0.0.1", network_stale: true }), 2);
+    assert.equal(await countShutdowns({ ok: true, app: "folio-axi", version: "999.0.0", network_stale: true }), 1);
   });
 });
 
@@ -201,7 +201,7 @@ test("an occupied requested address does not report network_stale after loopback
         port: occupiedPort,
         stateFile: path.join(dir, "state.json"),
         version: "9.9.9-test",
-        env: { LAVISH_AXI_HOST: occupiedHost },
+        env: { FOLIO_AXI_HOST: occupiedHost },
         log: () => {},
         idleTimeoutMs: null,
       });
@@ -423,11 +423,11 @@ test("a clean detached-server shutdown exits 0 without an error in server.log", 
     const child = spawn(process.execPath, [SERVER_ENTRY, "server", "--port", String(port)], {
       env: {
         ...process.env,
-        LAVISH_AXI_STATE_DIR: dir,
-        LAVISH_AXI_HOST: "127.0.0.1",
-        LAVISH_AXI_NO_OPEN: "1",
-        LAVISH_AXI_TELEMETRY: "0",
-        LAVISH_AXI_IDLE_TIMEOUT_MS: "off",
+        FOLIO_AXI_STATE_DIR: dir,
+        FOLIO_AXI_HOST: "127.0.0.1",
+        FOLIO_AXI_NO_OPEN: "1",
+        FOLIO_AXI_TELEMETRY: "0",
+        FOLIO_AXI_IDLE_TIMEOUT_MS: "off",
       },
       stdio: ["ignore", fd, fd],
     });
@@ -473,10 +473,10 @@ test("a detached server crash writes a timestamped line to server.log", async ()
       const child = spawn(process.execPath, [SERVER_ENTRY, "server", "--port", String(occupiedPort)], {
         env: {
           ...process.env,
-          LAVISH_AXI_STATE_DIR: dir,
-          LAVISH_AXI_HOST: "127.0.0.1",
-          LAVISH_AXI_NO_OPEN: "1",
-          LAVISH_AXI_TELEMETRY: "0",
+          FOLIO_AXI_STATE_DIR: dir,
+          FOLIO_AXI_HOST: "127.0.0.1",
+          FOLIO_AXI_NO_OPEN: "1",
+          FOLIO_AXI_TELEMETRY: "0",
         },
         stdio: ["ignore", fd, fd],
       });
@@ -519,11 +519,11 @@ net.Server.prototype.emit = function (event, ...args) {
         env: {
           ...process.env,
           NODE_OPTIONS: `--import=${pathToFileURL(preload).href}`,
-          LAVISH_AXI_STATE_DIR: dir,
-          LAVISH_AXI_HOST: "127.0.0.1",
-          LAVISH_AXI_NO_OPEN: "1",
-          LAVISH_AXI_TELEMETRY: "0",
-          LAVISH_AXI_IDLE_TIMEOUT_MS: "off",
+          FOLIO_AXI_STATE_DIR: dir,
+          FOLIO_AXI_HOST: "127.0.0.1",
+          FOLIO_AXI_NO_OPEN: "1",
+          FOLIO_AXI_TELEMETRY: "0",
+          FOLIO_AXI_IDLE_TIMEOUT_MS: "off",
         },
         stdio: ["ignore", fd, fd],
       });
@@ -568,11 +568,11 @@ test("an uncaught server exception is timestamped before deterministic exit", { 
       env: {
         ...process.env,
         NODE_OPTIONS: `--import=${pathToFileURL(preload).href}`,
-        LAVISH_AXI_STATE_DIR: dir,
-        LAVISH_AXI_HOST: "127.0.0.1",
-        LAVISH_AXI_NO_OPEN: "1",
-        LAVISH_AXI_TELEMETRY: "0",
-        LAVISH_AXI_IDLE_TIMEOUT_MS: "off",
+        FOLIO_AXI_STATE_DIR: dir,
+        FOLIO_AXI_HOST: "127.0.0.1",
+        FOLIO_AXI_NO_OPEN: "1",
+        FOLIO_AXI_TELEMETRY: "0",
+        FOLIO_AXI_IDLE_TIMEOUT_MS: "off",
       },
       stdio: ["ignore", fd, fd],
     });
@@ -619,7 +619,7 @@ test("the control channel finds a fallen-back server on loopback", async () => {
       port: 0,
       stateFile: path.join(dir, "state.json"),
       version: "9.9.9-test",
-      env: { LAVISH_AXI_HOST: UNBINDABLE_HOST },
+      env: { FOLIO_AXI_HOST: UNBINDABLE_HOST },
       log: () => {},
       idleTimeoutMs: null,
     });
@@ -627,9 +627,9 @@ test("the control channel finds a fallen-back server on loopback", async () => {
       assert.deepEqual(server.hosts, ["127.0.0.1"]);
       const output = await withEnv(
         {
-          LAVISH_AXI_PORT: String(server.port),
-          LAVISH_AXI_HOST: UNBINDABLE_HOST,
-          LAVISH_AXI_STATE_DIR: dir,
+          FOLIO_AXI_PORT: String(server.port),
+          FOLIO_AXI_HOST: UNBINDABLE_HOST,
+          FOLIO_AXI_STATE_DIR: dir,
         },
         () => stopCommand([]),
       );
@@ -649,7 +649,7 @@ test(
         port: 0,
         stateFile: path.join(dir, "state.json"),
         version: "9.9.9-test",
-        env: { LAVISH_AXI_HOST: "127.0.0.1" },
+        env: { FOLIO_AXI_HOST: "127.0.0.1" },
         hosts: ["127.0.0.1"],
         log: () => {},
         idleTimeoutMs: null,
@@ -661,9 +661,9 @@ test(
         const started = Date.now();
         const output = await withEnv(
           {
-            LAVISH_AXI_PORT: String(port),
-            LAVISH_AXI_HOST: "::1",
-            LAVISH_AXI_STATE_DIR: dir,
+            FOLIO_AXI_PORT: String(port),
+            FOLIO_AXI_HOST: "::1",
+            FOLIO_AXI_STATE_DIR: dir,
           },
           () => stopCommand([]),
         );
@@ -680,7 +680,7 @@ test(
         port: 0,
         stateFile: path.join(dir, "state.json"),
         version: "9.9.9-test",
-        env: { LAVISH_AXI_HOST: "127.0.0.1" },
+        env: { FOLIO_AXI_HOST: "127.0.0.1" },
         hosts: ["127.0.0.1"],
         log: () => {},
         idleTimeoutMs: null,
@@ -690,9 +690,9 @@ test(
       try {
         const output = await withEnv(
           {
-            LAVISH_AXI_PORT: String(port),
-            LAVISH_AXI_HOST: "::1",
-            LAVISH_AXI_STATE_DIR: dir,
+            FOLIO_AXI_PORT: String(port),
+            FOLIO_AXI_HOST: "::1",
+            FOLIO_AXI_STATE_DIR: dir,
           },
           () => stopCommand([]),
         );
@@ -708,8 +708,8 @@ test(
     try {
       const output = await withEnv(
         {
-          LAVISH_AXI_PORT: String(foreignPort),
-          LAVISH_AXI_HOST: "::1",
+          FOLIO_AXI_PORT: String(foreignPort),
+          FOLIO_AXI_HOST: "::1",
         },
         () => stopCommand([]),
       );
@@ -720,8 +720,8 @@ test(
 
     const none = await withEnv(
       {
-        LAVISH_AXI_PORT: "1",
-        LAVISH_AXI_HOST: UNBINDABLE_HOST,
+        FOLIO_AXI_PORT: "1",
+        FOLIO_AXI_HOST: UNBINDABLE_HOST,
       },
       () => stopCommand([]),
     );

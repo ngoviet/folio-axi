@@ -11,3 +11,4 @@ coverage/
 package-lock.json
 .no-mistakes/evidence/
 /.planning/
+.folio-axi/

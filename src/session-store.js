@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { readFile, realpath, writeFile } from "node:fs/promises";
+import { readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -112,15 +112,15 @@ export class SessionStore {
     });
   }
 
-  async upsertSession(file, url) {
+  async upsertSession(file, url, { ownerSessionId = "" } = {}) {
     // `canonicalFile` (a realpath) does not touch state, so resolve it before
     // taking the lock and keep only the read-modify-write inside the critical
     // section.
     const absolute = await canonicalFile(file);
-    return this.lock.runExclusive(() => this.#upsertSessionLocked(absolute, url));
+    return this.lock.runExclusive(() => this.#upsertSessionLocked(absolute, url, ownerSessionId));
   }
 
-  async #upsertSessionLocked(absolute, url) {
+  async #upsertSessionLocked(absolute, url, ownerSessionId = "") {
     const key = sessionKey(absolute);
     const state = await this.readState();
     const existing = state.sessions[key] || {};
@@ -161,6 +161,14 @@ export class SessionStore {
       closed_delivery_seq: normalizeRevision(
         existing.status === "ended" ? existing.delivery_seq : existing.closed_delivery_seq,
       ),
+      // Folio: the agent session that opened the page owns its feedback. Opening is an explicit
+      // act, so a different agent session that opens the same file takes ownership over.
+      ...(normalizeOwnerSessionId(ownerSessionId) || existing.owner_session_id
+        ? { owner_session_id: normalizeOwnerSessionId(ownerSessionId) || existing.owner_session_id }
+        : {}),
+      // Folio: a batch handed to an acking poll stays here until the agent acks it, so a poll
+      // that dies after the server wrote the response still gets it again next time.
+      ...(isUnackedDelivery(existing.unacked_delivery) ? { unacked_delivery: existing.unacked_delivery } : {}),
       updated_at: new Date().toISOString(),
     };
     state.sessions[key] = session;
@@ -198,7 +206,7 @@ export class SessionStore {
     // because restore re-enters the same trust boundary.
     const restoring = options.restore === true;
     const alreadyEnded = session.status === "ended";
-    // A session already ended by someone else (an agent's `lavish-axi end`, or the user in
+    // A session already ended by someone else (an agent's `folio-axi end`, or the user in
     // another tab) must not accept a further batch as if it were queued for delivery: no agent
     // will ever poll it again, so a 200 here would be a promise the server cannot keep. This
     // applies even to a batch that also requests `endSession` - a redundant end of an
@@ -617,19 +625,25 @@ export class SessionStore {
   }
 
   /** @returns {Promise<any>} */
-  async takeFeedback(key) {
+  async takeFeedback(key, { ackable = false } = {}) {
     return this.runExclusive(async () => {
       const state = await this.readState();
       const session = state.sessions[key];
       if (!session) {
         return { status: "missing" };
       }
+      // Folio: an earlier batch nobody acked is handed out again, ahead of anything newer.
+      const unacked = isUnackedDelivery(session.unacked_delivery) ? session.unacked_delivery : null;
+      const freshPrompts = session.prompts || [];
       // Prompts queued before the session ended (a browser send-and-end) must still reach the
       // agent, so deliver them before reporting the ended state; the next poll then sees ended.
-      const prompts = session.prompts || [];
+      const prompts = unacked ? [...unacked.prompts, ...freshPrompts] : freshPrompts;
       // Layout warnings stay passive until the user queues them. Only fatal artifact
       // failures can reach the agent without explicit user action.
-      const artifactFailures = Array.isArray(session.artifact_failures) ? session.artifact_failures : [];
+      const freshFailures = Array.isArray(session.artifact_failures) ? session.artifact_failures : [];
+      const artifactFailures = unacked
+        ? mergeArtifactFailures(unacked.artifact_failures || [], freshFailures).failures
+        : freshFailures;
       const alreadyEnded = session.status === "ended";
       if (prompts.length === 0 && artifactFailures.length === 0) {
         return alreadyEnded ? { status: "ended", ended_by: session.ended_by } : { status: "waiting" };
@@ -638,14 +652,29 @@ export class SessionStore {
       // shares this lock, so the user entries with no stamp are exactly this batch. The sequence
       // rides on the result so a closed-poll restore can undo only this take's stamps.
       const deliverySeq = normalizeRevision(session.delivery_seq) + 1;
+      const domSnapshot = session.dom_snapshot || (unacked ? unacked.dom_snapshot : "") || "";
+      const deliveryId = ackable ? crypto.randomBytes(8).toString("hex") : "";
       const result = {
         status: "feedback",
-        dom_snapshot: session.dom_snapshot || "",
+        dom_snapshot: domSnapshot,
         prompts,
         ...(artifactFailures.length > 0 ? { artifact_failures: artifactFailures } : {}),
         ...(alreadyEnded ? { session_ended: true, ended_by: session.ended_by } : {}),
-        ...(prompts.length > 0 ? { delivery_seq: deliverySeq } : {}),
+        ...(freshPrompts.length > 0 ? { delivery_seq: deliverySeq } : {}),
+        ...(deliveryId ? { delivery_id: deliveryId } : {}),
+        ...(unacked ? { redelivered: true } : {}),
       };
+      if (deliveryId) {
+        session.unacked_delivery = {
+          id: deliveryId,
+          at: new Date().toISOString(),
+          prompts,
+          artifact_failures: artifactFailures,
+          dom_snapshot: domSnapshot,
+        };
+      } else {
+        delete session.unacked_delivery;
+      }
       // Delivery clears pending prompts, so retain the attachment ids for a bounded
       // grace window while the polling agent opens the absolute paths it received.
       const deliveredNow = Date.now();
@@ -668,7 +697,7 @@ export class SessionStore {
       const current = [...deliveredIds].map((id) => ({ id, at: deliveredNow }));
       const historyRoom = Math.max(0, MAX_DELIVERED_ATTACHMENTS - current.length);
       session.delivered_attachments = [...carried.slice(-historyRoom), ...current];
-      if (prompts.length > 0) {
+      if (freshPrompts.length > 0) {
         session.delivery_seq = deliverySeq;
         if (stampDelivered(session.chat, deliverySeq, new Date(deliveredNow).toISOString())) {
           session.chat_revision = normalizeRevision(session.chat_revision) + 1;
@@ -687,8 +716,69 @@ export class SessionStore {
     });
   }
 
+  // Folio: the agent has the batch. Only the delivery it names is cleared, so a late ack of an
+  // older delivery never drops a newer one.
+  async ackDelivery(key, deliveryId) {
+    return this.runExclusive(async () => {
+      const state = await this.readState();
+      const session = state.sessions[key];
+      if (!session) return { status: "missing" };
+      const unacked = isUnackedDelivery(session.unacked_delivery) ? session.unacked_delivery : null;
+      if (!unacked || unacked.id !== String(deliveryId || "")) return { status: "stale" };
+      delete session.unacked_delivery;
+      session.updated_at = new Date().toISOString();
+      await this.writeState(state);
+      return { status: "acked" };
+    });
+  }
+
+  async setOwnerSession(key, ownerSessionId) {
+    const owner = normalizeOwnerSessionId(ownerSessionId);
+    if (!owner) return null;
+    return this.runExclusive(async () => {
+      const state = await this.readState();
+      const session = state.sessions[key];
+      if (!session) return null;
+      if (session.owner_session_id === owner) return session;
+      session.owner_session_id = owner;
+      session.updated_at = new Date().toISOString();
+      await this.writeState(state);
+      return session;
+    });
+  }
+
+  // Folio (#373): a page whose HTML file was deleted can no longer be found through realpath.
+  // Match the stored canonical path instead; Windows paths compare case-insensitively.
+  async findByStoredFile(file) {
+    const wanted = comparablePath(path.resolve(String(file || "")));
+    return this.runExclusive(async () => {
+      const state = await this.readState();
+      return Object.values(state.sessions).find((session) => comparablePath(session?.file || "") === wanted) || null;
+    });
+  }
+
+  // Folio: ended sessions used to stay in state.json forever. Drop the ones that ended long ago
+  // and have nothing left to deliver.
+  async pruneEndedSessions(maxAgeMs, now = Date.now()) {
+    return this.runExclusive(async () => {
+      const state = await this.readState();
+      const removed = [];
+      for (const [key, session] of Object.entries(state.sessions)) {
+        if (session?.status !== "ended") continue;
+        if (Array.isArray(session.prompts) && session.prompts.length > 0) continue;
+        if (isUnackedDelivery(session.unacked_delivery)) continue;
+        const updated = Date.parse(session.updated_at || "");
+        if (!Number.isFinite(updated) || now - updated < maxAgeMs) continue;
+        delete state.sessions[key];
+        removed.push(key);
+      }
+      if (removed.length > 0) await this.writeState(state);
+      return removed;
+    });
+  }
+
   // `endedBy` distinguishes a human ending review from the browser chrome ("user") from an
-  // agent explicitly closing the loop via `lavish-axi end` ("agent"). Only a user-initiated end
+  // agent explicitly closing the loop via `folio-axi end` ("agent"). Only a user-initiated end
   // blocks a plain reopen - see `SessionStore` callers in server.js.
   async endSession(key, endedBy = "agent") {
     return this.runExclusive(async () => {
@@ -715,6 +805,8 @@ export class SessionStore {
         return null;
       }
       if (requireOpen && session.status === "ended") return session;
+      // Folio: a reply means the agent read what it was given.
+      delete session.unacked_delivery;
       const at = new Date().toISOString();
       // Done (docs/delivery-acks.md): the reply answers what the agent has seen. Stamped in the same
       // write as the reply, with the reply's own time, and never on an entry no poll has delivered.
@@ -813,8 +905,30 @@ export class SessionStore {
     }
   }
 
+  // Folio: write a sibling temp file and rename it over state.json, so a crash mid-write never
+  // leaves a truncated file. Windows can refuse the rename for a moment while another process
+  // (an antivirus scan, a reader) holds the target open, so retry briefly before falling back
+  // to the old in-place write.
   async writeState(state) {
-    await writeFile(this.file, `${JSON.stringify(state, null, 2)}\n`);
+    const body = `${JSON.stringify(state, null, 2)}\n`;
+    const temp = `${this.file}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`;
+    await writeFile(temp, body);
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await rename(temp, this.file);
+        return;
+      } catch (error) {
+        const retryable = ["EPERM", "EACCES", "EBUSY"].includes(error?.code);
+        if (retryable && attempt < 5) {
+          await new Promise((resolve) => setTimeout(resolve, 20 * (attempt + 1)));
+          continue;
+        }
+        await rm(temp, { force: true }).catch(() => {});
+        if (!retryable) throw error;
+        await writeFile(this.file, body);
+        return;
+      }
+    }
   }
 }
 
@@ -825,6 +939,19 @@ export async function canonicalFile(file) {
 
 export function sessionKey(file) {
   return crypto.createHash("sha256").update(file).digest("hex").slice(0, 16);
+}
+
+export function normalizeOwnerSessionId(value) {
+  const owner = String(value || "").trim();
+  return /^[A-Za-z0-9._:-]{1,128}$/.test(owner) ? owner : "";
+}
+
+function isUnackedDelivery(value) {
+  return Boolean(value && typeof value === "object" && typeof value.id === "string" && Array.isArray(value.prompts));
+}
+
+function comparablePath(file) {
+  return process.platform === "win32" ? file.toLowerCase() : file;
 }
 
 function applyTranscriptBound(session) {

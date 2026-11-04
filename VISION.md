@@ -1,6 +1,6 @@
 # Vision
 
-`lavish-axi` exists so that a person reviewing what an agent rendered can point at it and be understood exactly.
+`folio-axi` exists so that a person reviewing what an agent rendered can point at it and be understood exactly.
 It is operated by the agent and serves the collaboration between that agent and its human user, turning the person's pointing, selecting, drawing, and typing into instructions the agent receives as their own words.
 It owns exactly one thing: the review loop between one person and one agent over one local HTML file.
 

@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 
 import { ARTIFACT_HTML_ERROR, artifactTreeRoot, isHtmlPath, resolveAllowedArtifactFile } from "../src/artifact-path.js";
+import { NO_SYMLINKS } from "./helpers/symlinks.js";
 
 test("isHtmlPath matches the CLI .html / .htm rule", () => {
   assert.equal(isHtmlPath("report.html"), true);
@@ -59,21 +60,25 @@ test("resolveAllowedArtifactFile refuses a non-HTML path without following it as
   }
 });
 
-test("resolveAllowedArtifactFile refuses an HTML symlink whose real path is not HTML", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "lavish-artifact-path-"));
-  try {
-    const secret = path.join(dir, "secret.txt");
-    const decoy = path.join(dir, "decoy.html");
-    await writeFile(secret, "outside-secret\n");
-    await symlink(secret, decoy);
-    await assert.rejects(() => resolveAllowedArtifactFile(decoy), {
-      name: "ArtifactPathError",
-      message: ARTIFACT_HTML_ERROR,
-    });
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
+test(
+  "resolveAllowedArtifactFile refuses an HTML symlink whose real path is not HTML",
+  { skip: NO_SYMLINKS },
+  async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "lavish-artifact-path-"));
+    try {
+      const secret = path.join(dir, "secret.txt");
+      const decoy = path.join(dir, "decoy.html");
+      await writeFile(secret, "outside-secret\n");
+      await symlink(secret, decoy);
+      await assert.rejects(() => resolveAllowedArtifactFile(decoy), {
+        name: "ArtifactPathError",
+        message: ARTIFACT_HTML_ERROR,
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);
 
 test("resolveAllowedArtifactFile refuses a directory whose name looks like HTML", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "lavish-artifact-path-"));

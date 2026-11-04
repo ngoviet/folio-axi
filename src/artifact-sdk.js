@@ -490,7 +490,7 @@ export function createArtifactSdk(
   // server re-validates size and enforces the per-prompt count/byte caps at queue
   // time (see attachment-store.js), rejecting the entire send batch on a mismatch
   // so the chrome can preserve the queue and surface the correction to the user.
-  // The count cap mirrors the server's LAVISH_AXI_MAX_ATTACHMENTS_PER_PROMPT, passed
+  // The count cap mirrors the server's FOLIO_AXI_MAX_ATTACHMENTS_PER_PROMPT, passed
   // in via createSdkJs (W1); the literal 4 is only the fallback when the SDK runs
   // without that wiring (e.g. a unit-test call to createArtifactSdk).
   const ATTACHMENT_MAX_COUNT =

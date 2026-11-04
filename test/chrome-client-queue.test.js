@@ -100,7 +100,7 @@ async function createChromeHarness({
   const source = await readFile(sourceUrl, "utf8");
   // Seed sessionStorage before the client boots, to model a tab whose queue was
   // already persisted by an earlier page load.
-  if (storedQueue) storage.set(`lavish-axi:queued:${sessionData.key}`, JSON.stringify(storedQueue));
+  if (storedQueue) storage.set(`folio-axi:queued:${sessionData.key}`, JSON.stringify(storedQueue));
   const postedToFrame = [];
   const postedToWhiteboard = [];
   const inlineWhiteboards = [];
@@ -660,7 +660,7 @@ async function createChromeHarness({
       return event;
     },
     queued() {
-      return JSON.parse(storage.get("lavish-axi:queued:abc") || "[]");
+      return JSON.parse(storage.get("folio-axi:queued:abc") || "[]");
     },
     reloadCount() {
       return reloadCount;
@@ -1474,7 +1474,7 @@ test("reload during terminal preparation cannot restore an incomplete terminal b
   chrome.element("sendAndEnd").click();
 
   assert.equal(
-    storage.has("lavish-axi:terminal:abc"),
+    storage.has("folio-axi:terminal:abc"),
     false,
     "a terminal reservation is not durable until all in-flight preparation joins the batch",
   );
@@ -1519,7 +1519,7 @@ test("reload restores a completed terminal reservation after its prompt was deli
   await flushPromises();
 
   assert.equal(chrome.queued().length, 0);
-  assert.equal(storage.get("lavish-axi:terminal:abc"), "true");
+  assert.equal(storage.get("folio-axi:terminal:abc"), "true");
   assert.equal(originalEndAttempts, 1);
 
   const reloadedRequests = [];
@@ -1540,7 +1540,7 @@ test("reload restores a completed terminal reservation after its prompt was deli
   await flushPromises();
 
   assert.deepEqual(reloadedRequests, [{ url: "/api/abc/end", body: null }]);
-  assert.equal(storage.has("lavish-axi:terminal:abc"), false);
+  assert.equal(storage.has("folio-axi:terminal:abc"), false);
   assert.equal(reloaded.element("sendAndEnd").disabled, true);
 });
 
@@ -4317,7 +4317,7 @@ test("empty Send names this tab's queue without importing another window's answe
     type: "lavish:queuePrompt",
     prompt: { prompt: "Keep my answer", selector: "#answer", tag: "input", text: "Answer" },
   });
-  const savedQueue = firstStorage.get("lavish-axi:queued:abc");
+  const savedQueue = firstStorage.get("folio-axi:queued:abc");
   const second = await createChromeHarness({
     storage: secondStorage,
     fetchImpl,
@@ -4333,7 +4333,7 @@ test("empty Send names this tab's queue without importing another window's answe
   assert.equal(second.element("layoutGateCopy").textContent, UNSENT_OWNERSHIP_COPY);
   assert.equal(second.queued().length, 0);
   assert.equal(first.queued().length, 1);
-  assert.equal(firstStorage.get("lavish-axi:queued:abc"), savedQueue);
+  assert.equal(firstStorage.get("folio-axi:queued:abc"), savedQueue);
   assert.equal(second.reloadCount(), 0, "empty Send never takes over");
 
   second.element("handoffTakeover").click();
@@ -4344,7 +4344,7 @@ test("empty Send names this tab's queue without importing another window's answe
   const originalReloaded = await createChromeHarness({ storage: firstStorage, fetchImpl });
   assert.equal(takenOver.queued().length, 0);
   assert.equal(originalReloaded.queued()[0].prompt, "Keep my answer");
-  assert.equal(firstStorage.get("lavish-axi:queued:abc"), savedQueue);
+  assert.equal(firstStorage.get("folio-axi:queued:abc"), savedQueue);
   assert.equal(postedBodies.length, 0, "neither empty Send nor takeover submits another window's answers");
 });
 
@@ -4787,7 +4787,7 @@ test("the outdated banner's reload asks the server before navigating", async () 
     },
   });
 
-  // `lavish-axi stop` leaves no replacement behind, so this button must not navigate into a port
+  // `folio-axi stop` leaves no replacement behind, so this button must not navigate into a port
   // nothing is listening on.
   sendChromeOutdated(chrome, "stop");
   await chrome.element("outdatedReload").click();
@@ -5202,7 +5202,7 @@ test("no retired draft is dropped to make room for a later one", async () => {
 test("a retired draft the browser refuses to store says so in its own note", async () => {
   const storage = new (class extends Map {
     set(storageKey, value) {
-      if (String(storageKey).startsWith("lavish-axi:retired-drafts:")) throw new Error("quota exceeded");
+      if (String(storageKey).startsWith("folio-axi:retired-drafts:")) throw new Error("quota exceeded");
       return super.set(storageKey, value);
     }
   })();
@@ -6017,7 +6017,7 @@ test("chrome send and end during an in-flight submit still ends after the submit
   assert.equal(chrome.element("chatInput").disabled, true);
 });
 
-// #171: a tab left open across `lavish-axi end` (or the browser's own End in another tab) must go
+// #171: a tab left open across `folio-axi end` (or the browser's own End in another tab) must go
 // visibly read-only the moment the server tells it, instead of leaving Send enabled for feedback
 // nobody will ever poll for.
 test("chrome goes read-only when the server forwards an ended SSE event (#171)", async () => {
@@ -6878,7 +6878,7 @@ test("chrome renders queued-prompt attachment thumbnails from the server endpoin
 });
 
 test("a queued prompt over the thumbnail limit shows the hidden images as a +N badge (W-A)", async () => {
-  // LAVISH_AXI_MAX_ATTACHMENTS_PER_PROMPT is configurable, so a prompt can legitimately
+  // FOLIO_AXI_MAX_ATTACHMENTS_PER_PROMPT is configurable, so a prompt can legitimately
   // carry more images than the compact bubble can show. The overflow must be counted, not
   // silently dropped - otherwise the queue looks like it lost the extra attachments.
   const chrome = await createChromeHarness();
@@ -7190,7 +7190,7 @@ function sheetState(chrome) {
     label: toggle["aria-label"],
     summary: chrome.element("panelSummary").textContent,
     summaryClass: String(chrome.element("panelSummary").classList),
-    stored: chrome.storage.get("lavish-axi:sheet-open:abc") || null,
+    stored: chrome.storage.get("folio-axi:sheet-open:abc") || null,
   };
 }
 
@@ -7248,7 +7248,7 @@ test("phone chrome boots with the conversation docked and raises it on tap", asy
 });
 
 test("phone chrome restores an open sheet across a chrome reload", async () => {
-  const storage = new Map([["lavish-axi:sheet-open:abc", "1"]]);
+  const storage = new Map([["folio-axi:sheet-open:abc", "1"]]);
   const chrome = await createChromeHarness({ mobile: true, storage });
 
   const state = sheetState(chrome);
@@ -7369,7 +7369,7 @@ test("crossing the breakpoint in either direction leaves no sheet state behind",
   const chrome = await createChromeHarness({ mobile: true });
   chrome.element("panelHead").dispatch("click", {});
   assert.equal(sheetState(chrome).open, true);
-  assert.equal(chrome.storage.get("lavish-axi:sheet-open:abc"), "1");
+  assert.equal(chrome.storage.get("folio-axi:sheet-open:abc"), "1");
 
   // Widening to desktop: the panel is a plain side panel again, never inert, never "open".
   chrome.setMobile(false);
@@ -7377,7 +7377,7 @@ test("crossing the breakpoint in either direction leaves no sheet state behind",
   assert.equal(state.open, false);
   assert.equal(state.scrollInert, false);
   assert.equal(state.composerInert, false);
-  assert.equal(chrome.storage.has("lavish-axi:sheet-open:abc"), false);
+  assert.equal(chrome.storage.has("folio-axi:sheet-open:abc"), false);
 
   // Narrowing back docks it again and moves focus out of the content becoming inert.
   chrome.element("chatInput").focus();
@@ -7386,7 +7386,7 @@ test("crossing the breakpoint in either direction leaves no sheet state behind",
   assert.equal(state.open, false);
   assert.equal(state.scrollInert, true);
   assert.equal(chrome.focusLog.at(-1), "panelToggle");
-  assert.equal(chrome.storage.has("lavish-axi:sheet-open:abc"), false);
+  assert.equal(chrome.storage.has("folio-axi:sheet-open:abc"), false);
 });
 
 // ---- Queued and sent notes are one conversation ----
@@ -7431,13 +7431,13 @@ test("a queued note's remove control clears memory, storage, and its bubble", as
     prompt: { prompt: "Remove this", selector: "h2", tag: "h2", text: "Heading" },
   });
   assert.equal(chrome.queued().length, 1);
-  assert.equal(chrome.storage.has("lavish-axi:queued:abc"), true);
+  assert.equal(chrome.storage.has("folio-axi:queued:abc"), true);
 
   const [removeButton] = chrome.element("queuedLog").querySelectorAll(".queued-remove");
   removeButton.click({ stopPropagation() {} });
 
   assert.deepEqual(chrome.queued(), []);
-  assert.equal(chrome.storage.has("lavish-axi:queued:abc"), false);
+  assert.equal(chrome.storage.has("folio-axi:queued:abc"), false);
   assert.equal(chrome.element("queuedLog").innerHTML, "");
 });
 
@@ -9172,7 +9172,7 @@ function sidebarState(chrome) {
     title: toggle.title,
     unread: toggle.classList.contains("is-unread"),
     count: count.hidden ? null : count.textContent,
-    stored: chrome.localStore.get("lavish-axi:panel-collapsed") || null,
+    stored: chrome.localStore.get("folio-axi:panel-collapsed") || null,
   };
 }
 
@@ -9193,7 +9193,7 @@ test("desktop sidebar toggle hides and restores the conversation panel", async (
   assert.equal(collapsed.label, "Show conversation");
   // The preference is the viewer's, not the review's: one key shared by every session.
   assert.equal(collapsed.stored, "1");
-  assert.equal(chrome.storage.has("lavish-axi:panel-collapsed"), false, "never per-tab sessionStorage");
+  assert.equal(chrome.storage.has("folio-axi:panel-collapsed"), false, "never per-tab sessionStorage");
 
   chrome.element("sidebarToggle").dispatch("click", {});
   const reopened = sidebarState(chrome);
@@ -9203,7 +9203,7 @@ test("desktop sidebar toggle hides and restores the conversation panel", async (
 });
 
 test("a collapsed panel stays collapsed across a chrome reload and across sessions", async () => {
-  const localStore = new Map([["lavish-axi:panel-collapsed", "1"]]);
+  const localStore = new Map([["folio-axi:panel-collapsed", "1"]]);
   const chrome = await createChromeHarness({
     localStore,
     sessionData: { ...defaultSessionData, key: "another-review" },
@@ -9311,7 +9311,7 @@ test("an expanded desktop panel never marks a reply as unread", async () => {
 });
 
 test("the stored desktop collapse never hides the phone sheet", async () => {
-  const localStore = new Map([["lavish-axi:panel-collapsed", "1"]]);
+  const localStore = new Map([["folio-axi:panel-collapsed", "1"]]);
   const chrome = await createChromeHarness({ mobile: true, localStore });
 
   assert.equal(sidebarState(chrome).collapsed, false, "phone width keeps its own dock");

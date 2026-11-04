@@ -147,16 +147,16 @@ export const REVISION_REGISTRY_SNIPPET = `<script type="application/json" data-l
 <section data-lavish-revision="r1">...the block you changed...</section>`;
 
 // Single source for how agents choose an artifact's design direction. It flows into the
-// no-args home output, top-level --help (via DESIGN_SYSTEM_HINT), the `lavish-axi design`
+// no-args home output, top-level --help (via DESIGN_SYSTEM_HINT), the `folio-axi design`
 // summary, and the design command help. The installable skill does not embed this rule;
-// it points at `lavish-axi design`. Edit the rule here only.
+// it points at `folio-axi design`. Edit the rule here only.
 export const DESIGN_PRIORITY_RULE =
   "Decide the design direction in this strict priority order, and only move to the next step when the current one truly yields nothing: (1) if the user asked for a specific look or named design system, use that; (2) otherwise you must first inspect the project the artifact is about - the subject or product whose content or UI it represents, which may differ from your current working directory - and match that project's design system: Tailwind or theme config, shared CSS variables or design tokens, component library, brand assets, or existing styled pages. If the artifact previews, proposes, or mocks a specific app's UI, render it in that app's own design system so it faithfully shows the product, even when you are running in a different repo; (3) only when both steps come up empty, use the Lavish-recommended Tailwind CSS browser runtime v4 + DaisyUI v5, available via CDN, and prefer that CDN snippet over hand-writing styles unless explicitly instructed otherwise by the user.";
 
 export const DESIGN_SYSTEM_HINT =
-  "Lavish does not auto-inject any design system - artifacts stay portable so they render identically when opened directly without lavish-axi running. Before writing any HTML: " +
+  "Lavish does not auto-inject any design system - artifacts stay portable so they render identically when opened directly without folio-axi running. Before writing any HTML: " +
   DESIGN_PRIORITY_RULE +
-  " Run `lavish-axi design` for a content-to-playbook router, a copy-pasteable CDN snippet, the whiteboard (Mermaid) opt-in snippet, and the DaisyUI component reference. When you deliver the artifact, state which of the three design sources you used and why.";
+  " Run `folio-axi design` for a content-to-playbook router, a copy-pasteable CDN snippet, the whiteboard (Mermaid) opt-in snippet, and the DaisyUI component reference. When you deliver the artifact, state which of the three design sources you used and why.";
 
 export const DAISYUI_THEMES = [
   "light",
@@ -227,7 +227,7 @@ export function createDesignOutput() {
       versions: { mermaid: MERMAID_VERSION },
       library_icons: {
         use_when:
-          "Optional, in a whiteboard flowchart such as an architecture or system diagram: show a node as an icon from an Excalidraw library the user installed. Run `lavish-axi libraries` to see what is installed and `lavish-axi libraries --search <text>` for exact item refs; skip this when nothing is installed.",
+          "Optional, in a whiteboard flowchart such as an architecture or system diagram: show a node as an icon from an Excalidraw library the user installed. Run `folio-axi libraries` to see what is installed and `folio-axi libraries --search <text>` for exact item refs; skip this when nothing is installed.",
         syntax: "%% lavish-icon <node-id> <library-id>/<item name>",
         example:
           "flowchart LR\n  %% lavish-icon api aws-architecture-icons/AWS Lambda\n  user([Customer]) --> api[Orders API]",

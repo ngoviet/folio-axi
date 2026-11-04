@@ -7,7 +7,7 @@ minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
 minimumReleaseAgeExclude:
   - axi-sdk-js
-  - lavish-axi
+  - folio-axi
 onlyBuiltDependencies:
   - esbuild
 allowBuilds:

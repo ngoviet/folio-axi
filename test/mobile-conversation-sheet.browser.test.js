@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 // the Send row ran past the viewport. The sheet replaces that split, and these assertions are the
 // geometry an end user would notice: nothing clipped, every control inside the viewport, the
 // artifact never under the dock, and the desktop layout untouched.
-const runBrowserE2e = process.env.LAVISH_AXI_BROWSER_E2E === "1";
+const runBrowserE2e = process.env.FOLIO_AXI_BROWSER_E2E === "1";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function run(command, args, env, timeout = 45_000) {
@@ -99,12 +99,12 @@ test(
     const temp = await mkdtemp(path.join(tmpdir(), "lavish-mobile-sheet-"));
     const port = await freePort();
     const lavishEnv = {
-      LAVISH_AXI_PORT: String(port),
-      LAVISH_AXI_STATE_DIR: path.join(temp, "state"),
-      LAVISH_AXI_NO_OPEN: "1",
-      LAVISH_AXI_TELEMETRY: "0",
-      LAVISH_AXI_HOST: "127.0.0.1",
-      LAVISH_AXI_LINK_HOST: "127.0.0.1",
+      FOLIO_AXI_PORT: String(port),
+      FOLIO_AXI_STATE_DIR: path.join(temp, "state"),
+      FOLIO_AXI_NO_OPEN: "1",
+      FOLIO_AXI_TELEMETRY: "0",
+      FOLIO_AXI_HOST: "127.0.0.1",
+      FOLIO_AXI_LINK_HOST: "127.0.0.1",
     };
     const chromeEnv = {
       CHROME_DEVTOOLS_AXI_SESSION: `lavish-mobile-sheet-${process.pid}`,
@@ -227,13 +227,13 @@ test(
     try {
       const artifact = path.join(temp, "review.html");
       await writeFile(artifact, ARTIFACT);
-      const output = run(process.execPath, ["bin/lavish-axi.js", artifact, "--no-open"], lavishEnv);
+      const output = run(process.execPath, ["bin/folio-axi.js", artifact, "--no-open"], lavishEnv);
       const url = output.match(/url:\s*"([^"]+)"/)?.[1];
       assert.ok(url, output);
       for (const reply of REPLIES) {
         run(
           process.execPath,
-          ["bin/lavish-axi.js", "poll", artifact, "--agent-reply", reply, "--timeout-ms", "200"],
+          ["bin/folio-axi.js", "poll", artifact, "--agent-reply", reply, "--timeout-ms", "200"],
           lavishEnv,
           30_000,
         );
@@ -319,7 +319,7 @@ test(
       assert.equal(g.chat.inert, false);
       assert.equal(g.frame.right, g.panel.left, "artifact and panel sit side by side");
     } finally {
-      run(process.execPath, ["bin/lavish-axi.js", "stop", "--port", String(port)], lavishEnv, 15_000);
+      run(process.execPath, ["bin/folio-axi.js", "stop", "--port", String(port)], lavishEnv, 15_000);
       run("chrome-devtools-axi", ["stop"], chromeEnv);
       await rm(temp, { recursive: true, force: true });
     }

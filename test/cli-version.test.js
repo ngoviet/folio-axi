@@ -12,7 +12,7 @@ import { promisify } from "node:util";
 import { isVersionOnlyArgv, VERSION } from "../src/cli.js";
 
 const execFileAsync = promisify(execFile);
-const BIN = fileURLToPath(new URL("../bin/lavish-axi.js", import.meta.url));
+const BIN = fileURLToPath(new URL("../bin/folio-axi.js", import.meta.url));
 
 // Accepts the telemetry connection and never answers, so a regression pays the whole
 // drain timeout instead of a fast connection refusal.
@@ -61,10 +61,10 @@ test("--version prints the version fast and skips telemetry and state-dir init",
 
   const env = {
     ...process.env,
-    LAVISH_AXI_STATE_DIR: stateDir,
-    LAVISH_AXI_TELEMETRY: "1",
-    LAVISH_AXI_UMAMI_WEBSITE_ID: "version-fast-path-test",
-    LAVISH_AXI_UMAMI_HOST: telemetry.host,
+    FOLIO_AXI_STATE_DIR: stateDir,
+    FOLIO_AXI_TELEMETRY: "1",
+    FOLIO_AXI_UMAMI_WEBSITE_ID: "version-fast-path-test",
+    FOLIO_AXI_UMAMI_HOST: telemetry.host,
   };
 
   for (const flag of ["--version", "-v", "-V"]) {
@@ -79,7 +79,7 @@ test("--version prints the version fast and skips telemetry and state-dir init",
   assert.equal(existsSync(stateDir), false);
 });
 
-test("a non-version invocation still runs the telemetry init the fast path skips", async (t) => {
+test("Folio sends no telemetry even when telemetry env is configured", async (t) => {
   const telemetry = await startBlackHoleTelemetry();
   const stateParent = await mkdtemp(path.join(tmpdir(), "lavish-version-control-"));
   const stateDir = path.join(stateParent, "state");
@@ -91,13 +91,13 @@ test("a non-version invocation still runs the telemetry init the fast path skips
   await execFileAsync(process.execPath, [BIN, "design"], {
     env: {
       ...process.env,
-      LAVISH_AXI_STATE_DIR: stateDir,
-      LAVISH_AXI_TELEMETRY: "1",
-      LAVISH_AXI_UMAMI_WEBSITE_ID: "version-fast-path-test",
-      LAVISH_AXI_UMAMI_HOST: telemetry.host,
+      FOLIO_AXI_STATE_DIR: stateDir,
+      FOLIO_AXI_TELEMETRY: "1",
+      FOLIO_AXI_UMAMI_WEBSITE_ID: "version-fast-path-test",
+      FOLIO_AXI_UMAMI_HOST: telemetry.host,
     },
   });
 
-  assert.ok(telemetry.requests.length > 0, "expected the control command to send telemetry");
+  assert.equal(telemetry.requests.length, 0, "Folio never sends telemetry");
   assert.equal(existsSync(stateDir), true);
 });

@@ -10,7 +10,7 @@ import test from "node:test";
 import { parse } from "parse5";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const playbooksPath = process.env.LAVISH_AXI_PLAYBOOKS_MODULE || path.join(repoRoot, "src/playbooks.js");
+const playbooksPath = process.env.FOLIO_AXI_PLAYBOOKS_MODULE || path.join(repoRoot, "src/playbooks.js");
 const { PLAYBOOKS } = await import(pathToFileURL(playbooksPath).href);
 let chromeLaunchState;
 
