@@ -178,6 +178,16 @@ test("computeClaudeHookUpdate replaces old Folio and bare lavish hooks only", ()
   assert.equal(again, false);
 });
 
+test("hook setup preserves unrelated commands and group settings", () => {
+  const other = { type: "command", command: "my-check" };
+  const mixed = { matcher: "*", hooks: [{ type: "command", command: "folio-axi hook stop" }, other] };
+  const legacy = { hooks: [{ type: "command", command: "folio-axi" }, other] };
+  const [updated] = computeClaudeHookUpdate({ hooks: { Stop: [mixed], SessionStart: [legacy] } });
+  assert.deepEqual(updated.hooks.Stop[0], { matcher: "*", hooks: [other] });
+  assert.deepEqual(updated.hooks.SessionStart[0], { hooks: [other] });
+  assert.equal(computeClaudeHookUpdate(updated)[1], false);
+});
+
 test("hook preserves structured feedback and does not acknowledge a cut batch", async () => {
   await withStateDir(async (stateDirectory) => {
     const response = {

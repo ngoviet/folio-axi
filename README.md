@@ -43,91 +43,16 @@ Lavish Editor is an [AXI](https://axi.md), which means -
 
 ## Quick Start
 
-Install the Lavish skill in the [Agent Skills](https://agentskills.io) format with [`npx skills`](https://github.com/vercel-labs/skills):
+From the Folio checkout, install dependencies and link the local CLI:
 
 ```sh
-npx skills add kunchenguid/lavish-axi --skill lavish
+pnpm install
+npm link
+folio-axi setup hooks          # preview
+folio-axi setup hooks --write  # merge Claude Code hooks into settings
 ```
 
-That is the entire setup - no npm install needed.
-The skill teaches your agent to run Lavish through `npx -y folio-axi`, so the CLI comes along on demand.
-It stays a short stub and sends the agent to `npx -y folio-axi --help`, `reply --help`, `design`, and `playbook` for current instructions, so an installed copy cannot go stale against a newer CLI.
-Its frontmatter also includes Hermes Agent metadata, so Hermes-compatible harnesses can categorize and surface it as a first-class productivity skill.
-This installs the public `lavish` skill.
-The repository also contains an internal `lavish-design` brand skill for maintainers; default `npx skills add ... --list` and skills.sh discovery hide it unless `INSTALL_INTERNAL_SKILLS=1` is set.
-
-Then, in agents that expose skills as slash commands (Claude Code, for example), invoke it directly:
-
-```
-/lavish let's discuss our plan here
-```
-
-Or just ask for anything that is easier to grasp visually - a plan, comparison, diagram, table, code view, or report - and the agent loads the skill on its own when it recognizes the task.
-
-By default the skill lands in the current project's skills directory (`.claude/skills/`, for example); add `-g` to install it for all projects (`~/.claude/skills/`).
-
-## Other Ways to Use Lavish
-
-The skill is the recommended path, but it is not the only one.
-
-### Zero setup
-
-Lavish is an AXI, so any capable agent can run the CLI directly with nothing installed at all.
-Just tell your agent:
-
-```
-Use `npx -y folio-axi` to write a product or technical plan for what we discussed.
-```
-
-### Session hook
-
-Want Lavish's ambient context - including your live open sessions - fed into every agent session instead of loading on demand?
-Install the CLI globally and opt into the hook:
-
-```sh
-npm install -g folio-axi
-folio-axi setup hooks
-```
-
-This installs a `SessionStart` hook for **Claude Code**, **Codex**, **OpenCode**, and **GitHub Copilot CLI** that surfaces open sessions, visualization playbooks, and usage guidance at the start of each session.
-Unlike the skill, the hook also shows your live open sessions, so a fresh agent session can resume an in-flight review.
-**Restart your agent session after running this** so the new hook takes effect.
-
-### Agent Plugin
-
-Lavish also ships as an [Agent Plugin](https://agent-plugins.org) - the vendor-neutral packaging standard for skills and MCP servers - so clients that speak that format can load it directly.
-
-**No marketplace is involved.** The installed npm package _is_ the plugin: `plugin.json` sits at the package root next to the `skills/` directory, so whatever `npm install` already put on disk is a complete, conformant plugin. Install the CLI, then register it:
-
-```sh
-npm install -g folio-axi
-folio-axi setup plugin
-```
-
-That registers the installed package with every supported client it finds - **VS Code**, **Cursor**, and **GitHub Copilot CLI** - and reports which ones were absent. It is opt-in and idempotent, and it repairs the registered path after a reinstall or relocation. Reload each client afterward.
-
-Each client is registered independently: one that cannot be registered is reported with what to do about it, and never blocks the others or fails the command.
-
-To register by hand instead, point any client at the package directory (`npm root -g`/`folio-axi`):
-
-| Client             | Register with                                                                                                      |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| VS Code            | `"chat.pluginLocations": { "<package-dir>": true }` in user settings                                               |
-| Cursor             | link the package dir at `~/.cursor/plugins/local/folio-axi` (`setup plugin` handles Windows link compatibility)    |
-| GitHub Copilot CLI | `copilot plugin install <package-dir>` (or `copilot plugin install kunchenguid/lavish-axi` straight from the repo) |
-
-Codex and ChatGPT install plugins only from marketplace sources, so Codex users should use the session hook above instead.
-Lavish declares no MCP server - the CLI itself is the agent interface - so a plugin install brings the same `lavish` skill, and the skill and plugin are alternatives rather than a stack.
-
-### From source
-
-```sh
-git clone https://github.com/kunchenguid/lavish-axi.git
-cd folio-axi
-pnpm install --frozen-lockfile
-pnpm run build
-pnpm link
-```
+Restart the Claude Code session after installing hooks. The repository's `skills/folio` skill directs agents to the CLI's current help, design guidance, and playbooks. You can also ask your agent to use `folio-axi` directly.
 
 ## How It Works
 
@@ -280,8 +205,7 @@ pnpm link
 | `folio-axi playbook [id]`      | List focused artifact guidance or show one playbook; agents must open each matching playbook before writing HTML.                                                                                                                                                                                                                                         |
 | `folio-axi libraries`          | List the Excalidraw libraries in the whiteboard library directory; `--search <text>` or `--library <id>` lists item refs for `%% lavish-icon` nodes.                                                                                                                                                                                                      |
 | `folio-axi design`             | Show agent-facing design guidance, including optional CDN snippets and the whiteboard (Mermaid) opt-in snippet.                                                                                                                                                                                                                                           |
-| `folio-axi setup hooks`        | Install or repair optional SessionStart hooks for Claude Code, Codex, OpenCode, and GitHub Copilot CLI; restart the agent session afterward.                                                                                                                                                                                                              |
-| `folio-axi setup plugin`       | Register the installed package as an [Agent Plugin](https://agent-plugins.org) in VS Code, Cursor, and GitHub Copilot CLI; opt-in, idempotent, no marketplace involved. Reload each client afterward.                                                                                                                                                     |
+| `folio-axi setup hooks`        | Preview Claude Code hooks; add `--write` to merge them into settings and restart the session.                                                                                                                                                                                                                                                             |
 | `folio-axi server`             | Run the local Lavish Editor server.                                                                                                                                                                                                                                                                                                                       |
 
 Known playbook IDs: `diagram`, `table`, `comparison`, `plan`, `code`, `input`, `explanation`, `slides`.
@@ -316,16 +240,7 @@ For flows, architecture, state, or sequence diagrams, open the diagram playbook 
 
 ## Telemetry
 
-The npm release sends anonymous usage telemetry to an [Umami](https://umami.is) server at `https://a.kunchenguid.com`. The host and website ID are baked into the published bundle at build time, so telemetry is on by default for `npx -y folio-axi`.
-
-Each `folio-axi` run sends two requests, except `folio-axi --version` (also `-v` and `-V`), which sends none: a page view when the command starts, and a `command` event when it finishes. Both carry:
-
-- the command name (for example `open`, `poll`, or `home` when you run it with no command), but not its arguments, file paths, artifact content, or prompts
-- the Lavish version, `process.platform`, and `process.arch`
-
-The `command` event also carries a `status` field: `success`, or `error` only when the CLI itself throws. A command that fails and sets a nonzero exit code is handled by the CLI framework, so it still reports `success`. No user identifier is sent. Requests time out after 1 second, and failures are ignored, so telemetry never changes what a command does.
-
-Set `FOLIO_AXI_TELEMETRY=0` (or `false` or `off`) to turn it off. A build from source sends nothing unless `FOLIO_AXI_UMAMI_WEBSITE_ID` is set, and `FOLIO_AXI_UMAMI_HOST` overrides the host.
+Folio sends no telemetry.
 
 ## Development
 

@@ -936,8 +936,20 @@ export async function serve({
     const detachRequestClose = () => req.off("close", onRequestClose);
     req.on("close", onRequestClose);
     try {
-      const file = await canonicalFile(String(req.query.file || ""));
-      const key = sessionKey(file);
+      const requestedFile = String(req.query.file || "");
+      let key;
+      try {
+        key = sessionKey(await canonicalFile(requestedFile));
+      } catch (error) {
+        if (error?.code !== "ENOENT") throw error;
+        const stored = await store.findByStoredFile(requestedFile);
+        if (!stored) {
+          detachRequestClose();
+          res.status(404).json({ status: "error", code: "NOT_FOUND", error: "session not found" });
+          return;
+        }
+        key = stored.key;
+      }
       const ownerValue = typeof req.query.owner === "string" ? req.query.owner.trim() : "";
       if (ownerValue.toLowerCase() === "none" || ownerValue.startsWith("-")) {
         detachRequestClose();

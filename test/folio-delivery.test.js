@@ -1,11 +1,102 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { serve } from "../src/server.js";
 import { SessionStore } from "../src/session-store.js";
+
+test("redelivery preserves failures and snapshots while newer feedback waits", async () => {
+  await withServer(async ({ stateFile, artifact }) => {
+    const store = new SessionStore(stateFile);
+    const session = await store.upsertSession(artifact, "http://localhost");
+    const state = await store.readState();
+    Object.assign(state.sessions[session.key], {
+      prompts: [{ prompt: "old" }],
+      dom_snapshot: "old snapshot",
+      artifact_failures: Array.from({ length: 20 }, (_, i) => ({ kind: "artifact-unavailable", detail: String(i) })),
+    });
+    await store.writeState(state);
+    const first = await store.takeFeedback(session.key, { ackable: true });
+    const next = await store.readState();
+    Object.assign(next.sessions[session.key], {
+      prompts: [{ prompt: "new" }],
+      dom_snapshot: "new snapshot",
+      artifact_failures: [{ kind: "artifact-unavailable", detail: "new" }],
+    });
+    await store.writeState(next);
+    const redelivery = await store.takeFeedback(session.key, { ackable: true });
+    assert.deepEqual(redelivery.prompts, first.prompts);
+    assert.deepEqual(redelivery.artifact_failures, first.artifact_failures);
+    assert.equal(redelivery.dom_snapshot, "old snapshot");
+    await store.ackDelivery(session.key, redelivery.delivery_id);
+    const fresh = await store.takeFeedback(session.key, { ackable: true });
+    assert.equal(fresh.prompts[0].prompt, "new");
+    assert.equal(fresh.artifact_failures[0].detail, "new");
+    assert.equal(fresh.dom_snapshot, "new snapshot");
+  });
+});
+
+test("API polls deliver feedback after an artifact is deleted", async () => {
+  await withServer(async ({ base, artifact }) => {
+    const { key } = await open(base, artifact, "sess-a");
+    await sendPrompt(base, key, "still here");
+    await rm(artifact);
+    const response = await poll(base, artifact, { session_id: "sess-a", ack: "1" });
+    assert.equal((await response.json()).prompts[0].prompt, "still here");
+    const unknown = await poll(base, `${artifact}.missing`);
+    assert.equal(unknown.status, 404);
+    assert.equal((await unknown.json()).code, "NOT_FOUND");
+  });
+});
+
+test("CLI and hook poll deleted artifacts through their stored session", async () => {
+  await withServer(async ({ base, dir, artifact }) => {
+    const { key } = await open(base, artifact, "sess-a");
+    const runCli = (args, input = "") =>
+      new Promise((resolve, reject) => {
+        const child = spawn(
+          process.execPath,
+          [fileURLToPath(new URL("../bin/folio-axi.js", import.meta.url)), ...args],
+          {
+            env: {
+              ...process.env,
+              FOLIO_AXI_STATE_DIR: dir,
+              FOLIO_AXI_PORT: new URL(base).port,
+              FOLIO_AXI_BUILD_VERSION: "9.9.9-test",
+              FOLIO_SESSION_ID: "sess-a",
+            },
+          },
+        );
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (chunk) => {
+          stdout += chunk;
+        });
+        child.stderr.on("data", (chunk) => {
+          stderr += chunk;
+        });
+        child.on("error", reject);
+        child.on("close", (code) => resolve({ code, stdout, stderr }));
+        child.stdin.end(input);
+      });
+    await sendPrompt(base, key, "normal deleted poll");
+    await rm(artifact);
+    const normal = await runCli(["poll", artifact, "--timeout-ms", "1000"]);
+    assert.equal(normal.code, 0, normal.stderr);
+    assert.match(normal.stdout, /normal deleted poll/);
+    await sendPrompt(base, key, "hook deleted poll");
+    const hook = await runCli(["hook", "prompt-submit"], JSON.stringify({ session_id: "sess-a", cwd: dir }));
+    assert.equal(hook.code, 0, hook.stderr);
+    assert.match(hook.stdout, /hook deleted poll/);
+    const unknown = await runCli(["poll", `${artifact}.missing`, "--timeout-ms", "1000"]);
+    assert.notEqual(unknown.code, 0);
+    assert.match(`${unknown.stdout}${unknown.stderr}`, /NOT_FOUND|File not found/);
+  });
+});
 
 async function withServer(fn) {
   const dir = await mkdtemp(path.join(tmpdir(), "folio-delivery-"));
@@ -84,22 +175,15 @@ test("an acking poll gets the same batch again until it acks", async () => {
     assert.equal(first.status, "feedback");
     assert.ok(first.delivery_id);
 
-    // The agent died before acking: the next poll gets the batch again, plus anything newer.
     await sendPrompt(base, key, "second");
     const again = await poll(base, artifact, { session_id: "sess-a", ack: "1" }).then((res) => res.json());
     assert.equal(again.status, "feedback");
     assert.equal(again.redelivered, true);
     assert.deepEqual(
       again.prompts.map((prompt) => prompt.prompt),
-      ["first", "second"],
+      ["first"],
     );
-
-    const stale = await fetch(`${base}/api/${key}/ack`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ delivery_id: first.delivery_id }),
-    }).then((res) => res.json());
-    assert.equal(stale.status, "stale");
+    assert.equal(again.delivery_id, first.delivery_id);
 
     const acked = await fetch(`${base}/api/${key}/ack`, {
       method: "POST",
@@ -109,7 +193,7 @@ test("an acking poll gets the same batch again until it acks", async () => {
     assert.equal(acked.status, "acked");
 
     const after = await poll(base, artifact, { session_id: "sess-a", ack: "1" }).then((res) => res.json());
-    assert.equal(after.status, "waiting");
+    assert.equal(after.prompts[0].prompt, "second");
   });
 });
 

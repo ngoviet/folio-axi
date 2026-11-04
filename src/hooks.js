@@ -268,18 +268,10 @@ export function folioHookEntries(command = "folio-axi") {
   };
 }
 
-function isFolioHookGroup(group) {
+function isFolioHook(hook) {
   return (
-    Array.isArray(group?.hooks) &&
-    group.hooks.some((hook) => typeof hook?.command === "string" && hook.command.includes(HOOK_COMMAND_PREFIX))
-  );
-}
-
-// Older lavish-axi installs ran the bare CLI from SessionStart; Folio replaces that too.
-function isLegacyLavishGroup(group) {
-  return (
-    Array.isArray(group?.hooks) &&
-    group.hooks.some((hook) => typeof hook?.command === "string" && /(^|[\s/\\"'])folio-axi"?\s*$/.test(hook.command))
+    typeof hook?.command === "string" &&
+    (hook.command.includes(HOOK_COMMAND_PREFIX) || /(^|[\s/\\"'])folio-axi"?\s*$/.test(hook.command))
   );
 }
 
@@ -294,7 +286,11 @@ export function computeClaudeHookUpdate(settings, entries = folioHookEntries()) 
   for (const [event, group] of Object.entries(entries)) {
     const current = Array.isArray(updated.hooks[event]) ? updated.hooks[event] : [];
     updated.hooks[event] = [
-      ...current.filter((entry) => !isFolioHookGroup(entry) && !isLegacyLavishGroup(entry)),
+      ...current.flatMap((entry) => {
+        if (!Array.isArray(entry?.hooks)) return [entry];
+        const hooks = entry.hooks.filter((hook) => !isFolioHook(hook));
+        return hooks.length ? [{ ...entry, hooks }] : [];
+      }),
       group,
     ];
   }

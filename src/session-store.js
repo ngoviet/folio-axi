@@ -634,16 +634,37 @@ export class SessionStore {
       }
       // Folio: an earlier batch nobody acked is handed out again, ahead of anything newer.
       const unacked = isUnackedDelivery(session.unacked_delivery) ? session.unacked_delivery : null;
+      if (unacked) {
+        const pending = (session.prompts || []).length > 0 || (session.artifact_failures || []).length > 0;
+        const result = {
+          status: "feedback",
+          prompts: unacked.prompts,
+          dom_snapshot: unacked.dom_snapshot || "",
+          ...(unacked.artifact_failures?.length ? { artifact_failures: unacked.artifact_failures } : {}),
+          ...(session.status === "ended" && !pending ? { session_ended: true, ended_by: session.ended_by } : {}),
+          ...(ackable ? { delivery_id: unacked.id } : {}),
+          redelivered: true,
+        };
+        if (!ackable) {
+          const ids = new Set(unacked.prompts.flatMap((prompt) => (prompt.attachments || []).map((item) => item.id)));
+          const now = Date.now();
+          session.delivered_attachments = [
+            ...(session.delivered_attachments || []).filter((entry) => !ids.has(entry.id)),
+            ...[...ids].filter(Boolean).map((id) => ({ id, at: now })),
+          ];
+          delete session.unacked_delivery;
+          await this.writeState(state);
+        }
+        return result;
+      }
       const freshPrompts = session.prompts || [];
       // Prompts queued before the session ended (a browser send-and-end) must still reach the
       // agent, so deliver them before reporting the ended state; the next poll then sees ended.
-      const prompts = unacked ? [...unacked.prompts, ...freshPrompts] : freshPrompts;
+      const prompts = freshPrompts;
       // Layout warnings stay passive until the user queues them. Only fatal artifact
       // failures can reach the agent without explicit user action.
       const freshFailures = Array.isArray(session.artifact_failures) ? session.artifact_failures : [];
-      const artifactFailures = unacked
-        ? mergeArtifactFailures(unacked.artifact_failures || [], freshFailures).failures
-        : freshFailures;
+      const artifactFailures = freshFailures;
       const alreadyEnded = session.status === "ended";
       if (prompts.length === 0 && artifactFailures.length === 0) {
         return alreadyEnded ? { status: "ended", ended_by: session.ended_by } : { status: "waiting" };
@@ -652,7 +673,7 @@ export class SessionStore {
       // shares this lock, so the user entries with no stamp are exactly this batch. The sequence
       // rides on the result so a closed-poll restore can undo only this take's stamps.
       const deliverySeq = normalizeRevision(session.delivery_seq) + 1;
-      const domSnapshot = session.dom_snapshot || (unacked ? unacked.dom_snapshot : "") || "";
+      const domSnapshot = session.dom_snapshot || "";
       const deliveryId = ackable ? crypto.randomBytes(8).toString("hex") : "";
       const result = {
         status: "feedback",
@@ -662,7 +683,6 @@ export class SessionStore {
         ...(alreadyEnded ? { session_ended: true, ended_by: session.ended_by } : {}),
         ...(freshPrompts.length > 0 ? { delivery_seq: deliverySeq } : {}),
         ...(deliveryId ? { delivery_id: deliveryId } : {}),
-        ...(unacked ? { redelivered: true } : {}),
       };
       if (deliveryId) {
         session.unacked_delivery = {

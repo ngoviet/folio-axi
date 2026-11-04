@@ -722,6 +722,8 @@ async function canonicalExistingFile(file) {
   } catch (error) {
     if (error?.code !== "ENOENT") throw error;
     const absolute = path.resolve(file);
+    const stored = await new SessionStore(stateFile()).findByStoredFile(absolute);
+    if (stored) return stored.file;
     throw new AxiError(`File not found: ${absolute}`, "NOT_FOUND", [
       `Run \`folio-axi end ${absolute}\` to close a page whose HTML file was deleted`,
     ]);
