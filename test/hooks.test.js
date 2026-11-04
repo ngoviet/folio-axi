@@ -166,13 +166,13 @@ test("SessionStart writes FOLIO_SESSION_ID to CLAUDE_ENV_FILE", async () => {
   });
 });
 
-test("computeClaudeHookUpdate replaces old Folio and bare lavish hooks only", () => {
+test("computeClaudeHookUpdate replaces Folio hook commands only", () => {
   const mine = { hooks: [{ type: "command", command: "echo hi" }] };
   const legacy = { hooks: [{ type: "command", command: "folio-axi" }] };
   const stale = { hooks: [{ type: "command", command: "old/path/folio-axi hook stop" }] };
   const [updated, changed] = computeClaudeHookUpdate({ hooks: { SessionStart: [mine, legacy], Stop: [stale] } });
   assert.equal(changed, true);
-  assert.deepEqual(updated.hooks.SessionStart, [mine, folioHookEntries().SessionStart]);
+  assert.deepEqual(updated.hooks.SessionStart, [mine, legacy, folioHookEntries().SessionStart]);
   assert.deepEqual(updated.hooks.Stop, [folioHookEntries().Stop]);
   const [, again] = computeClaudeHookUpdate(updated);
   assert.equal(again, false);
@@ -181,11 +181,27 @@ test("computeClaudeHookUpdate replaces old Folio and bare lavish hooks only", ()
 test("hook setup preserves unrelated commands and group settings", () => {
   const other = { type: "command", command: "my-check" };
   const mixed = { matcher: "*", hooks: [{ type: "command", command: "folio-axi hook stop" }, other] };
-  const legacy = { hooks: [{ type: "command", command: "folio-axi" }, other] };
+  const legacy = { hooks: [{ type: "command", command: "folio-axi hook session-start" }, other] };
   const [updated] = computeClaudeHookUpdate({ hooks: { Stop: [mixed], SessionStart: [legacy] } });
   assert.deepEqual(updated.hooks.Stop[0], { matcher: "*", hooks: [other] });
   assert.deepEqual(updated.hooks.SessionStart[0], { hooks: [other] });
   assert.equal(computeClaudeHookUpdate(updated)[1], false);
+});
+
+test("hook setup recognizes only executable invocations", () => {
+  const commands = [
+    "folio-axi hook stop",
+    '"C:\\Program Files\\Folio\\folio-axi.cmd" hook stop',
+    'node "C:\\Program Files\\Folio\\folio-axi.js" hook stop',
+    "echo folio-axi hook stop",
+    "echo folio-axi",
+    "folio-axi",
+    "other-folio-axi hook stop",
+    "node other.js hook stop",
+  ];
+  const hooks = commands.map((command) => ({ type: "command", command }));
+  const [updated] = computeClaudeHookUpdate({ hooks: { Stop: [{ hooks }] } });
+  assert.deepEqual(updated.hooks.Stop[0].hooks, hooks.slice(3));
 });
 
 test("hook preserves structured feedback and does not acknowledge a cut batch", async () => {

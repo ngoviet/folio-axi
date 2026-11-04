@@ -559,9 +559,10 @@ export async function serve({
   // What the agent receives. `delivery_seq` is the store's own bookkeeping for undoing a take's Seen
   // stamps on a closed poll; it means nothing to an agent and stays off the wire.
   function agentFacingFeedback(result) {
-    if (!result || result.status !== "feedback" || !("delivery_seq" in result)) return result;
+    if (!result || result.status !== "feedback") return result;
     const rest = { ...result };
     delete rest.delivery_seq;
+    delete rest.raw_unacked_delivery;
     return rest;
   }
 
@@ -578,6 +579,17 @@ export async function serve({
   // feedback that is sitting in `state.json`. Emitting wakes it exactly like a fresh `/prompts`.
   async function restoreClosedFeedback(key, result) {
     if (result.status !== "feedback") return;
+    if (result.raw_unacked_delivery) {
+      try {
+        if (await store.restoreUnackedDelivery(key, result.raw_unacked_delivery)) {
+          events.emit("feedback", key);
+          await publishChatSync(key);
+        }
+      } catch (error) {
+        writeLog(`[lavish] closed poll feedback restore failed; the batch was lost: ${error?.message || error}`);
+      }
+      return;
+    }
     // Folio: an ackable take left the whole batch in `unacked_delivery`, which the next take
     // hands out again. Re-queuing it as prompts too would deliver it twice, so only wake any
     // waiting poll.

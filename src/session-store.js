@@ -643,6 +643,7 @@ export class SessionStore {
           ...(unacked.artifact_failures?.length ? { artifact_failures: unacked.artifact_failures } : {}),
           ...(session.status === "ended" && !pending ? { session_ended: true, ended_by: session.ended_by } : {}),
           ...(ackable ? { delivery_id: unacked.id } : {}),
+          ...(!ackable ? { raw_unacked_delivery: unacked } : {}),
           redelivered: true,
         };
         if (!ackable) {
@@ -749,6 +750,20 @@ export class SessionStore {
       session.updated_at = new Date().toISOString();
       await this.writeState(state);
       return { status: "acked" };
+    });
+  }
+
+  async restoreUnackedDelivery(key, delivery) {
+    return this.runExclusive(async () => {
+      const state = await this.readState();
+      const session = state.sessions[key];
+      if (!session) return false;
+      if (isUnackedDelivery(session.unacked_delivery)) {
+        throw new Error("cannot restore unacknowledged delivery over another batch");
+      }
+      session.unacked_delivery = delivery;
+      await this.writeState(state);
+      return true;
     });
   }
 

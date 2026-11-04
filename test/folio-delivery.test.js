@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { connect as netConnect } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -8,6 +9,79 @@ import { fileURLToPath } from "node:url";
 
 import { serve } from "../src/server.js";
 import { SessionStore } from "../src/session-store.js";
+
+test("closed raw redelivery restores the original batch ahead of newer feedback", async () => {
+  await withServer(async ({ base, artifact, stateFile }) => {
+    const { key } = await open(base, artifact, "sess-a");
+    const store = new SessionStore(stateFile);
+    const state = await store.readState();
+    Object.assign(state.sessions[key], {
+      prompts: [{ prompt: "old" }],
+      dom_snapshot: "old snapshot",
+      artifact_failures: Array.from({ length: 20 }, (_, i) => ({ kind: "artifact-unavailable", detail: String(i) })),
+    });
+    await store.writeState(state);
+    const first = await store.takeFeedback(key, { ackable: true });
+    const next = await store.readState();
+    Object.assign(next.sessions[key], {
+      prompts: [{ prompt: "new" }],
+      dom_snapshot: "new snapshot",
+      artifact_failures: [{ kind: "artifact-unavailable", detail: "new" }],
+    });
+    await store.writeState(next);
+    const original = SessionStore.prototype.takeFeedback;
+    let release;
+    let started;
+    const taken = new Promise((resolve) => {
+      started = resolve;
+    });
+    const resume = new Promise((resolve) => {
+      release = resolve;
+    });
+    SessionStore.prototype.takeFeedback = async function (sessionKey, options) {
+      const result = await original.call(this, sessionKey, options);
+      if (sessionKey === key && result.raw_unacked_delivery) {
+        started();
+        await resume;
+      }
+      return result;
+    };
+    try {
+      const socket = await new Promise((resolve, reject) => {
+        const client = netConnect(Number(new URL(base).port), "127.0.0.1", () => {
+          client.write(
+            `GET /api/poll?file=${encodeURIComponent(artifact)} HTTP/1.1\r\nHost: ${new URL(base).host}\r\n\r\n`,
+          );
+          resolve(client);
+        });
+        client.on("error", reject);
+      });
+      await taken;
+      socket.destroy();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      release();
+      let restored;
+      for (let i = 0; i < 100; i++) {
+        restored = await store.findByKey(key);
+        if (restored.unacked_delivery) break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      assert.equal(restored.unacked_delivery.id, first.delivery_id);
+      assert.deepEqual(restored.unacked_delivery.artifact_failures, first.artifact_failures);
+      assert.equal(restored.unacked_delivery.dom_snapshot, "old snapshot");
+      assert.equal(restored.dom_snapshot, "new snapshot");
+      assert.equal(restored.artifact_failures[0].detail, "new");
+      const delivered = await poll(base, artifact, { ack: "1", session_id: "sess-a" }).then((r) => r.json());
+      assert.equal(delivered.prompts[0].prompt, "old");
+      assert.equal(delivered.raw_unacked_delivery, undefined);
+      await store.ackDelivery(key, delivered.delivery_id);
+      assert.equal((await store.takeFeedback(key)).prompts[0].prompt, "new");
+    } finally {
+      release();
+      SessionStore.prototype.takeFeedback = original;
+    }
+  });
+});
 
 test("redelivery preserves failures and snapshots while newer feedback waits", async () => {
   await withServer(async ({ stateFile, artifact }) => {

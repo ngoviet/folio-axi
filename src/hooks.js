@@ -22,7 +22,6 @@ export const HOOK_EVENTS = Object.freeze({
 export const HOOK_CONTEXT_LIMIT = 1500;
 export const HOOK_FEEDBACK_LIMIT = 9000;
 export const MAX_CONSECUTIVE_STOP_BLOCKS = 3;
-const HOOK_COMMAND_PREFIX = "folio-axi hook";
 
 export function agentSessionId(env = process.env) {
   return normalizeOwnerSessionId(env.FOLIO_SESSION_ID || env.CLAUDE_SESSION_ID || env.CLAUDE_CODE_SESSION_ID || "");
@@ -269,10 +268,22 @@ export function folioHookEntries(command = "folio-axi") {
 }
 
 function isFolioHook(hook) {
-  return (
-    typeof hook?.command === "string" &&
-    (hook.command.includes(HOOK_COMMAND_PREFIX) || /(^|[\s/\\"'])folio-axi"?\s*$/.test(hook.command))
-  );
+  if (typeof hook?.command !== "string") return false;
+  const token = "(?:\"[^\"]+\"|'[^']+'|[^\\s]+)";
+  const match = hook.command
+    .trim()
+    .match(new RegExp(`^(${token})(?:\\s+(${token}))?\\s+hook\\s+([^\\s]+)(?:\\s|$)`, "i"));
+  if (!match) return false;
+  const executable = (value) =>
+    value
+      .replace(/^["']|["']$/g, "")
+      .split(/[\\/]/)
+      .at(-1)
+      .toLowerCase();
+  const first = executable(match[1]);
+  return match[2]
+    ? /^(?:node|node\.exe)$/.test(first) && executable(match[2]) === "folio-axi.js"
+    : /^(?:folio-axi|folio-axi\.cmd)$/.test(first);
 }
 
 /**
