@@ -633,7 +633,7 @@ export class SessionStore {
         return { status: "missing" };
       }
       // Folio: an earlier batch nobody acked is handed out again, ahead of anything newer.
-      const unacked = isUnackedDelivery(session.unacked_delivery) ? session.unacked_delivery : null;
+      const unacked = ackable && isUnackedDelivery(session.unacked_delivery) ? session.unacked_delivery : null;
       if (unacked) {
         const pending = (session.prompts || []).length > 0 || (session.artifact_failures || []).length > 0;
         const result = {
@@ -642,20 +642,9 @@ export class SessionStore {
           dom_snapshot: unacked.dom_snapshot || "",
           ...(unacked.artifact_failures?.length ? { artifact_failures: unacked.artifact_failures } : {}),
           ...(session.status === "ended" && !pending ? { session_ended: true, ended_by: session.ended_by } : {}),
-          ...(ackable ? { delivery_id: unacked.id } : {}),
-          ...(!ackable ? { raw_unacked_delivery: unacked } : {}),
+          delivery_id: unacked.id,
           redelivered: true,
         };
-        if (!ackable) {
-          const ids = new Set(unacked.prompts.flatMap((prompt) => (prompt.attachments || []).map((item) => item.id)));
-          const now = Date.now();
-          session.delivered_attachments = [
-            ...(session.delivered_attachments || []).filter((entry) => !ids.has(entry.id)),
-            ...[...ids].filter(Boolean).map((id) => ({ id, at: now })),
-          ];
-          delete session.unacked_delivery;
-          await this.writeState(state);
-        }
         return result;
       }
       const freshPrompts = session.prompts || [];
@@ -693,8 +682,6 @@ export class SessionStore {
           artifact_failures: artifactFailures,
           dom_snapshot: domSnapshot,
         };
-      } else {
-        delete session.unacked_delivery;
       }
       // Delivery clears pending prompts, so retain the attachment ids for a bounded
       // grace window while the polling agent opens the absolute paths it received.
@@ -750,20 +737,6 @@ export class SessionStore {
       session.updated_at = new Date().toISOString();
       await this.writeState(state);
       return { status: "acked" };
-    });
-  }
-
-  async restoreUnackedDelivery(key, delivery) {
-    return this.runExclusive(async () => {
-      const state = await this.readState();
-      const session = state.sessions[key];
-      if (!session) return false;
-      if (isUnackedDelivery(session.unacked_delivery)) {
-        throw new Error("cannot restore unacknowledged delivery over another batch");
-      }
-      session.unacked_delivery = delivery;
-      await this.writeState(state);
-      return true;
     });
   }
 

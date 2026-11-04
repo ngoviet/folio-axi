@@ -37,7 +37,7 @@ Kế hoạch đầy đủ có sơ đồ: [ke-hoach.html](ke-hoach.html) (bản t
 
 1. Hook SessionStart của Folio đọc `session_id` và `cwd` từ stdin JSON của Claude Code, ghi `FOLIO_SESSION_ID` vào `CLAUDE_ENV_FILE` để các lệnh Bash sau đó tự mang theo. Cơ chế `CLAUDE_ENV_FILE` cần kiểm lại trên bản Claude Code đang chạy trước khi dựa vào.
 2. `folio-axi open` lưu `owner_session_id` vào phiên. `poll` của phiên khác không lấy được phản hồi.
-3. `takeFeedback` không xoá ngay: lô nhận một `delivery_id`. Agent ack (hoặc `reply`) thì lô mới bị xoá. Chưa ack thì lần poll sau giao lại.
+3. `takeFeedback` với `ack=1` giữ lô cùng `delivery_id` đến khi nhận đúng ack; `reply` không xoá lô. Poll có ack giao lại lô chưa ack, còn raw poll chỉ lấy phản hồi mới và không đụng lô này.
 4. Hook Stop: nếu trang của phiên còn phản hồi chờ thì chặn dừng và đưa nội dung vào. Phải giới hạn số lần chặn liên tiếp và có công tắc tắt, để không thành vòng lặp.
 5. Hook UserPromptSubmit: chèn phản hồi chờ vào lượt chat.
 6. Phiên đã đóng: trang báo rõ và có nút chép câu trả lời. Phiên mới trong cùng thư mục thấy phản hồi chờ qua SessionStart.

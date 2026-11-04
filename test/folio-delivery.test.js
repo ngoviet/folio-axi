@@ -10,25 +10,13 @@ import { fileURLToPath } from "node:url";
 import { serve } from "../src/server.js";
 import { SessionStore } from "../src/session-store.js";
 
-test("closed raw redelivery restores the original batch ahead of newer feedback", async () => {
+test("a disconnected raw poll restores fresh feedback while preserving the unacked batch", async () => {
   await withServer(async ({ base, artifact, stateFile }) => {
     const { key } = await open(base, artifact, "sess-a");
     const store = new SessionStore(stateFile);
-    const state = await store.readState();
-    Object.assign(state.sessions[key], {
-      prompts: [{ prompt: "old" }],
-      dom_snapshot: "old snapshot",
-      artifact_failures: Array.from({ length: 20 }, (_, i) => ({ kind: "artifact-unavailable", detail: String(i) })),
-    });
-    await store.writeState(state);
-    const first = await store.takeFeedback(key, { ackable: true });
-    const next = await store.readState();
-    Object.assign(next.sessions[key], {
-      prompts: [{ prompt: "new" }],
-      dom_snapshot: "new snapshot",
-      artifact_failures: [{ kind: "artifact-unavailable", detail: "new" }],
-    });
-    await store.writeState(next);
+    await sendPrompt(base, key, "old");
+    const first = await poll(base, artifact, { ack: "1", session_id: "sess-a" }).then((r) => r.json());
+    await sendPrompt(base, key, "new");
     const original = SessionStore.prototype.takeFeedback;
     let release;
     let started;
@@ -40,7 +28,7 @@ test("closed raw redelivery restores the original batch ahead of newer feedback"
     });
     SessionStore.prototype.takeFeedback = async function (sessionKey, options) {
       const result = await original.call(this, sessionKey, options);
-      if (sessionKey === key && result.raw_unacked_delivery) {
+      if (sessionKey === key && !options?.ackable && result.status === "feedback") {
         started();
         await resume;
       }
@@ -59,27 +47,57 @@ test("closed raw redelivery restores the original batch ahead of newer feedback"
       await taken;
       socket.destroy();
       await new Promise((resolve) => setTimeout(resolve, 30));
-      const takeover = fetch(
-        `${base}/api/poll?${new URLSearchParams({ file: artifact, timeoutMs: "0", ack: "1", session_id: "sess-b", takeover: "1" })}`,
-        { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
-      );
-      await new Promise((resolve) => setTimeout(resolve, 30));
       release();
-      const delivered = await (await takeover).json();
-      const restored = await store.findByKey(key);
-      assert.equal(restored.unacked_delivery.id, first.delivery_id);
-      assert.deepEqual(restored.unacked_delivery.artifact_failures, first.artifact_failures);
-      assert.equal(restored.unacked_delivery.dom_snapshot, "old snapshot");
-      assert.equal(restored.dom_snapshot, "new snapshot");
-      assert.equal(restored.artifact_failures[0].detail, "new");
-      assert.equal(delivered.prompts[0].prompt, "old");
-      assert.equal(delivered.raw_unacked_delivery, undefined);
-      await store.ackDelivery(key, delivered.delivery_id);
-      assert.equal((await store.takeFeedback(key)).prompts[0].prompt, "new");
+      let state;
+      for (let i = 0; i < 100; i++) {
+        state = await store.findByKey(key);
+        if (state.prompts.length) break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      assert.equal(state.unacked_delivery.id, first.delivery_id);
+      assert.equal(state.prompts[0].prompt, "new");
+      SessionStore.prototype.takeFeedback = original;
+      const raw = await poll(base, artifact, { session_id: "sess-a" }).then((r) => r.json());
+      assert.equal(raw.prompts[0].prompt, "new");
+      const redelivered = await poll(base, artifact, { ack: "1", session_id: "sess-a" }).then((r) => r.json());
+      assert.equal(redelivered.delivery_id, first.delivery_id);
+      assert.equal(redelivered.prompts[0].prompt, "old");
     } finally {
       release();
       SessionStore.prototype.takeFeedback = original;
     }
+  });
+});
+
+test("raw polls consume only fresh feedback and preserve unacknowledged batches", async () => {
+  await withServer(async ({ base, artifact, stateFile }) => {
+    const { key } = await open(base, artifact, "sess-a");
+    const store = new SessionStore(stateFile);
+    await sendPrompt(base, key, "old");
+    const first = await poll(base, artifact, { ack: "1", session_id: "sess-a" }).then((r) => r.json());
+    const original = (await store.findByKey(key)).unacked_delivery;
+    const empty = await poll(base, artifact, { session_id: "sess-a" }).then((r) => r.json());
+    assert.equal(empty.status, "waiting");
+    await sendPrompt(base, key, "new");
+    const raw = await poll(base, artifact, { session_id: "sess-a" }).then((r) => r.json());
+    assert.deepEqual(
+      raw.prompts.map((p) => p.prompt),
+      ["new"],
+    );
+    assert.deepEqual((await store.findByKey(key)).unacked_delivery, original);
+    assert.equal((await poll(base, artifact, { session_id: "sess-a" }).then((r) => r.json())).status, "waiting");
+    const again = await poll(base, artifact, { ack: "1", session_id: "sess-a" }).then((r) => r.json());
+    assert.equal(again.delivery_id, first.delivery_id);
+    assert.deepEqual(
+      again.prompts.map((p) => p.prompt),
+      ["old"],
+    );
+    assert.equal((await store.ackDelivery(key, "wrong")).status, "stale");
+    assert.equal((await store.ackDelivery(key, first.delivery_id)).status, "acked");
+    assert.equal(
+      (await poll(base, artifact, { ack: "1", session_id: "sess-a" }).then((r) => r.json())).status,
+      "waiting",
+    );
   });
 });
 
