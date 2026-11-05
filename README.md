@@ -190,6 +190,10 @@ Restart the Claude Code session after installing hooks. They run this checkout's
 - **Allowed hosts** - To defend against DNS rebinding, the server rejects (`403`) any request whose `Host` header is missing or not one it answers to: loopback names plus the concrete Tailscale IPv4 address and MagicDNS name when the Tailscale listener is successfully bound. If you configure a reverse proxy or another intentional hostname, list it in `FOLIO_AXI_ALLOWED_HOSTS` (whitespace-separated). Behind a reverse proxy, the forwarded `X-Forwarded-Host` is validated against the same list, so add the public hostname there and have the proxy send it together with `X-Forwarded-Proto`. Set `FOLIO_AXI_ALLOWED_HOSTS` to `*` to disable the check entirely, only when the server sits behind your own authentication or proxy. Mutating routes also reject a present foreign `Origin` or `Referer` (`403`); header-less CLI control requests remain allowed where supported.
 - **Browser opening** - Set `FOLIO_AXI_NO_OPEN=1`, equivalent to `--no-open`, to create or resume a session without launching a browser window.
 
+## Language
+
+The review page opens in Vietnamese. **English** in the More menu (⋮) switches it in place, and the item then offers **Tiếng Việt** to switch back. The browser remembers the choice in `localStorage` (`folio-axi:language`), and a draft is untouched by the switch. CLI output, the annotation card inside the artifact, and everything sent to the agent stay in English.
+
 ## CLI Reference
 
 | Command                        | Description                                                                                                                                                                                                                                                                                                                                              |

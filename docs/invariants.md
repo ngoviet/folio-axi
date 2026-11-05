@@ -196,6 +196,7 @@ The Folio CLI sends no telemetry. `src/telemetry.js` remains for upstream patch 
 
 ## Things to know when editing
 
+- Chrome language lives in `src/chrome-i18n.js`. English in `chrome-client.js` and `createChromeHtml` stays the source; the localizer inlined in `<head>` rewrites the DOM through a `MutationObserver` and remembers the English behind each node, so a switch never re-renders and never touches a draft. Do not wrap strings in a `t()` call: it would rewrite every line upstream patches touch, and would translate strings sent to the agent. A new English string needs a table entry, or `test/chrome-i18n.test.js` fails. Client code must not branch on displayed text. The localizer's `<script>` keeps its `data-folio-localizer` attribute so tests that find the boot failsafe by its bare `<script>` tag still do. Serif fallbacks under `html[lang="vi"]` skip Georgia, which breaks stacked Vietnamese vowels.
 - `run()` short-circuits `--version`/`-v`/`-V` (`isVersionOnlyArgv`) before `ensureStateDir`, because agent harnesses probe every tool's version at session start. Any new startup work must go after that short-circuit; `test/cli-version.test.js` guards both the latency budget and the "no telemetry request, no state dir" property.
 - `canonicalFile` runs `realpath`, so symlinks resolve to their target before becoming session keys. Two paths that refer to the same file always collapse to one session.
 - The SDK injected into artifacts lives in `src/artifact-sdk.js` and is wrapped by `createSdkJs`.
