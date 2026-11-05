@@ -1119,7 +1119,7 @@ test("chrome shows a waiting banner when no agent has attached", async () => {
   const css = await chromeCssSource();
 
   assert.match(html, /id="presenceBanner"/);
-  assert.match(html, /Your agent is not listening/);
+  assert.match(html, /What you send is saved and reaches it the next time it is active/);
   assert.match(js, /presenceBanner\.hidden = ended \|\| agentPresence !== "waiting"/);
   assert.match(css, /\.presence-banner\{/);
 });
@@ -4429,14 +4429,14 @@ test("resolveIdleTimeoutMs defaults, parses, and only explicit opt-outs disable"
 });
 
 test("resolveBrowserDisconnectGraceMs defaults, parses, and only explicit opt-outs disable", () => {
-  assert.equal(resolveBrowserDisconnectGraceMs({}), 10_000);
-  assert.equal(resolveBrowserDisconnectGraceMs({ FOLIO_AXI_DISCONNECT_GRACE_MS: "" }), 10_000);
+  assert.equal(resolveBrowserDisconnectGraceMs({}), null);
+  assert.equal(resolveBrowserDisconnectGraceMs({ FOLIO_AXI_DISCONNECT_GRACE_MS: "" }), null);
   assert.equal(resolveBrowserDisconnectGraceMs({ FOLIO_AXI_DISCONNECT_GRACE_MS: " 120000 " }), 120_000);
   assert.equal(resolveBrowserDisconnectGraceMs({ FOLIO_AXI_DISCONNECT_GRACE_MS: "0" }), null);
   assert.equal(resolveBrowserDisconnectGraceMs({ FOLIO_AXI_DISCONNECT_GRACE_MS: "OFF" }), null);
-  assert.equal(resolveBrowserDisconnectGraceMs({ FOLIO_AXI_DISCONNECT_GRACE_MS: "-1" }), 10_000);
-  assert.equal(resolveBrowserDisconnectGraceMs({ FOLIO_AXI_DISCONNECT_GRACE_MS: "30000ms" }), 10_000);
-  assert.equal(resolveBrowserDisconnectGraceMs({ FOLIO_AXI_DISCONNECT_GRACE_MS: "later" }), 10_000);
+  assert.equal(resolveBrowserDisconnectGraceMs({ FOLIO_AXI_DISCONNECT_GRACE_MS: "-1" }), null);
+  assert.equal(resolveBrowserDisconnectGraceMs({ FOLIO_AXI_DISCONNECT_GRACE_MS: "30000ms" }), null);
+  assert.equal(resolveBrowserDisconnectGraceMs({ FOLIO_AXI_DISCONNECT_GRACE_MS: "later" }), null);
   assert.equal(resolveBrowserDisconnectGraceMs({ FOLIO_AXI_DISCONNECT_GRACE_MS: "3000000000" }), 2 ** 31 - 1);
 });
 

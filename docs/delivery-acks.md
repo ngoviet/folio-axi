@@ -14,13 +14,13 @@ session-wide signal - the `agent-presence` stream (`waiting` / `listening` / `wo
 
 Every state below is a fact the server records anyway. None of them asks the agent to do anything new.
 
-| Signal                   | Where it is observed                                                                   | Means                                            |
-| ------------------------ | -------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| `/api/:key/prompts` 200  | `SessionStore.queuePrompts` appends the note to `session.chat`                         | **Sent** - the server holds it for the next poll |
-| no poll in `activePolls` | `computePresence` is `waiting`; the chrome already shows "Your agent is not listening" | nobody is there to receive it                    |
-| delivery confirmed       | `POST /api/:key/ack` for an ackable take, or a raw `takeFeedback` that was not undone  | **Seen** - the batch reached a poll              |
-| artifact file changed    | chokidar `reload` for the session key after a delivery                                 | **Working** - the agent is editing the artifact  |
-| `addAgentReply`          | `folio-axi reply` / `poll --agent-reply`, or `/api/:key/agent-reply`                   | **Done** - the agent handed something back       |
+| Signal                   | Where it is observed                                                                                                 | Means                                            |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `/api/:key/prompts` 200  | `SessionStore.queuePrompts` appends the note to `session.chat`                                                       | **Sent** - the server holds it for the next poll |
+| no poll in `activePolls` | `computePresence` is `waiting`; the chrome already says the note is "Saved; delivered when the agent is next active" | nobody is there to receive it                    |
+| delivery confirmed       | `POST /api/:key/ack` for an ackable take, or a raw `takeFeedback` that was not undone                                | **Seen** - the batch reached a poll              |
+| artifact file changed    | chokidar `reload` for the session key after a delivery                                                               | **Working** - the agent is editing the artifact  |
+| `addAgentReply`          | `folio-axi reply` / `poll --agent-reply`, or `/api/:key/agent-reply`                                                 | **Done** - the agent handed something back       |
 
 Two of Wally's three acks ("I saw it", "I'm done") fall straight out of the existing protocol.
 "I'm working on it" has no explicit message, but the file watcher sees the agent's saves. A request
@@ -36,7 +36,8 @@ queued ──send──> sent ──poll received──> seen ──artifact cha
 
 - **queued**: in the tab only (dashed bubble). Unchanged.
 - **sent**: a `role: "user"` chat entry with no `delivered_at`. The bubble says why it has not been
-  seen, from the live presence the chrome already holds: "No agent is listening" (`waiting`),
+  seen, from the live presence the chrome already holds: "Saved; delivered when the agent is next active"
+  (`waiting`),
   "Agent is busy; delivered on its next poll" (`working` / external listener), or "Delivering"
   while a poll is attached, which lasts milliseconds.
 - **seen**: `delivered_at` set by the matching ack, or by a raw `takeFeedback`.
