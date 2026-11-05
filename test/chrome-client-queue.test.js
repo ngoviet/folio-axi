@@ -7381,7 +7381,7 @@ test("the dock summarizes what the user should know while the sheet is down", as
     fetchImpl: async () => ({ ok: true, json: async () => ({}) }),
   });
 
-  assert.equal(sheetState(chrome).summary, "Agent not waiting");
+  assert.equal(sheetState(chrome).summary, "Saved for the agent");
 
   chrome.eventSource().listeners.get("agent-presence")({ data: JSON.stringify({ state: "listening" }) });
   assert.equal(sheetState(chrome).summary, "Agent listening");

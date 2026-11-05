@@ -244,7 +244,7 @@ test(
       open(url);
       let g = geometry();
       assertDocked(g);
-      assert.equal(g.summary, "Agent not waiting");
+      assert.equal(g.summary, "Saved for the agent");
 
       evaluate('() => { document.getElementById("panelHead").click(); return "ok"; }');
       wait(500);

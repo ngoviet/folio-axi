@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -358,6 +358,15 @@ test("Stop leaves pages alone when a poll is live, or the page is not this sessi
     assert.equal((await stopWith(dir, [ownedPage("c", { owner_session_id: "other" })])).output, "");
     const stale = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
     assert.equal((await stopWith(dir, [ownedPage("d", { updated_at: stale })])).output, "");
+  });
+});
+
+test("Stop never blocks when the reminder guard cannot be written", async () => {
+  await withStateDir(async (dir) => {
+    const blocked = path.join(dir, "not-a-directory");
+    await writeFile(blocked, "x");
+    assert.equal((await stopWith(blocked, [ownedPage("a")])).output, "");
+    assert.equal((await stopWith(blocked, [ownedPage("a")])).output, "");
   });
 });
 

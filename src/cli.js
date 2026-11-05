@@ -539,7 +539,7 @@ export function pollWaitBannerText(file) {
 
 export function pollWaitTickText(elapsedMs) {
   const minutes = Math.round(elapsedMs / 60_000);
-  return `[folio-axi] Still waiting for user feedback (${minutes}m). Leave this running until the user sends feedback, ends the session, or leaves every review window disconnected.`;
+  return `[folio-axi] Still waiting for user feedback (${minutes}m). Leave this running until the user sends feedback or ends the session; only when FOLIO_AXI_DISCONNECT_GRACE_MS is set does it also release after every review window stays disconnected past that grace period.`;
 }
 
 export function pollInterruptedText(file) {
@@ -646,7 +646,7 @@ function createFeedbackNextStep(file, artifactFailures, sessionEnded, endedBy, p
   }
   const prefix =
     count > 0 ? artifactFailuresPrefix(file, artifactFailures) : `Apply the requested changes to ${file}. `;
-  return `${prefix}${layoutNote}${whiteboardNote}${attachmentNote}Do not respond to the user just yet. If you are continuing to wait for feedback, run \`folio-axi poll ${file} --agent-reply "<message for the user>"\` without --timeout-ms to reply and keep polling. If instead you are handing back a result without starting another long-poll, run \`folio-axi reply ${file} --agent-reply "<message for the user>"\` to post it and receive an acceptance receipt. ${POLL_AGENT_REPLY_RULE} ${POLL_AGENT_REPLY_NEXT_POINTER} The poll waits silently until the user sends more feedback, ends the session, or leaves every review window disconnected past the reconnect grace period - never kill it. ${pollExecutionGuidance({ agent })}`;
+  return `${prefix}${layoutNote}${whiteboardNote}${attachmentNote}Do not respond to the user just yet. If you are continuing to wait for feedback, run \`folio-axi poll ${file} --agent-reply "<message for the user>"\` without --timeout-ms to reply and keep polling. If instead you are handing back a result without starting another long-poll, run \`folio-axi reply ${file} --agent-reply "<message for the user>"\` to post it and receive an acceptance receipt. ${POLL_AGENT_REPLY_RULE} ${POLL_AGENT_REPLY_NEXT_POINTER} The poll waits silently until the user sends more feedback or ends the session, and only when FOLIO_AXI_DISCONNECT_GRACE_MS is set does it release after every review window stays disconnected past that grace period - never kill it. ${pollExecutionGuidance({ agent })}`;
 }
 
 // The narrow fatal path. Ordinary layout findings never reach the poll: they wait in the user's

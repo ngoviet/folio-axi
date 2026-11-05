@@ -1360,7 +1360,7 @@ function applySheetState() {
 }
 
 // What the closed dock says. One line, most actionable state first: work the user has queued,
-// then a reply they have not seen, then whether the agent is there to receive a send.
+// then a reply they have not seen, then that what they send is saved for the agent.
 function sheetSummary() {
   if (ended) return { text: "Session ended", accent: false, unread: false };
   if (queued.length > 0) {
@@ -1370,7 +1370,7 @@ function sheetSummary() {
   if (agentPresence === "working") return { text: "Agent is working…", accent: false, unread: false };
   if (agentPresence === "external") return { text: "External listener active", accent: false, unread: false };
   if (agentPresence === "listening") return { text: "Agent listening", accent: false, unread: false };
-  return { text: "Agent not waiting", accent: false, unread: false };
+  return { text: "Saved for the agent", accent: false, unread: false };
 }
 
 function renderSheetSummary() {

@@ -203,7 +203,11 @@ async function pollReminder({ sessions, sessionId, stateDirectory, listeningKeys
   const pages = unasked.filter((session) => !listening.has(session.key)).slice(0, POLL_REMINDER_PAGE_LIMIT);
   if (pages.length === 0) return "";
   for (const session of pages) reminders[id(session)] = { seq: seq(session), at: now };
-  await writeReminders(stateDirectory, reminders).catch(() => {});
+  try {
+    await writeReminders(stateDirectory, reminders);
+  } catch {
+    return "";
+  }
   const commands = pages.map((session) => `folio-axi poll "${session.file.replace(/[\\"$`]/g, "\\$&")}"`);
   return JSON.stringify({
     decision: "block",
