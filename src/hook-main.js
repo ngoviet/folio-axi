@@ -15,33 +15,47 @@ async function readAllStdin() {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+const HEALTH_BODY_LIMIT_BYTES = 64 * 1024;
+const HEALTH_PROBE_TIMEOUT_MS = 1000;
+
 // The pages a live poll is waiting on. No server, or no answer, means no poll can be listening.
-function listeningKeys() {
+export function listeningKeys() {
   return new Promise((resolve) => {
-    const none = () => resolve(new Set());
-    const request = http.get(
-      { host: LOOPBACK_HOST, port: defaultPort(), path: "/health", timeout: 1000 },
-      (response) => {
+    let settled = false;
+    /** @type {import("node:http").ClientRequest | null} */
+    let request = null;
+    const finish = (keys) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      request?.destroy();
+      resolve(keys);
+    };
+    const none = () => finish(new Set());
+    const timer = setTimeout(none, HEALTH_PROBE_TIMEOUT_MS);
+    try {
+      request = http.get({ host: LOOPBACK_HOST, port: defaultPort(), path: "/health", agent: false }, (response) => {
         let body = "";
         response.setEncoding("utf8");
-        response.on("data", (chunk) => (body += chunk));
-        response.on("error", none);
+        response.on("data", (chunk) => {
+          body += chunk;
+          if (body.length > HEALTH_BODY_LIMIT_BYTES) none();
+        });
         response.on("end", () => {
-          request.destroy();
           try {
             const listeners = JSON.parse(body).listeners;
-            resolve(new Set(Array.isArray(listeners) ? listeners.map((listener) => listener?.key) : []));
+            finish(new Set(Array.isArray(listeners) ? listeners.map((listener) => listener?.key) : []));
           } catch {
             none();
           }
         });
-      },
-    );
-    request.on("timeout", () => {
-      request.destroy();
+        response.on("error", none);
+      });
+      request.on("error", none);
+      request.on("close", none);
+    } catch {
       none();
-    });
-    request.on("error", none);
+    }
   });
 }
 
