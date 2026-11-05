@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { chromeViTable, compileChromeTable, createChromeLocalizerJs, localizeChromeText } from "../src/chrome-i18n.js";
@@ -10,15 +9,6 @@ const vi = (text) => localizeChromeText(text, table);
 
 // Text that reads the same in both languages, or is a value rather than copy.
 const STATIC_TEXT_KEPT = new Set(["Folio", "ht-ml.app", "0", "English", "Tiếng Việt"]);
-
-// English the page sends to the agent, or shows only inside a note as stored.
-const CLIENT_STRINGS_KEPT = [
-  /^Freeform message$/,
-  /^Image (message|annotation)$/,
-  /^Diagram $/,
-  /^Whiteboard edits to diagram $/,
-  /^Edited scene JSON: /,
-];
 
 function staticTextOf(html) {
   const body = html
@@ -40,25 +30,6 @@ test("every static chrome string has a Vietnamese translation", () => {
   for (const match of html.matchAll(/ (?:title|aria-label|placeholder)="([^"]+)"/g)) {
     assert.notEqual(vi(match[1].replaceAll("&#39;", "'")), match[1], `untranslated attribute: ${match[1]}`);
   }
-});
-
-test("every sentence the chrome client can show has a Vietnamese translation", async () => {
-  const source = await readFile(new URL("../src/chrome-client.js", import.meta.url), "utf8");
-  const code = source
-    .split("\n")
-    .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
-    .join("\n");
-  const literals = [...code.matchAll(/"((?:[^"\\\n]|\\.)*)"/g)].map((match) => match[1].replace(/\\u2026/g, "…"));
-  const sentences = literals.filter(
-    (text) =>
-      /^[A-Z][a-z']* [a-zA-Z]/.test(text) &&
-      !/[<>{}=]/.test(text) &&
-      !CLIENT_STRINGS_KEPT.some((pattern) => pattern.test(text)),
-  );
-  assert.ok(sentences.length > 50, `expected to find the chrome sentences, found ${sentences.length}`);
-  // A literal ending in a space or "(" is a piece of a longer string, covered by the composed cases below.
-  const missing = sentences.filter((text) => !/[ (]$/.test(text) && vi(text) === text);
-  assert.deepEqual(missing, []);
 });
 
 test("composed strings translate with their values kept", () => {

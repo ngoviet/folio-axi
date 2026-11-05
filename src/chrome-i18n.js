@@ -9,7 +9,7 @@
 //   re-renders anything or touches a draft;
 // - strings sent to the agent never pass through the DOM, so they stay English;
 // - the boot failsafe is covered too, because the localizer does not wait for `chrome-client.js`.
-// test/chrome-i18n.test.js fails when a new English string has no Vietnamese here.
+// `pnpm run check` fails when a new English string has no Vietnamese here.
 
 export const LANGUAGE_STORAGE_KEY = "folio-axi:language";
 
