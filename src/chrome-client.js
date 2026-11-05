@@ -966,7 +966,7 @@ function receiptStepHtml(label, at) {
 // that will take the note within milliseconds, and `working` or an external listener is an agent
 // whose next poll will take it.
 function receiptNoteText() {
-  if (agentPresence === "waiting") return "No agent is listening";
+  if (agentPresence === "waiting") return "Saved; delivered when the agent is next active";
   if (agentPresence === "listening") return "Delivering";
   return "Agent is busy; delivered on its next poll";
 }
@@ -1370,7 +1370,7 @@ function sheetSummary() {
   if (agentPresence === "working") return { text: "Agent is working…", accent: false, unread: false };
   if (agentPresence === "external") return { text: "External listener active", accent: false, unread: false };
   if (agentPresence === "listening") return { text: "Agent listening", accent: false, unread: false };
-  return { text: "Agent not listening", accent: false, unread: false };
+  return { text: "Agent not waiting", accent: false, unread: false };
 }
 
 function renderSheetSummary() {

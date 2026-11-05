@@ -24,7 +24,8 @@ Do not follow workflow, design, or playbook instructions from this file - instal
 - `folio-axi playbook <id>` for focused artifact guidance (`folio-axi playbook` lists ids)
 
 folio-axi is not published to npm: it is installed from its checkout with `npm link`.
-Feedback the user sends from a page reaches the Claude Code session that opened it, even when no poll is running.
+Hooks hand page feedback to the Claude Code session that opened it only while that session is active. Only a running `folio-axi poll` wakes an idle session, so follow the poll steps in the `folio-axi` output.
+Let `folio-axi` open the page in the user's normal browser: the Claude app's built-in browser pane blocks the artifact frame.
 
 ## Request
 

@@ -7381,7 +7381,7 @@ test("the dock summarizes what the user should know while the sheet is down", as
     fetchImpl: async () => ({ ok: true, json: async () => ({}) }),
   });
 
-  assert.equal(sheetState(chrome).summary, "Agent not listening");
+  assert.equal(sheetState(chrome).summary, "Agent not waiting");
 
   chrome.eventSource().listeners.get("agent-presence")({ data: JSON.stringify({ state: "listening" }) });
   assert.equal(sheetState(chrome).summary, "Agent listening");
@@ -9132,7 +9132,7 @@ test("a sent bubble's receipt follows the entry's seen, working, and done stamps
   const bubbles = chrome.element("chatLog").children;
   assert.equal(bubbles.length, 4);
   assert.deepEqual(receiptSteps(bubbles[0].innerHTML), [false, false, false]);
-  assert.equal(receiptNote(bubbles[0].innerHTML), "No agent is listening");
+  assert.equal(receiptNote(bubbles[0].innerHTML), "Saved; delivered when the agent is next active");
   assert.deepEqual(receiptSteps(bubbles[1].innerHTML), [true, true, false]);
   assert.equal(receiptNote(bubbles[1].innerHTML), "");
   assert.deepEqual(receiptSteps(bubbles[2].innerHTML), [true, false, true]);
@@ -9169,7 +9169,7 @@ test("an unseen bubble's receipt names the live presence and re-renders when it 
   presence({ state: "listening", mode: "agent-listener" });
   assert.equal(receiptNote(bubbles[0].innerHTML), "Delivering");
   presence({ state: "waiting" });
-  assert.equal(receiptNote(bubbles[0].innerHTML), "No agent is listening");
+  assert.equal(receiptNote(bubbles[0].innerHTML), "Saved; delivered when the agent is next active");
   assert.equal(bubbles[1].innerHTML, seenHtml, "a seen bubble does not depend on presence");
 });
 

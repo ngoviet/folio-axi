@@ -1,10 +1,12 @@
 // Folio: Claude Code hooks. They tie each review page to the agent session that opened it and
-// make sure feedback the user sent from the page reaches that session even when no
-// `folio-axi poll` is running:
+// make sure feedback the user sent from the page reaches that session. Hooks only run while the
+// session is active; waking an idle session takes a background `folio-axi poll`, so Stop also
+// asks for one:
 //
 //   SessionStart      exports FOLIO_SESSION_ID through CLAUDE_ENV_FILE and lists this
 //                     directory's open pages in under HOOK_CONTEXT_LIMIT characters.
-//   Stop              blocks the stop and hands over feedback that is still waiting.
+//   Stop              blocks the stop and hands over feedback that is still waiting, or asks
+//                     once for a background poll on an owned page nobody is polling.
 //   UserPromptSubmit  adds waiting feedback to the user's next chat turn.
 //
 // Hooks never fail the agent: every error degrades to "no output".
@@ -22,6 +24,9 @@ export const HOOK_EVENTS = Object.freeze({
 export const HOOK_CONTEXT_LIMIT = 1500;
 export const HOOK_FEEDBACK_LIMIT = 9000;
 export const MAX_CONSECUTIVE_STOP_BLOCKS = 3;
+// A page untouched for longer than this is not worth holding the agent's stop for.
+export const POLL_REMINDER_WINDOW_MS = 24 * 60 * 60 * 1000;
+const POLL_REMINDER_PAGE_LIMIT = 5;
 
 export function agentSessionId(env = process.env) {
   return normalizeOwnerSessionId(env.FOLIO_SESSION_ID || env.CLAUDE_SESSION_ID || env.CLAUDE_CODE_SESSION_ID || "");
@@ -113,7 +118,7 @@ export function formatHookFeedback(file, response, budget = HOOK_FEEDBACK_LIMIT)
     );
   } else {
     lines.push(
-      `Apply it to ${file}, then answer on the page with \`folio-axi reply ${quotedFile} --agent-reply "<message>"\`.`,
+      `Apply it to ${file}, then answer on the page with \`folio-axi reply ${quotedFile} --agent-reply "<message>"\` and keep \`folio-axi poll ${quotedFile}\` running as a tracked background task so the next message wakes this session.`,
     );
   }
   const text = lines.join("\n");
@@ -149,6 +154,65 @@ async function writeStopCounters(stateDirectory, counters) {
   await rename(temp, file);
 }
 
+function reminderFile(stateDirectory) {
+  return path.join(stateDirectory, "hook-poll-reminders.json");
+}
+
+async function readReminders(stateDirectory) {
+  try {
+    const value = JSON.parse(await readFile(reminderFile(stateDirectory), "utf8"));
+    return value && typeof value === "object" ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeReminders(stateDirectory, reminders) {
+  const now = Date.now();
+  const kept = Object.fromEntries(
+    Object.entries(reminders).filter(([, entry]) => now - Number(entry?.at || 0) < 7 * POLL_REMINDER_WINDOW_MS),
+  );
+  await mkdir(stateDirectory, { recursive: true });
+  const file = reminderFile(stateDirectory);
+  const temp = `${file}.${process.pid}.tmp`;
+  await writeFile(temp, `${JSON.stringify(kept)}\n`);
+  await rename(temp, file);
+}
+
+/**
+ * The Stop output asking for a background poll, or "" when no owned page needs one. A page is
+ * asked about once per delivery: a delivery ends the poll, so that is when one is missing again.
+ * The guard is what keeps this from looping, since a stop that ignores the request is let through.
+ * @param {{ sessions: any[], sessionId: string, stateDirectory: string, listeningKeys?: () => Promise<Set<string>> }} options
+ */
+async function pollReminder({ sessions, sessionId, stateDirectory, listeningKeys }) {
+  const now = Date.now();
+  const candidates = sessions.filter(
+    (session) =>
+      session?.owner_session_id === sessionId &&
+      session.status !== "ended" &&
+      now - Date.parse(session.updated_at || "") < POLL_REMINDER_WINDOW_MS,
+  );
+  if (candidates.length === 0 || !listeningKeys) return "";
+  const reminders = await readReminders(stateDirectory);
+  const seq = (session) => Number(session.delivery_seq || 0);
+  const id = (session) => `${sessionId}:${session.key}`;
+  const unasked = candidates.filter((session) => reminders[id(session)]?.seq !== seq(session));
+  if (unasked.length === 0) return "";
+  const listening = await listeningKeys();
+  const pages = unasked.filter((session) => !listening.has(session.key)).slice(0, POLL_REMINDER_PAGE_LIMIT);
+  if (pages.length === 0) return "";
+  for (const session of pages) reminders[id(session)] = { seq: seq(session), at: now };
+  await writeReminders(stateDirectory, reminders).catch(() => {});
+  const commands = pages.map((session) => `folio-axi poll "${session.file.replace(/[\\"$`]/g, "\\$&")}"`);
+  return JSON.stringify({
+    decision: "block",
+    reason:
+      "A folio-axi review page you own has no poll running, so a message the user sends from it cannot wake this session. " +
+      `Start this as a tracked background task (Bash with run_in_background: true), one per page, then finish your turn without repeating your answer:\n${commands.join("\n")}`,
+  });
+}
+
 /**
  * Runs one hook event. `deps.pollOnce(file, sessionId)` takes feedback through the server with
  * ack mode; `deps.ack(key, deliveryId)` confirms it after the caller wrote the output.
@@ -159,10 +223,14 @@ async function writeStopCounters(stateDirectory, counters) {
  *   stateDirectory: string,
  *   readSessions: () => Promise<any[]>,
  *   pollOnce: (file: string, sessionId: string) => Promise<any>,
+ *   listeningKeys?: () => Promise<Set<string>>,
  * }} options
  * @returns {Promise<{ output: string, acks: { key: string, deliveryId: string }[] }>}
  */
-export async function runHookEvent(event, { input, env = process.env, stateDirectory, readSessions, pollOnce }) {
+export async function runHookEvent(
+  event,
+  { input, env = process.env, stateDirectory, readSessions, pollOnce, listeningKeys },
+) {
   const none = { output: "", acks: [] };
   const hookEventName = HOOK_EVENTS[event];
   if (!hookEventName) return none;
@@ -193,16 +261,16 @@ export async function runHookEvent(event, { input, env = process.env, stateDirec
   if (hookEventName === "Stop" && ["0", "off", "false"].includes(String(env.FOLIO_AXI_STOP_HOOK || "").toLowerCase())) {
     return none;
   }
-  const owned = (await readSessions()).filter(
-    (session) => session?.owner_session_id === sessionId && hasPending(session),
-  );
+  const sessions = await readSessions();
+  const owned = sessions.filter((session) => session?.owner_session_id === sessionId && hasPending(session));
   const counters = hookEventName === "Stop" ? await readStopCounters(stateDirectory) : {};
   if (owned.length === 0) {
     if (hookEventName === "Stop" && counters[sessionId]) {
       delete counters[sessionId];
       await writeStopCounters(stateDirectory, counters).catch(() => {});
     }
-    return none;
+    if (hookEventName !== "Stop") return none;
+    return { output: await pollReminder({ sessions, sessionId, stateDirectory, listeningKeys }), acks: [] };
   }
   if (hookEventName === "Stop" && Number(counters[sessionId]?.count || 0) >= MAX_CONSECUTIVE_STOP_BLOCKS) {
     // The guard against a stop loop: let the agent stop and leave the feedback for `poll`.

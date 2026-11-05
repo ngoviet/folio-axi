@@ -100,7 +100,8 @@ function setupHooksEnv(homeDir, stateDir) {
 }
 
 function assertObservablePollWakePath(text) {
-  assert.match(text, /Keep the poll in the foreground by default/i);
+  assert.match(text, /In Claude Code, run the poll as a tracked background task/i);
+  assert.match(text, /A poll ends at every delivery/i);
   assert.match(text, /return the feedback directly to the agent/i);
   assert.match(text, /harness-native tracked background-job facility/i);
   assert.match(text, /guaranteed to resume or notify the same agent/i);

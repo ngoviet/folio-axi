@@ -318,3 +318,59 @@ test("switching hooks to the direct node form replaces the PATH form without dup
   const [back] = computeClaudeHookUpdate(switched, folioHookEntries());
   for (const event of Object.keys(nodeForm)) assert.deepEqual(back.hooks[event], [folioHookEntries()[event]]);
 });
+
+const reminderInput = { session_id: "s1", cwd };
+const ownedPage = (name, extra = {}) =>
+  page(name, { owner_session_id: "s1", delivery_seq: 0, updated_at: new Date().toISOString(), ...extra });
+const stopWith = (dir, sessions, keys = new Set()) =>
+  runHookEvent("stop", {
+    input: reminderInput,
+    env: {},
+    stateDirectory: dir,
+    readSessions: async () => sessions,
+    pollOnce: async () => assert.fail("nothing is pending"),
+    listeningKeys: async () => keys,
+  });
+
+test("Stop asks once for a background poll on an owned page nobody is polling", async () => {
+  await withStateDir(async (dir) => {
+    const first = JSON.parse((await stopWith(dir, [ownedPage("a")])).output);
+    assert.equal(first.decision, "block");
+    assert.match(first.reason, /folio-axi poll/);
+    assert.match(first.reason, /run_in_background/);
+    assert.match(first.reason, /a\.html/);
+    assert.equal((await stopWith(dir, [ownedPage("a")])).output, "", "the same page is not asked about twice");
+  });
+});
+
+test("Stop asks again after a delivery ended the previous poll", async () => {
+  await withStateDir(async (dir) => {
+    await stopWith(dir, [ownedPage("a")]);
+    const next = await stopWith(dir, [ownedPage("a", { delivery_seq: 1 })]);
+    assert.equal(JSON.parse(next.output).decision, "block");
+  });
+});
+
+test("Stop leaves pages alone when a poll is live, or the page is not this session's to watch", async () => {
+  await withStateDir(async (dir) => {
+    assert.equal((await stopWith(dir, [ownedPage("a")], new Set(["a"]))).output, "");
+    assert.equal((await stopWith(dir, [ownedPage("b", { status: "ended" })])).output, "");
+    assert.equal((await stopWith(dir, [ownedPage("c", { owner_session_id: "other" })])).output, "");
+    const stale = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    assert.equal((await stopWith(dir, [ownedPage("d", { updated_at: stale })])).output, "");
+  });
+});
+
+test("the Stop switch also turns the poll reminder off", async () => {
+  await withStateDir(async (dir) => {
+    const result = await runHookEvent("stop", {
+      input: reminderInput,
+      env: { FOLIO_AXI_STOP_HOOK: "0" },
+      stateDirectory: dir,
+      readSessions: async () => [ownedPage("a")],
+      pollOnce: async () => assert.fail("switched off"),
+      listeningKeys: async () => new Set(),
+    });
+    assert.equal(result.output, "");
+  });
+});
