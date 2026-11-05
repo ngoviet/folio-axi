@@ -6,9 +6,11 @@ import { listeningKeys } from "../src/hook-main.js";
 
 async function withProbeServer(handler, fn) {
   const server = http.createServer(handler);
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(undefined)));
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
   const previous = process.env.FOLIO_AXI_PORT;
-  process.env.FOLIO_AXI_PORT = String(server.address().port);
+  process.env.FOLIO_AXI_PORT = String(port);
   try {
     await fn();
   } finally {
