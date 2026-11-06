@@ -118,6 +118,7 @@ function bootSdk({
   const posted = [];
   const documentListeners = [];
   const mutationObservers = [];
+  const resizeObservers = [];
   // Deferred work the SDK schedules, run only when a test asks for it: the draft-anchor settle
   // re-query is a real timer, and asserting on it means running it rather than assuming it.
   const timers = [];
@@ -143,7 +144,8 @@ function bootSdk({
     CSS: { escape: (value) => String(value) },
     Element: class Element {},
     MutationObserver: class MutationObserver {
-      constructor() {
+      constructor(callback) {
+        this.callback = callback;
         mutationObservers.push(this);
       }
       observe(target) {
@@ -153,8 +155,13 @@ function bootSdk({
     },
     Node: { TEXT_NODE: 3, ELEMENT_NODE: 1 },
     ResizeObserver: class ResizeObserver {
+      constructor() {
+        resizeObservers.push(this);
+      }
       observe() {}
-      disconnect() {}
+      disconnect() {
+        this.disconnected = true;
+      }
     },
     URL: {
       createObjectURL() {
@@ -204,7 +211,18 @@ function bootSdk({
   return {
     posted,
     body,
-    shadowObservers: () => mutationObservers.filter((observer) => observer.target?.tagName === "SHADOW-ROOT"),
+    resizeObservers,
+    // The fake DOM keeps innerHTML as a string, so this stands in for one text node of the card:
+    // it is added to the shadow root and reported the way a real MutationObserver reports it.
+    renderCardText(data, foreign = false) {
+      const shadow = documentElement.children.find((child) => child.shadowRoot)?.shadowRoot;
+      const node = { nodeType: 3, data, parentElement: { tagName: "SPAN", closest: () => (foreign ? {} : null) } };
+      shadow.childNodes.push(node);
+      for (const observer of mutationObservers) {
+        if (observer.target === shadow) observer.callback([{ type: "childList", addedNodes: [node] }]);
+      }
+      return node;
+    },
     api: sandbox.window.lavish,
     // Returns the dispatched event so a test can tell whether the SDK swallowed the click.
     click(target, modifiers = {}) {
@@ -917,23 +935,45 @@ test("the SDK asks the chrome for the language, since the sandboxed frame has no
   assert.ok(sdk.posted.some((message) => message.type === "lavish:requestLanguage"));
 });
 
-test("the card stays English and unobserved until the chrome names a language", () => {
+test("the card stays in its source English until the chrome names a language", () => {
   const sdk = bootSdk();
   sdk.click(appendTo(sdk.body, cell("p", "Decision board")));
-  assert.equal(sdk.shadowObservers().length, 0);
+  assert.equal(sdk.renderCardText("Attach image").data, "Attach image");
   sdk.sendChromeMessage({ type: "lavish:setLanguage", language: "en" });
-  assert.equal(sdk.shadowObservers().length, 0);
+  assert.equal(sdk.renderCardText("Attach image").data, "Attach image");
+});
+
+test("an open card follows every language switch", () => {
+  const sdk = bootSdk();
+  sdk.click(appendTo(sdk.body, cell("p", "Decision board")));
+  const text = sdk.renderCardText("Attach image");
   sdk.sendChromeMessage({ type: "lavish:setLanguage", language: "vi" });
-  assert.equal(sdk.shadowObservers().length, 1);
+  assert.equal(text.data, "Đính kèm ảnh");
   sdk.sendChromeMessage({ type: "lavish:setLanguage", language: "en" });
+  assert.equal(text.data, "Attach image");
   sdk.sendChromeMessage({ type: "lavish:setLanguage", language: "vi" });
-  assert.equal(sdk.shadowObservers().length, 1, "a switch reuses the one localizer");
+  assert.equal(text.data, "Đính kèm ảnh");
 });
 
 test("a language named before the first card applies when the card opens", () => {
   const sdk = bootSdk();
   sdk.sendChromeMessage({ type: "lavish:setLanguage", language: "vi" });
-  assert.equal(sdk.shadowObservers().length, 0);
   sdk.click(appendTo(sdk.body, cell("p", "Decision board")));
-  assert.equal(sdk.shadowObservers().length, 1);
+  assert.equal(sdk.renderCardText("Queue").data, "Xếp hàng");
+});
+
+test("an attachment's file name is never translated", () => {
+  const sdk = bootSdk();
+  sdk.sendChromeMessage({ type: "lavish:setLanguage", language: "vi" });
+  sdk.click(appendTo(sdk.body, cell("p", "Decision board")));
+  assert.equal(sdk.renderCardText("Queue", true).data, "Queue");
+});
+
+test("closing a card releases the observer that kept it inside the viewport", () => {
+  const sdk = bootSdk();
+  sdk.click(appendTo(sdk.body, cell("p", "Decision board")));
+  const cardObservers = sdk.resizeObservers.slice();
+  assert.ok(cardObservers.length > 0);
+  sdk.card().querySelector(".lavish-cancel").onclick();
+  assert.ok(cardObservers.at(-1).disconnected);
 });

@@ -524,6 +524,8 @@ export function createArtifactSdk(
   // The controller for the currently open card, so upload results routed from the
   // chrome reach the right chips. Only one card is ever open at a time.
   let activeAttachments = null;
+  // Re-clamps the open card when its size changes; dropped with the card.
+  let activeCardResizeObserver = null;
 
   // A clean, self-contained close glyph: the SVG path is inlined directly (no
   // <use>/sprite/symbol/CSS-mask reference), so it paints inside the sandboxed
@@ -2268,6 +2270,8 @@ export function createArtifactSdk(
       activeAttachments.destroy();
       activeAttachments = null;
     }
+    activeCardResizeObserver?.disconnect();
+    activeCardResizeObserver = null;
     if (shadow) {
       for (const el of [...shadow.querySelectorAll(".lavish-annotation-card")]) el.remove();
     }
@@ -2363,7 +2367,10 @@ export function createArtifactSdk(
     }
     positionCard();
     // Translation lands after this first measure and can rewrap the card, so clamp it again.
-    if (typeof ResizeObserver !== "undefined") new ResizeObserver(positionCard).observe(card);
+    if (typeof ResizeObserver !== "undefined") {
+      activeCardResizeObserver = new ResizeObserver(positionCard);
+      activeCardResizeObserver.observe(card);
+    }
 
     const textarea = /** @type {HTMLTextAreaElement | null} */ (card.querySelector("textarea"));
     const cancelButton = /** @type {HTMLButtonElement | null} */ (card.querySelector(".lavish-cancel"));
