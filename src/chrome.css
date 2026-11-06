@@ -1231,6 +1231,9 @@ html[lang="en"] .language-option[data-language-option="en"] {
   font-size: 13px;
   line-height: 1.45;
 }
+html[lang="vi"] .chat:empty::before {
+  content: "Agent chưa gửi tin nhắn nào. Bấm vào một phần tử trong trang để chú thích, hoặc gõ ở dưới để bắt đầu.";
+}
 .chat:empty:has(+ .chat-queued:not(:empty))::before {
   display: none;
 }

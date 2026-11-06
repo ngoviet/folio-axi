@@ -9,15 +9,18 @@
 //   re-renders anything or touches a draft;
 // - strings sent to the agent never pass through the DOM, so they stay English;
 // - the boot failsafe is covered too, because the localizer does not wait for `chrome-client.js`.
-// `pnpm run check` fails when a new English string has no Vietnamese here.
+// `pnpm run check` scans the double-quoted literals in `chrome-client.js` and the static text of
+// `createChromeHtml`; template literals, the inline failsafe card, and strings composed from
+// several pieces are not scanned, so those need a table entry and a look at the rendered page.
 
 export const LANGUAGE_STORAGE_KEY = "folio-axi:language";
 
 // Text someone else wrote: the user's notes, agent replies, artifact-declared revisions, and paths.
 // The collapsed conversation previews an unread agent reply verbatim, so that state carries the same
-// rule. Text and attributes inside these are never translated, even when they match a table entry.
+// rule, and so does the attachment name the chip shows. Text and attributes inside these are never
+// translated, even when they match a table entry.
 export const FOREIGN_CONTENT_SELECTOR =
-  ".chat-md,.bubble-text,.anchor,.note-draft,.revision-label,.revision-time,.revision-summary,.menu-file-text,.panel-summary.is-unread";
+  ".chat-md,.bubble-text,.anchor,.note-draft,.revision-label,.revision-time,.revision-summary,.menu-file-text,.panel-summary.is-unread,.chat-attachment-copy > strong";
 
 // A whole string on screen, compared after trimming.
 const VI_EXACT = {

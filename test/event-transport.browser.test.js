@@ -219,8 +219,10 @@ test(
             chromeEnv,
             12_000,
           );
-          assert.match(protectedDraft, /no longer running/);
-          assert.doesNotMatch(protectedDraft, /updated/);
+          // This tab still runs the previous build's chrome, so the banner is either that build's
+          // English copy or, were it reloaded, this build's Vietnamese copy for the same reason.
+          assert.match(protectedDraft, /Lavish was stopped|Folio đã dừng/);
+          assert.doesNotMatch(protectedDraft, /updated|cập nhật/);
           run("chrome-devtools-axi", ["eval", '() => document.getElementById("outdatedReload").click()'], chromeEnv);
         }
 

@@ -256,10 +256,15 @@ test(
       const desktopRows = beforeQueue.rows.filter((row) => row.viewport.startsWith("Máy tính · "));
       assert.equal(desktopRows.length, 3);
 
-      const selected = evaluate(
+      evaluate(
         '(() => { document.getElementById("warningsButton").click();' +
           ' const rows = [...document.querySelectorAll(".warning-row")].filter((row) => [...row.querySelectorAll(".warning-chip")][2].textContent.startsWith("Máy tính · "));' +
           ' rows[0].querySelector(".warning-select").click(); rows[2].querySelector(".warning-select").click();' +
+          ' return "clicked"; })()',
+      );
+      wait(200);
+      const selected = evaluate(
+        '(() => { const rows = [...document.querySelectorAll(".warning-row")].filter((row) => [...row.querySelectorAll(".warning-chip")][2].textContent.startsWith("Máy tính · "));' +
           ' return JSON.stringify({ selected: document.getElementById("warningsSelected").textContent, queueDisabled: document.getElementById("warningsQueueButton").disabled,' +
           ' targets: [rows[0].querySelector(".warning-target").textContent, rows[2].querySelector(".warning-target").textContent] }); })()',
       );
