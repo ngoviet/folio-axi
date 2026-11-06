@@ -93,12 +93,18 @@ function boundedLookup(lookup, host) {
  * @returns {Promise<string[]>}
  */
 export async function resolveConcreteListenHosts(hosts, { lookup = dnsLookup, keepUnresolved = false } = {}) {
+  // Concurrent, so several stalled names cost one timeout, not one each.
+  const lookups = await Promise.all(
+    hosts.map((host) =>
+      boundedLookup(lookup, host).catch((error) => {
+        if (keepUnresolved) return [];
+        throw error;
+      }),
+    ),
+  );
   const resolved = [];
-  for (const host of hosts) {
-    const addresses = await boundedLookup(lookup, host).catch((error) => {
-      if (keepUnresolved) return [];
-      throw error;
-    });
+  for (const [index, host] of hosts.entries()) {
+    const addresses = lookups[index];
     if (!Array.isArray(addresses) || addresses.length === 0) {
       if (!keepUnresolved) throw new Error(`Listen host did not resolve: ${host}`);
       if (!resolved.includes(host)) resolved.push(host);

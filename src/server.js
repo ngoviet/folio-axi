@@ -485,7 +485,9 @@ export async function serve({
           ? "EADDRNOTAVAIL: that address is not on this machine right now"
           : code === "ENOTFOUND" || code === "EAI_AGAIN"
             ? `${code}: that name does not resolve right now`
-            : code || (error instanceof Error ? error.message : String(error));
+            : code === LISTEN_HOST_LOOKUP_TIMEOUT
+              ? "the lookup for that name timed out"
+              : code || (error instanceof Error ? error.message : String(error));
     const address = `${hostForUrl(listenHost)}:${publicPort || port}`;
     const reachable = `Folio remains available on ${boundHosts.map((bound) => hostForUrl(bound)).join(", ") || "loopback"}`;
     if (listenHost === tailscale?.ipv4) {
@@ -2310,7 +2312,7 @@ export async function serve({
   const bindOrder = listenHosts.includes(LOOPBACK_HOST)
     ? [LOOPBACK_HOST, ...listenHosts.filter((listenHost) => listenHost !== LOOPBACK_HOST)]
     : listenHosts;
-  for (const listenHost of bindOrder) {
+  for (const listenHost of bindOrder.filter((candidate) => isIP(candidate))) {
     const error = await bindListener(listenHost);
     if (!error) continue;
     lastBindError = error;
@@ -2325,6 +2327,17 @@ export async function serve({
     }
     pendingBinds.set(listenHost, error);
   }
+  // Names startup could not resolve go together, so each one's lookup wait overlaps the others'.
+  await Promise.all(
+    bindOrder
+      .filter((candidate) => !isIP(candidate))
+      .map(async (listenHost) => {
+        const error = await bindListener(listenHost);
+        if (!error) return;
+        lastBindError = error;
+        pendingBinds.set(listenHost, error);
+      }),
+  );
 
   // Loopback floor. A server that cannot reach its requested address is still far more useful on
   // loopback than absent: the local agent CLI keeps working, and the next invocation finds THIS
