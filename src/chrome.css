@@ -1820,7 +1820,10 @@ body.layout-gate-active iframe#artifact {
     --bar-h: calc(56px + env(safe-area-inset-top, 0px));
     --dock-h: 60px;
     --sheet-peek: 16px;
-    --composer-reserve: calc(1px + var(--space-4) + 34px + var(--space-6) + env(safe-area-inset-bottom, 0px));
+    --composer-button-h: 34px;
+    --composer-reserve: calc(
+      1px + var(--space-4) + var(--composer-button-h) + var(--space-6) + env(safe-area-inset-bottom, 0px)
+    );
     --sheet-top: max(var(--bar-h) + var(--sheet-peek) - var(--vv-top, 0px), var(--sheet-peek));
   }
   .bar {
@@ -1992,6 +1995,11 @@ body.layout-gate-active iframe#artifact {
     padding-top: 8px;
     background: var(--bg-panel);
     box-shadow: 0 -1px 0 var(--border-subtle);
+  }
+  /* Sticky cannot lift the row above the composer's content box, so a button taller than
+     `--composer-reserve` allows runs past the viewport. Normal line height varies by font. */
+  .composer .actions .button {
+    height: var(--composer-button-h);
   }
   .panel-scrim {
     display: block;
