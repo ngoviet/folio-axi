@@ -68,23 +68,52 @@ export function sanitizeListenHosts(hosts) {
   return out.length ? out : [LOOPBACK_HOST];
 }
 
+// A resolver that loses a packet stalls for its own 5-second retry, and the server resolves its
+// hosts before it binds loopback, so an unbounded lookup outlasts the CLI's start window.
+const LISTEN_HOST_LOOKUP_TIMEOUT_MS = 1000;
+export const LISTEN_HOST_LOOKUP_TIMEOUT = "LISTEN_HOST_LOOKUP_TIMEOUT";
+
+function boundedLookup(lookup, host) {
+  let timer;
+  const timedOut = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error(`Listen host lookup timed out: ${host}`);
+      reject(Object.assign(error, { code: LISTEN_HOST_LOOKUP_TIMEOUT }));
+    }, LISTEN_HOST_LOOKUP_TIMEOUT_MS);
+  });
+  return Promise.race([lookup(host, { all: true, verbatim: true }), timedOut]).finally(() => clearTimeout(timer));
+}
+
 /**
  * With `keepUnresolved`, a name that does not resolve right now is kept as the name, so it is bound
  * and retried like any other unavailable address and reported, instead of failing or vanishing. A
  * name that resolves to an all-interfaces address is always refused.
  * @param {string[]} hosts
- * @param {{ lookup?: typeof dnsLookup, keepUnresolved?: boolean }} [options]
+ * @param {{ lookup?: typeof dnsLookup, keepUnresolved?: boolean, unresolved?: Map<string, Error> }} [options]
  * @returns {Promise<string[]>}
  */
-export async function resolveConcreteListenHosts(hosts, { lookup = dnsLookup, keepUnresolved = false } = {}) {
+export async function resolveConcreteListenHosts(
+  hosts,
+  { lookup = dnsLookup, keepUnresolved = false, unresolved } = {},
+) {
+  // Concurrent, so several stalled names cost one timeout, not one each.
+  const lookups = await Promise.all(
+    hosts.map((host) =>
+      boundedLookup(lookup, host)
+        .then((addresses) => ({ addresses, error: null }))
+        .catch((error) => {
+          if (keepUnresolved)
+            return { addresses: [], error: error instanceof Error ? error : new Error(String(error)) };
+          throw error;
+        }),
+    ),
+  );
   const resolved = [];
-  for (const host of hosts) {
-    const addresses = await lookup(host, { all: true, verbatim: true }).catch((error) => {
-      if (keepUnresolved) return [];
-      throw error;
-    });
+  for (const [index, host] of hosts.entries()) {
+    const { addresses, error } = lookups[index];
     if (!Array.isArray(addresses) || addresses.length === 0) {
       if (!keepUnresolved) throw new Error(`Listen host did not resolve: ${host}`);
+      unresolved?.set(host, error ?? new Error(`Listen host did not resolve: ${host}`));
       if (!resolved.includes(host)) resolved.push(host);
       continue;
     }

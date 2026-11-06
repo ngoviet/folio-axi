@@ -64,6 +64,7 @@ import {
   hostForUrl,
   IPV6_LOOPBACK_HOST,
   isWildcardHost,
+  LISTEN_HOST_LOOKUP_TIMEOUT,
   LOOPBACK_HOST,
   resolveConcreteListenHosts,
   resolveLinkHost,
@@ -325,9 +326,12 @@ export async function serve({
       : resolveListenHosts({ host, env, tailscale, extraHosts: extraListenHosts }),
   );
   const lookupOptions = lookupHost ? { lookup: lookupHost } : {};
+  /** @type {Map<string, Error>} */
+  const unresolved = new Map();
   const listenHosts = await resolveConcreteListenHosts(requestedListenHosts, {
     ...lookupOptions,
     keepUnresolved: true,
+    unresolved,
   });
   const activeTailscaleNetwork = tailscaleNetworkKey(tailscale);
   const serverStateId = stateId(stateFile);
@@ -484,7 +488,9 @@ export async function serve({
           ? "EADDRNOTAVAIL: that address is not on this machine right now"
           : code === "ENOTFOUND" || code === "EAI_AGAIN"
             ? `${code}: that name does not resolve right now`
-            : code || (error instanceof Error ? error.message : String(error));
+            : code === LISTEN_HOST_LOOKUP_TIMEOUT
+              ? "the lookup for that name timed out"
+              : code || (error instanceof Error ? error.message : String(error));
     const address = `${hostForUrl(listenHost)}:${publicPort || port}`;
     const reachable = `Folio remains available on ${boundHosts.map((bound) => hostForUrl(bound)).join(", ") || "loopback"}`;
     if (listenHost === tailscale?.ipv4) {
@@ -2306,7 +2312,7 @@ export async function serve({
   const bindOrder = listenHosts.includes(LOOPBACK_HOST)
     ? [LOOPBACK_HOST, ...listenHosts.filter((listenHost) => listenHost !== LOOPBACK_HOST)]
     : listenHosts;
-  for (const listenHost of bindOrder) {
+  for (const listenHost of bindOrder.filter((candidate) => isIP(candidate))) {
     const error = await bindListener(listenHost);
     if (!error) continue;
     lastBindError = error;
@@ -2319,6 +2325,11 @@ export async function serve({
         { cause: error },
       );
     }
+    pendingBinds.set(listenHost, error);
+  }
+  for (const [listenHost, error] of unresolved) {
+    if (isIP(listenHost)) continue;
+    lastBindError = error;
     pendingBinds.set(listenHost, error);
   }
 
