@@ -1,4 +1,4 @@
-/* global Element, MutationObserver, Node, document */
+/* global Element, MutationObserver, Node, document, window */
 
 // Folio's review page speaks Vietnamese by default; English is one click away in the More menu.
 //
@@ -9,6 +9,10 @@
 //   re-renders anything or touches a draft;
 // - strings sent to the agent never pass through the DOM, so they stay English;
 // - the boot failsafe is covered too, because the localizer does not wait for `chrome-client.js`.
+// The annotation card lives in the artifact frame, out of this DOM's reach, and the sandboxed frame
+// has no storage. So the SDK runs the same localizer over its own shadow root with `cardViTable()`,
+// and asks this page for the language (`lavish:requestLanguage`, answered by `lavish:setLanguage`,
+// which is posted again on every switch).
 // For check coverage and its limits, see docs/invariants.md (Things to know when editing).
 
 export const LANGUAGE_STORAGE_KEY = "folio-axi:language";
@@ -19,6 +23,10 @@ export const LANGUAGE_STORAGE_KEY = "folio-axi:language";
 // translated, even when they match a table entry.
 export const FOREIGN_CONTENT_SELECTOR =
   ".chat-md,.bubble-text,.anchor,.note-draft,.revision-label,.revision-time,.revision-summary,.menu-file-text,.panel-summary.is-unread,.chat-attachment-copy > strong";
+
+// In the annotation card, only the attachment's file name is someone else's text. Labels in the
+// heading are composed into one string, so the anchored card rules keep those verbatim instead.
+export const CARD_FOREIGN_CONTENT_SELECTOR = ".lavish-attachment-name";
 
 // A whole string on screen, compared after trimming.
 const VI_EXACT = {
@@ -305,6 +313,16 @@ const VI_FRAGMENTS = [
   ],
 ];
 
+// Attachment problems, shown by both the composer and the annotation card.
+/** @type {[RegExp, string][]} */
+const VI_ATTACHMENT_RULES = [
+  [/^You can attach up to (\d+) images?\.$/, "Bạn được đính kèm tối đa $1 ảnh."],
+  [/^Image is larger than the (.+) limit$/, "Ảnh lớn hơn giới hạn $1"],
+  [/^Upload limit reached for this session \((.+)\)\.$/, "Đã tới giới hạn tải lên của phiên này ($1)."],
+  [/^Unsupported file type\. Use (.+?),? or (\S+)\.$/, "Loại tệp không hỗ trợ. Hãy dùng $1 hoặc $2."],
+  [/^Unsupported file type\. Use (.+)\.$/, "Loại tệp không hỗ trợ. Hãy dùng $1."],
+];
+
 // Strings with a number, name, or other value inside. Run in order, after the fragments.
 /** @type {[RegExp, string][]} */
 const VI_RULES = [
@@ -313,11 +331,7 @@ const VI_RULES = [
   [/^Not sent — (.+)\. Remove or fix the image, then send again\.$/, "Chưa gửi: $1. Hãy bỏ hoặc sửa ảnh rồi gửi lại."],
   [/images exceed the (.+?) per-prompt limit/, "ảnh vượt giới hạn $1 mỗi ghi chú"],
   [/more than (\d+) images on one prompt/, "hơn $1 ảnh trong một ghi chú"],
-  [/^You can attach up to (\d+) images?\.$/, "Bạn được đính kèm tối đa $1 ảnh."],
-  [/^Image is larger than the (.+) limit$/, "Ảnh lớn hơn giới hạn $1"],
-  [/^Upload limit reached for this session \((.+)\)\.$/, "Đã tới giới hạn tải lên của phiên này ($1)."],
-  [/^Unsupported file type\. Use (.+?),? or (\S+)\.$/, "Loại tệp không hỗ trợ. Hãy dùng $1 hoặc $2."],
-  [/^Unsupported file type\. Use (.+)\.$/, "Loại tệp không hỗ trợ. Hãy dùng $1."],
+  ...VI_ATTACHMENT_RULES,
   [/^(\d+) more images?$/, "thêm $1 ảnh"],
   [/^Retry (.+)$/, "Thử lại $1"],
   [/^Remove (.+)$/, "Bỏ $1"],
@@ -390,6 +404,48 @@ const VI_RULES = [
   [/mép bottom/, "mép dưới"],
 ];
 
+// Annotation card copy from src/artifact-sdk.js.
+const VI_CARD_EXACT = {
+  "Annotate text": "Chú thích đoạn chữ",
+  "Annotate node": "Chú thích nút sơ đồ",
+  "Tell the agent what to change about this text...": "Cho agent biết cần đổi gì ở đoạn chữ này...",
+  "Tell the agent what to change about this table cell...": "Cho agent biết cần đổi gì ở ô bảng này...",
+  "Tell the agent what to change about this diagram node...": "Cho agent biết cần đổi gì ở nút sơ đồ này...",
+  "Tell the agent what to change about this element...": "Cho agent biết cần đổi gì ở phần tử này...",
+  "Attach image": "Đính kèm ảnh",
+  Queue: "Xếp hàng",
+  Remove: "Bỏ",
+  "Remove image": "Bỏ ảnh",
+  "Could not read image": "Không đọc được ảnh",
+  UNSUPPORTED_TYPE: "Loại tệp không hỗ trợ",
+  "An image couldn't be attached. Retry or remove it before queuing.":
+    "Không đính kèm được một ảnh. Hãy thử lại hoặc bỏ ảnh đó trước khi xếp hàng.",
+};
+
+// Copy the card shares with the chrome, so one wording serves both.
+const CARD_SHARED_EXACT = [
+  "Cancel",
+  "Retry",
+  "Uploading…",
+  "Upload failed",
+  "Waiting for an image to finish uploading…",
+  "Too many uploads. Wait a moment and retry.",
+  "Too many uploads in flight. Wait a moment and retry.",
+];
+
+// Every rule is anchored: what follows "Annotate cell: " is the artifact's own text.
+/** @type {[RegExp, string][]} */
+const VI_CARD_RULES = [
+  [/^Annotate cell: ([\s\S]+)$/, "Chú thích ô: $1"],
+  [/^Annotate node: ([\s\S]+)$/, "Chú thích nút sơ đồ: $1"],
+  [/^Annotate <([^>]+)> in ([\s\S]+)$/, "Chú thích <$1> ở $2"],
+  [/^Annotate <([^>]+)>$/, "Chú thích <$1>"],
+  [
+    /^Enter to queue · (.+)\+Enter to send · paste or drop an image$/,
+    "Enter để xếp hàng · $1+Enter để gửi · dán hoặc thả ảnh vào",
+  ],
+];
+
 function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -407,6 +463,18 @@ export function chromeViTable() {
   };
 }
 
+// The chrome table's unanchored rules would rewrite a label the artifact wrote, so the card gets
+// its own small table. It also keeps the SDK that is served into every artifact frame small.
+export function cardViTable() {
+  return {
+    exact: {
+      ...Object.fromEntries(CARD_SHARED_EXACT.map((english) => [english, VI_EXACT[english]])),
+      ...VI_CARD_EXACT,
+    },
+    rules: [...VI_CARD_RULES, ...VI_ATTACHMENT_RULES].map(([pattern, vietnamese]) => [pattern.source, vietnamese]),
+  };
+}
+
 export function compileChromeTable(table) {
   return { exact: table.exact, rules: table.rules.map(([source, target]) => [new RegExp(source, "g"), target]) };
 }
@@ -420,21 +488,14 @@ export function localizeChromeText(text, table) {
   return result;
 }
 
-// Stringified into the page, so it may use only its arguments and browser globals.
-export function installChromeLocalizer(localize, compile, rawTable, storageKey, foreignSelector) {
-  const table = compile(rawTable);
+// Keeps everything under `root` (the chrome document, or the SDK's shadow root) in `initialLanguage`.
+// Stringified into both pages, so it may use only its arguments and browser globals.
+export function createDomLocalizer(localize, table, root, foreignSelector, initialLanguage) {
   const attributes = ["title", "aria-label", "placeholder"];
   const skippedTextParents = new Set(["SCRIPT", "STYLE", "TEXTAREA", "TITLE"]);
   const textState = new WeakMap();
   const attributeState = new WeakMap();
-  const root = document.documentElement;
-  const normalize = (value) => (value === "en" ? "en" : "vi");
-  let language = "vi";
-  try {
-    language = normalize(localStorage.getItem(storageKey));
-  } catch {
-    // Storage can be blocked. The toggle still works for this page.
-  }
+  let language = initialLanguage;
 
   const render = (source) => (language === "vi" ? localize(source, table) : source);
 
@@ -465,15 +526,8 @@ export function installChromeLocalizer(localize, compile, rawTable, storageKey, 
       syncText(node);
       return;
     }
-    if (node.nodeType !== Node.ELEMENT_NODE) return;
-    for (const name of attributes) syncAttribute(node, name);
+    if (node.nodeType === Node.ELEMENT_NODE) for (const name of attributes) syncAttribute(node, name);
     for (const child of node.childNodes) syncTree(child);
-  }
-
-  function applyLanguage(next) {
-    language = next;
-    root.lang = next;
-    syncTree(root);
   }
 
   new MutationObserver((records) => {
@@ -489,18 +543,48 @@ export function installChromeLocalizer(localize, compile, rawTable, storageKey, 
     attributes: true,
     attributeFilter: attributes,
   });
-  root.lang = language;
   syncTree(root);
+
+  return {
+    setLanguage(next) {
+      language = next;
+      syncTree(root);
+    },
+  };
+}
+
+// Stringified into the page, so it may use only its arguments and browser globals.
+export function installChromeLocalizer(localize, compile, createLocalizer, rawTable, storageKey, foreignSelector) {
+  const root = document.documentElement;
+  const normalize = (value) => (value === "en" ? "en" : "vi");
+  let language = "vi";
+  try {
+    language = normalize(localStorage.getItem(storageKey));
+  } catch {
+    // Storage can be blocked. The toggle still works for this page.
+  }
+
+  const localizer = createLocalizer(localize, compile(rawTable), root, foreignSelector, language);
+  root.lang = language;
+
+  const artifactWindow = () => /** @type {any} */ (document.getElementById("artifact"))?.contentWindow;
+  const tellArtifact = () => artifactWindow()?.postMessage({ type: "lavish:setLanguage", language }, "*");
+
+  window.addEventListener("message", (event) => {
+    if (event.source === artifactWindow() && event.data?.type === "lavish:requestLanguage") tellArtifact();
+  });
 
   document.addEventListener("click", (event) => {
     if (!(event.target instanceof Element) || !event.target.closest("#languageToggle")) return;
-    const next = language === "vi" ? "en" : "vi";
+    language = language === "vi" ? "en" : "vi";
     try {
-      localStorage.setItem(storageKey, next);
+      localStorage.setItem(storageKey, language);
     } catch {
       // Same as above: this page still switches.
     }
-    applyLanguage(next);
+    root.lang = language;
+    localizer.setLanguage(language);
+    tellArtifact();
   });
 }
 
@@ -510,6 +594,7 @@ export function createChromeLocalizerJs() {
   const args = [
     localizeChromeText.toString(),
     compileChromeTable.toString(),
+    createDomLocalizer.toString(),
     table,
     JSON.stringify(LANGUAGE_STORAGE_KEY),
     JSON.stringify(FOREIGN_CONTENT_SELECTOR),

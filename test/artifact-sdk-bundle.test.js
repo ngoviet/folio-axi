@@ -9,19 +9,79 @@ import { createSdkJs } from "../src/server.js";
 // ReferenceErrors on the first click, so these tests boot the served bundle and drive the real
 // annotation path through a DOM stub instead of inspecting the module directly.
 
+const mutationObservers = [];
+
+function notifyAdded(parent, nodes) {
+  for (const observer of mutationObservers) {
+    let ancestor = parent;
+    while (ancestor && ancestor !== observer.target) ancestor = ancestor.parentElement;
+    if (ancestor && nodes.length) observer.callback([{ type: "childList", addedNodes: nodes }]);
+  }
+}
+
+function decodeHtml(value) {
+  return value.replace(
+    /&(amp|lt|gt|quot|#39|middot);/g,
+    (_, entity) => ({ amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'", middot: "·" })[entity],
+  );
+}
+
 function createElement(tag) {
   const attributes = new Map();
   const queried = new Map();
+  let html = "";
   const element = {
     tagName: String(tag).toUpperCase(),
     nodeName: String(tag).toUpperCase(),
     nodeType: 1,
     parentElement: null,
     children: [],
+    childNodes: [],
     style: {},
     value: "",
-    innerHTML: "",
-    textContent: "",
+    get innerHTML() {
+      return (
+        html ||
+        element.childNodes
+          .map((child) =>
+            child.nodeType === 3
+              ? child.data.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+              : child.textContent,
+          )
+          .join("")
+      );
+    },
+    set innerHTML(value) {
+      html = String(value);
+      element.children.length = 0;
+      element.childNodes.length = 0;
+      const stack = [element];
+      for (const token of html.match(/<[^>]*>|[^<]+/g) || []) {
+        const parent = stack.at(-1);
+        if (token.startsWith("</")) {
+          stack.pop();
+        } else if (token.startsWith("<")) {
+          const match = /^<([\w-]+)([^>]*)>/.exec(token);
+          if (!match) continue;
+          const child = createElement(match[1]);
+          for (const attr of match[2].matchAll(/([\w-]+)(?:="([^"]*)")?/g)) {
+            child.setAttribute(attr[1], decodeHtml(attr[2] || ""));
+          }
+          parent.appendChild(child);
+          if (!/\/$/.test(match[2]) && !/^(input|img|br|hr)$/i.test(match[1])) stack.push(child);
+        } else {
+          parent.appendChild({ nodeType: 3, data: decodeHtml(token), parentElement: null });
+        }
+      }
+    },
+    get textContent() {
+      return element.childNodes.map((child) => (child.nodeType === 3 ? child.data : child.textContent)).join("");
+    },
+    set textContent(value) {
+      element.children.length = 0;
+      element.childNodes.length = 0;
+      if (value) element.appendChild({ nodeType: 3, data: String(value), parentElement: null });
+    },
     offsetWidth: 100,
     offsetHeight: 100,
     hidden: false,
@@ -45,6 +105,7 @@ function createElement(tag) {
         .some((part) => {
           const selector = part.trim();
           // `tag`, `[attr]`, or `tag[attr]` (e.g. `a[href]`): enough selector for what the SDK asks.
+          if (selector.startsWith(".")) return (attributes.get("class") || "").split(/\s+/).includes(selector.slice(1));
           const bracket = selector.indexOf("[");
           const tag = bracket >= 0 ? selector.slice(0, bracket) : selector;
           if (tag && tag !== element.tagName.toLowerCase()) return false;
@@ -61,16 +122,28 @@ function createElement(tag) {
     },
     appendChild(child) {
       child.parentElement = element;
-      element.children.push(child);
+      if (child.nodeType === 1) element.children.push(child);
+      element.childNodes.push(child);
+      notifyAdded(element, [child]);
       return child;
     },
     remove() {
       const index = element.parentElement?.children.indexOf(element) ?? -1;
       if (index >= 0) element.parentElement.children.splice(index, 1);
+      const nodeIndex = element.parentElement?.childNodes.indexOf(element) ?? -1;
+      if (nodeIndex >= 0) element.parentElement.childNodes.splice(nodeIndex, 1);
     },
-    // Card internals are looked up by class after innerHTML is assigned, so hand back a stable
-    // stub per selector: the test drives the very buttons the SDK wired up.
     querySelector(selector) {
+      const find = (node) => {
+        for (const child of node.children) {
+          if (child.matches(selector)) return child;
+          const nested = find(child);
+          if (nested) return nested;
+        }
+        return null;
+      };
+      const found = find(element);
+      if (found) return found;
       if (!queried.has(selector)) queried.set(selector, createElement(selector.replace(/^[.#]/, "")));
       return queried.get(selector);
     },
@@ -96,9 +169,7 @@ function createElement(tag) {
 }
 
 function appendTo(parent, child) {
-  child.parentElement = parent;
-  parent.children.push(child);
-  return child;
+  return parent.appendChild(child);
 }
 
 function cell(tag, text) {
@@ -116,6 +187,8 @@ function bootSdk({
 } = {}) {
   const posted = [];
   const documentListeners = [];
+  mutationObservers.length = 0;
+  const resizeObservers = [];
   // Deferred work the SDK schedules, run only when a test asks for it: the draft-anchor settle
   // re-query is a real timer, and asserting on it means running it rather than assuming it.
   const timers = [];
@@ -141,12 +214,24 @@ function bootSdk({
     CSS: { escape: (value) => String(value) },
     Element: class Element {},
     MutationObserver: class MutationObserver {
-      observe() {}
+      constructor(callback) {
+        this.callback = callback;
+        mutationObservers.push(this);
+      }
+      observe(target) {
+        this.target = target;
+      }
       disconnect() {}
     },
+    Node: { TEXT_NODE: 3, ELEMENT_NODE: 1 },
     ResizeObserver: class ResizeObserver {
+      constructor() {
+        resizeObservers.push(this);
+      }
       observe() {}
-      disconnect() {}
+      disconnect() {
+        this.disconnected = true;
+      }
     },
     URL: {
       createObjectURL() {
@@ -196,6 +281,7 @@ function bootSdk({
   return {
     posted,
     body,
+    resizeObservers,
     api: sandbox.window.lavish,
     // Returns the dispatched event so a test can tell whether the SDK swallowed the click.
     click(target, modifiers = {}) {
@@ -353,8 +439,9 @@ function buildTable(sdk) {
   const dataRow = appendTo(tbody, createElement("tr"));
   appendTo(dataRow, cell("td", "Media & Apple Music"));
   appendTo(dataRow, cell("td", "4 apps"));
-  const evidence = appendTo(dataRow, cell("td", "Drive, Neovide, Cursor"));
+  const evidence = appendTo(dataRow, cell("td", ""));
   const badge = appendTo(evidence, cell("code", "Drive"));
+  evidence.appendChild({ nodeType: 3, data: ", Neovide, Cursor", parentElement: null });
   return { evidence, badge };
 }
 
@@ -901,4 +988,88 @@ test("setDocumentMeta forwards null to restore, omits unset fields and drops non
     messages.map((entry) => JSON.parse(JSON.stringify({ title: entry.title, icon: entry.icon }))),
     [{ title: null }, {}, {}],
   );
+});
+
+test("the SDK asks the chrome for the language, since the sandboxed frame has no storage of its own", () => {
+  const sdk = bootSdk();
+  assert.ok(sdk.posted.some((message) => message.type === "lavish:requestLanguage"));
+});
+
+function cardCopy(sdk) {
+  const card = sdk.card();
+  return {
+    heading: card.querySelector(".lavish-heading").textContent,
+    placeholder: card.querySelector("textarea").getAttribute("placeholder"),
+    attach: card.querySelector(".lavish-attach").textContent,
+    cancel: card.querySelector(".lavish-cancel").textContent,
+    queue: card.querySelector(".lavish-send").textContent,
+    hint: card.querySelector(".lavish-hint").textContent,
+  };
+}
+
+const englishCard = {
+  heading: "Annotate <p>",
+  placeholder: "Tell the agent what to change about this element...",
+  attach: "Attach image",
+  cancel: "Cancel",
+  queue: "Queue",
+  hint: "Enter to queue · Ctrl+Enter to send · paste or drop an image",
+};
+const vietnameseCard = {
+  heading: "Chú thích <p>",
+  placeholder: "Cho agent biết cần đổi gì ở phần tử này...",
+  attach: "Đính kèm ảnh",
+  cancel: "Huỷ",
+  queue: "Xếp hàng",
+  hint: "Enter để xếp hàng · Ctrl+Enter để gửi · dán hoặc thả ảnh vào",
+};
+
+test("the card stays in its source English until the chrome names a language", () => {
+  const sdk = bootSdk();
+  sdk.click(appendTo(sdk.body, cell("p", "Decision board")));
+  assert.deepEqual(cardCopy(sdk), englishCard);
+  sdk.sendChromeMessage({ type: "lavish:setLanguage", language: "en" });
+  assert.deepEqual(cardCopy(sdk), englishCard);
+});
+
+test("an open card follows every language switch", () => {
+  const sdk = bootSdk();
+  sdk.click(appendTo(sdk.body, cell("p", "Decision board")));
+  sdk.sendChromeMessage({ type: "lavish:setLanguage", language: "vi" });
+  assert.deepEqual(cardCopy(sdk), vietnameseCard);
+  sdk.sendChromeMessage({ type: "lavish:setLanguage", language: "en" });
+  assert.deepEqual(cardCopy(sdk), englishCard);
+  sdk.sendChromeMessage({ type: "lavish:setLanguage", language: "vi" });
+  assert.deepEqual(cardCopy(sdk), vietnameseCard);
+});
+
+test("a language named before the first card applies when the card opens", () => {
+  const sdk = bootSdk();
+  sdk.sendChromeMessage({ type: "lavish:setLanguage", language: "vi" });
+  sdk.click(appendTo(sdk.body, cell("p", "Decision board")));
+  assert.deepEqual(cardCopy(sdk), vietnameseCard);
+});
+
+test("an attachment's file name is never translated", () => {
+  const sdk = bootSdk();
+  sdk.sendChromeMessage({ type: "lavish:setLanguage", language: "vi" });
+  sdk.click(appendTo(sdk.body, cell("p", "Decision board")));
+  const input = sdk.card().querySelector(".lavish-attach-input");
+  input.files = [{ name: "Queue", type: "image/png", size: 10, arrayBuffer: () => new Promise(() => {}) }];
+  input.listeners.find((listener) => listener.type === "change").handler();
+  const name = sdk.card().querySelector(".lavish-attachment-name");
+  assert.equal(name.textContent, "Queue");
+  assert.equal(name.getAttribute("title"), "Queue");
+  sdk.sendChromeMessage({ type: "lavish:setLanguage", language: "en" });
+  sdk.sendChromeMessage({ type: "lavish:setLanguage", language: "vi" });
+  assert.equal(name.textContent, "Queue");
+});
+
+test("closing a card releases the observer that kept it inside the viewport", () => {
+  const sdk = bootSdk();
+  sdk.click(appendTo(sdk.body, cell("p", "Decision board")));
+  const cardObservers = sdk.resizeObservers.slice();
+  assert.ok(cardObservers.length > 0);
+  sdk.card().querySelector(".lavish-cancel").onclick();
+  assert.ok(cardObservers.at(-1).disconnected);
 });

@@ -63,7 +63,7 @@ async function freePort() {
 
 const ARTIFACT = `<!doctype html>
 <html><head><meta charset="utf-8"><title>Published. Notes</title></head>
-<body><h1>Send to Agent</h1></body></html>`;
+<body><h1>Send to Agent</h1><p>Queue</p></body></html>`;
 
 const READ_PAGE = `() => {
   const text = (id) => document.getElementById(id).textContent;
@@ -186,6 +186,52 @@ test(
       evaluate('() => { document.getElementById("copyHintText").textContent = "Copied"; return "ok"; }');
       wait(100);
       assert.equal(evaluate('() => document.getElementById("copyHintText").textContent'), "Đã chép");
+
+      // The annotation card lives in the sandboxed frame, so only the accessibility snapshot reads it.
+      const snapshot = () => run("chrome-devtools-axi", ["snapshot"], chromeEnv);
+      const clickArtifactText = () => {
+        const tree = snapshot();
+        const line = tree.split("\n").find((entry) => /"Queue"/.test(entry) && !/button/.test(entry));
+        assert.ok(line, `the artifact paragraph is missing from the snapshot:\n${tree}`);
+        run("chrome-devtools-axi", ["click", `@${line.trim().split(/\s+/)[0].replace(/^uid=/, "")}`], chromeEnv);
+      };
+      clickArtifactText();
+      wait(500);
+      let card = snapshot();
+      assert.match(card, /"Chú thích <p>"/, "the card opens in the page's language");
+      assert.match(card, /button "Xếp hàng"/);
+      assert.match(card, /button "Huỷ"/);
+      assert.match(card, /button "Đính kèm ảnh"/);
+      assert.match(card, /Enter để xếp hàng/);
+      assert.match(card, /Cho agent biết cần đổi gì ở phần tử này/);
+      assert.doesNotMatch(card, /Attach image|Enter to queue|button "Cancel"/);
+
+      const cardDraft = "Sửa đoạn này";
+      run("chrome-devtools-axi", ["type", cardDraft], chromeEnv);
+      wait(300);
+      toggleLanguage();
+      card = snapshot();
+      assert.match(card, /"Annotate <p>"/, "an open card follows the switch at once");
+      assert.match(card, /button "Queue"/);
+      assert.match(card, /Enter to queue/);
+      assert.ok(card.includes(cardDraft), "the switch keeps the card's draft");
+
+      toggleLanguage();
+      card = snapshot();
+      assert.match(card, /"Chú thích <p>"/);
+      assert.ok(card.includes(cardDraft));
+      assert.match(card, /"Queue"/, "the artifact's own text is never translated");
+
+      // A new document asks again: the reloaded frame comes up in the chosen language.
+      toggleLanguage();
+      open(url);
+      clickArtifactText();
+      wait(500);
+      assert.match(snapshot(), /Enter to queue/);
+      toggleLanguage();
+      wait(200);
+      assert.match(snapshot(), /Enter để xếp hàng/);
+      open(url);
 
       // The closed dock previews the agent's own words: a reply that matches a table entry is shown
       // verbatim while they are out of sight.

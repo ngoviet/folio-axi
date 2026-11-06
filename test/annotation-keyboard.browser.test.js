@@ -90,15 +90,15 @@ test(
       browser("open", url);
       browser("wait", "Annotate this paragraph.");
       browser("click", `@${uidOf(browser("snapshot"), /"Annotate this paragraph\."/)}`);
-      browser("wait", "Enter to queue");
+      browser("wait", "Enter để xếp hàng");
 
       const typed = browser("type", "fix this text");
-      assert.match(typed, /textbox "Tell the agent[^"]*"[^\n]*value="fix this text"/, typed);
+      assert.match(typed, /textbox "Cho agent biết[^"]*"[^\n]*value="fix this text"/, typed);
       assert.match(typed, /"Slide 1"/, typed);
       const paged = browser("press", "ArrowRight");
       assert.match(paged, /"Slide 1"/, paged);
 
-      browser("click", `@${uidOf(browser("snapshot"), /button "Cancel"/)}`);
+      browser("click", `@${uidOf(browser("snapshot"), /button "Huỷ"/)}`);
       const outside = browser("press", "ArrowRight");
       assert.match(outside, /"Slide 2"/, outside);
     } finally {
