@@ -38,7 +38,7 @@ async function freePort() {
 }
 
 const ARTIFACT = `<!doctype html>
-<html><head><meta charset="utf-8"><title>Conversation</title></head>
+<html><head><meta charset="utf-8"><title>Published. Notes</title></head>
 <body><h1>Send to Agent</h1></body></html>`;
 
 const READ_PAGE = `() => {
@@ -130,7 +130,7 @@ test(
       assert.equal(page.agentReply, "Done", "the agent's words are never translated");
       assert.equal(page.toggleShows, "en", "the menu offers the other language");
       assert.equal(page.summary, "Đã lưu cho agent", "the dock's own copy is translated");
-      assert.equal(page.title, "Conversation", "the artifact's own title is never translated");
+      assert.equal(page.title, "Published. Notes · Folio", "the artifact's own title is never translated");
 
       const draft = "Bản nháp: sửa mục 2 nhé";
       evaluate(`() => { document.getElementById("chatInput").value = ${JSON.stringify(draft)}; return "ok"; }`);
@@ -170,7 +170,7 @@ test(
       evaluate('() => { noteAgentReply("Done"); return "ok"; }');
       wait(200);
       assert.equal(evaluate('() => document.getElementById("panelSummary").textContent'), "Done");
-      assert.equal(evaluate("() => document.title"), "Conversation");
+      assert.equal(evaluate("() => document.title"), "Published. Notes · Folio");
     } finally {
       run(process.execPath, ["bin/folio-axi.js", "stop", "--port", String(port)], folioEnv, 15_000);
       run("chrome-devtools-axi", ["stop"], chromeEnv);

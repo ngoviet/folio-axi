@@ -150,7 +150,7 @@ test(
       const detected = inbox();
       assert.equal(detected.hidden, false, "the warning button appears once there is unresolved work");
       assert.equal(detected.badge, "3");
-      assert.equal(detected.label, "3 unresolved layout issues");
+      assert.equal(detected.label, "3 lỗi bố cục chưa xử lý");
       assert.equal(detected.gate, false, "the artifact is revealed, not held hostage pending a repair");
       assert.equal(detected.loads, 0, "detection alone never refreshes the artifact");
       assert.equal(detected.pills, 0, "detection alone never queues feedback");
@@ -204,7 +204,7 @@ test(
       assert.equal(opened.role, "dialog");
       assert.equal(opened.labelledby, "warningsTitle");
       assert.equal(opened.focus, "warningsSelectAll", "focus moves into the drawer");
-      assert.match(opened.checkboxLabel, /^Select /);
+      assert.match(opened.checkboxLabel, /^Chọn /);
       assert.equal(opened.selectAllChecked, false, "default selection never silently authorizes everything");
       assert.equal(opened.queueDisabled, true);
       assert.equal(opened.docOverflow, 0, "the wide layout does not scroll sideways");
@@ -240,7 +240,7 @@ test(
       const mobileDetected = inbox();
       assert.ok(Number(mobileDetected.badge) > 3, "a second viewport adds its own warnings");
       assert.ok(
-        mobileDetected.rows.some((row) => row.viewport.startsWith("Desktop")),
+        mobileDetected.rows.some((row) => row.viewport.startsWith("Máy tính · ")),
         "a mobile pass cannot clear a desktop warning",
       );
 
@@ -253,17 +253,17 @@ test(
       // queueing does not clear anything.
       // ---------------------------------------------------------------------
       const beforeQueue = inbox();
-      const desktopRows = beforeQueue.rows.filter((row) => row.viewport.startsWith("Desktop"));
+      const desktopRows = beforeQueue.rows.filter((row) => row.viewport.startsWith("Máy tính · "));
       assert.equal(desktopRows.length, 3);
 
       const selected = evaluate(
         '(() => { document.getElementById("warningsButton").click();' +
-          ' const rows = [...document.querySelectorAll(".warning-row")].filter((row) => [...row.querySelectorAll(".warning-chip")][2].textContent.startsWith("Desktop"));' +
+          ' const rows = [...document.querySelectorAll(".warning-row")].filter((row) => [...row.querySelectorAll(".warning-chip")][2].textContent.startsWith("Máy tính · "));' +
           ' rows[0].querySelector(".warning-select").click(); rows[2].querySelector(".warning-select").click();' +
           ' return JSON.stringify({ selected: document.getElementById("warningsSelected").textContent, queueDisabled: document.getElementById("warningsQueueButton").disabled,' +
           ' targets: [rows[0].querySelector(".warning-target").textContent, rows[2].querySelector(".warning-target").textContent] }); })()',
       );
-      assert.equal(selected.selected, "2 selected");
+      assert.equal(selected.selected, "Đã chọn 2");
       assert.equal(selected.queueDisabled, false);
 
       run("chrome-devtools-axi", ["eval", '() => document.getElementById("warningsQueueButton").click()'], chromeEnv);
@@ -272,7 +272,7 @@ test(
       const afterQueue = inbox();
       assert.equal(afterQueue.badge, beforeQueue.badge, "queueing never removes a warning from the active count");
       assert.equal(afterQueue.pills, 1, "the selected group becomes exactly one queued prompt");
-      const queuedRows = afterQueue.rows.filter((row) => row.status === "Queued for send");
+      const queuedRows = afterQueue.rows.filter((row) => row.status === "Đang chờ gửi");
       assert.equal(queuedRows.length, 2);
       assert.deepEqual(
         queuedRows.map((row) => row.target).sort(),
@@ -340,17 +340,17 @@ test(
       // ---------------------------------------------------------------------
       // Lifecycle: repaired findings resolve, a queued finding still present recurs.
       // ---------------------------------------------------------------------
-      const desktopAfter = afterFix.rows.filter((row) => row.viewport.startsWith("Desktop"));
+      const desktopAfter = afterFix.rows.filter((row) => row.viewport.startsWith("Máy tính · "));
       assert.ok(
         desktopAfter.length < desktopRows.length,
         "a complete matching-viewport pass resolved the repaired issue",
       );
-      const recurring = desktopAfter.find((row) => row.status === "Still present");
+      const recurring = desktopAfter.find((row) => row.status === "Vẫn còn");
       if (recurring) {
         assert.equal(recurring.selectable, true, "a recurring warning can be queued again");
       }
       assert.ok(
-        desktopAfter.every((row) => row.status !== "Queued for fix"),
+        desktopAfter.every((row) => row.status !== "Đang chờ sửa"),
         "a newer revision re-checks every outstanding request",
       );
 
@@ -366,10 +366,10 @@ test(
       // identity here is target + viewport, exactly like the fingerprint.
       const dismissed = evaluate(
         '(() => { document.getElementById("warningsButton").click();' +
-          ' const row = [...document.querySelectorAll(".warning-row")].find((candidate) => [...candidate.querySelectorAll(".warning-chip")][2].textContent.startsWith("Desktop"));' +
+          ' const row = [...document.querySelectorAll(".warning-row")].find((candidate) => [...candidate.querySelectorAll(".warning-chip")][2].textContent.startsWith("Máy tính · "));' +
           ' const target = row.querySelector(".warning-target").textContent;' +
           ' const viewport = [...row.querySelectorAll(".warning-chip")][2].textContent;' +
-          ' [...row.querySelectorAll(".warning-action")].find((button) => button.textContent === "Dismiss").click();' +
+          ' [...row.querySelectorAll(".warning-action")].find((button) => button.textContent === "Bỏ qua").click();' +
           " return JSON.stringify({ target, viewport }); })()",
       );
       wait(1200);
