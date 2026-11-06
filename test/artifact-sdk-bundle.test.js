@@ -39,7 +39,16 @@ function createElement(tag) {
     style: {},
     value: "",
     get innerHTML() {
-      return html;
+      return (
+        html ||
+        element.childNodes
+          .map((child) =>
+            child.nodeType === 3
+              ? child.data.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+              : child.textContent,
+          )
+          .join("")
+      );
     },
     set innerHTML(value) {
       html = String(value);
@@ -429,8 +438,9 @@ function buildTable(sdk) {
   const dataRow = appendTo(tbody, createElement("tr"));
   appendTo(dataRow, cell("td", "Media & Apple Music"));
   appendTo(dataRow, cell("td", "4 apps"));
-  const evidence = appendTo(dataRow, cell("td", "Drive, Neovide, Cursor"));
+  const evidence = appendTo(dataRow, cell("td", ""));
   const badge = appendTo(evidence, cell("code", "Drive"));
+  evidence.appendChild({ nodeType: 3, data: ", Neovide, Cursor", parentElement: null });
   return { evidence, badge };
 }
 
@@ -1044,7 +1054,7 @@ test("an attachment's file name is never translated", () => {
   sdk.sendChromeMessage({ type: "lavish:setLanguage", language: "vi" });
   sdk.click(appendTo(sdk.body, cell("p", "Decision board")));
   const input = sdk.card().querySelector(".lavish-attach-input");
-  input.files = [{ name: "Queue", type: "image/png", size: Number.MAX_SAFE_INTEGER }];
+  input.files = [{ name: "Queue", type: "image/png", size: 10, arrayBuffer: () => new Promise(() => {}) }];
   input.listeners.find((listener) => listener.type === "change").handler();
   const name = sdk.card().querySelector(".lavish-attachment-name");
   assert.equal(name.textContent, "Queue");
