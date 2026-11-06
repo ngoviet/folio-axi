@@ -46,7 +46,7 @@ Each line is the rule. [docs/invariants.md](docs/invariants.md) has the failure 
 - Never signal a listener by port alone. Stop only a Folio PID bound to that exact address, or `POST /shutdown` on an owned server. [Process model](docs/invariants.md#process-model).
 - Adopt, replace, or stop only a server `isOwnedServer` owns. Another installation's server at a control address is a `SERVER_ERROR`, never used, replaced, or stopped. [Process model](docs/invariants.md#process-model).
 - Every server replacement passes all previously requested hosts through `inheritedListenHosts` (`--also-listen`), dropping only IPs no longer on a local interface. [Process model](docs/invariants.md#process-model).
-- Loopback is always requested. An unresolvable `FOLIO_AXI_HOST` is kept (`keepUnresolved`) and retried, never silently dropped. [Process model](docs/invariants.md#process-model).
+- Loopback is always requested. An unresolvable `FOLIO_AXI_HOST` is kept (`keepUnresolved`) and retried, never silently dropped. Listen-host lookups stay bounded, because `/health` answers 503 until startup binds finish. [Process model](docs/invariants.md#process-model).
 - A wildcard listen request becomes loopback, and an alias that resolves to an all-interfaces address is refused. Never open a wildcard listener. [Process model](docs/invariants.md#process-model).
 - Health probes use `node:http` and destroy the socket on every exit. Do not use `fetch`. [Process model](docs/invariants.md#process-model).
 - Loopback binds first and is the port lock. A failed requested address stays in `pendingBinds` and is retried. Declare request-handler timers before the first bind. [Process model](docs/invariants.md#process-model).

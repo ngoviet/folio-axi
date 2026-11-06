@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { bindHost, clientHost, extraAllowedHosts, hostForUrl, LOOPBACK_HOST, linkHost } from "../src/paths.js";
+import {
+  bindHost,
+  clientHost,
+  extraAllowedHosts,
+  hostForUrl,
+  LOOPBACK_HOST,
+  linkHost,
+  resolveConcreteListenHosts,
+} from "../src/paths.js";
 
 test("bindHost defaults to loopback and honors FOLIO_AXI_HOST", () => {
   assert.equal(bindHost({}), LOOPBACK_HOST);
@@ -52,4 +60,12 @@ test("hostForUrl brackets IPv6 literals but leaves IPv4 and hostnames alone", ()
   assert.equal(hostForUrl("host.example"), "host.example");
   assert.equal(hostForUrl("::1"), "[::1]");
   assert.equal(hostForUrl("[::1]"), "[::1]");
+});
+
+test("a listen host lookup that hangs counts as not resolved", async () => {
+  const lookup = () => new Promise(() => {});
+  assert.deepEqual(await resolveConcreteListenHosts(["slow.invalid"], { lookup, keepUnresolved: true }), [
+    "slow.invalid",
+  ]);
+  await assert.rejects(resolveConcreteListenHosts(["slow.invalid"], { lookup }), /timed out/);
 });

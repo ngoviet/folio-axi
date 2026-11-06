@@ -68,6 +68,22 @@ export function sanitizeListenHosts(hosts) {
   return out.length ? out : [LOOPBACK_HOST];
 }
 
+// A resolver that loses a packet stalls for its own 5-second retry, and the server resolves its
+// hosts before it binds loopback, so an unbounded lookup outlasts the CLI's start window.
+const LISTEN_HOST_LOOKUP_TIMEOUT_MS = 1000;
+export const LISTEN_HOST_LOOKUP_TIMEOUT = "LISTEN_HOST_LOOKUP_TIMEOUT";
+
+function boundedLookup(lookup, host) {
+  let timer;
+  const timedOut = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error(`Listen host lookup timed out: ${host}`);
+      reject(Object.assign(error, { code: LISTEN_HOST_LOOKUP_TIMEOUT }));
+    }, LISTEN_HOST_LOOKUP_TIMEOUT_MS);
+  });
+  return Promise.race([lookup(host, { all: true, verbatim: true }), timedOut]).finally(() => clearTimeout(timer));
+}
+
 /**
  * With `keepUnresolved`, a name that does not resolve right now is kept as the name, so it is bound
  * and retried like any other unavailable address and reported, instead of failing or vanishing. A
@@ -79,7 +95,7 @@ export function sanitizeListenHosts(hosts) {
 export async function resolveConcreteListenHosts(hosts, { lookup = dnsLookup, keepUnresolved = false } = {}) {
   const resolved = [];
   for (const host of hosts) {
-    const addresses = await lookup(host, { all: true, verbatim: true }).catch((error) => {
+    const addresses = await boundedLookup(lookup, host).catch((error) => {
       if (keepUnresolved) return [];
       throw error;
     });

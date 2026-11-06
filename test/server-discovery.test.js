@@ -995,6 +995,37 @@ test(
   },
 );
 
+test("a host lookup that hangs does not keep the server off loopback", { timeout: 30_000 }, async () => {
+  await withTempDir(async (dir) => {
+    const name = "lavish-hanging.invalid";
+    const port = await freePort();
+    const startedAt = Date.now();
+    const starting = serve({
+      port,
+      stateFile: path.join(dir, "state.json"),
+      version: VERSION,
+      env: { FOLIO_AXI_HOST: name },
+      lookupHost: (host) =>
+        host === name
+          ? new Promise(() => {})
+          : Promise.resolve([{ address: host, family: host.includes(":") ? 6 : 4 }]),
+      log: () => {},
+      idleTimeoutMs: null,
+    });
+    try {
+      const server = await starting;
+      // /health answers 503 until startup finishes, and the CLI gives a new server 5 seconds.
+      assert.ok(Date.now() - startedAt < 4000, "startup must finish inside the CLI's start window");
+      const reported = await health("127.0.0.1", port);
+      assert.ok(reported.requested_hosts.includes(name));
+      assert.ok(reported.network_warning.includes(name));
+      await server.close();
+    } finally {
+      await shutdownAt("127.0.0.1", port);
+    }
+  });
+});
+
 test("a replacement inherits every address still on this machine and drops one that is gone", async (t) => {
   if (!(await ipv6LoopbackAvailable())) {
     t.skip("host needs IPv6 loopback");

@@ -64,6 +64,7 @@ import {
   hostForUrl,
   IPV6_LOOPBACK_HOST,
   isWildcardHost,
+  LISTEN_HOST_LOOKUP_TIMEOUT,
   LOOPBACK_HOST,
   resolveConcreteListenHosts,
   resolveLinkHost,
@@ -2220,7 +2221,10 @@ export async function serve({
         await listenOnce(listenHost);
         return null;
       } catch (error) {
-        if (!shuttingDown && retryIndex < BIND_RETRY_DELAYS_MS.length) {
+        // A timed-out lookup already spent its wait, and /health answers 503 until this loop ends,
+        // so it goes straight to the background retry instead of outlasting the CLI's start window.
+        const retryable = error?.code !== LISTEN_HOST_LOOKUP_TIMEOUT;
+        if (retryable && !shuttingDown && retryIndex < BIND_RETRY_DELAYS_MS.length) {
           await new Promise((resolve) => setTimeout(resolve, BIND_RETRY_DELAYS_MS[retryIndex]));
           retryIndex += 1;
           continue;
