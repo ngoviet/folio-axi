@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { run } from "./helpers/browser-driver.js";
 
 // The phone-width conversation surface, measured in a real browser. Before this change the panel
 // was a fixed-fraction strip under the artifact: at 390x844 the composer alone consumed it and
@@ -14,19 +13,6 @@ import { fileURLToPath } from "node:url";
 // geometry an end user would notice: nothing clipped, every control inside the viewport, the
 // artifact never under the dock, and the desktop layout untouched.
 const runBrowserE2e = process.env.FOLIO_AXI_BROWSER_E2E === "1";
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-
-function run(command, args, env, timeout = 45_000) {
-  const result = spawnSync(command, args, {
-    cwd: repoRoot,
-    env: { ...process.env, ...env },
-    encoding: "utf8",
-    timeout,
-  });
-  if (result.error) throw result.error;
-  assert.equal(result.status, 0, `${command} ${args.join(" ")}\n${result.stdout}\n${result.stderr}`);
-  return `${result.stdout || ""}${result.stderr || ""}`;
-}
 
 async function freePort() {
   const server = net.createServer();
@@ -240,6 +226,9 @@ test(
       }
 
       // ---- Portrait phone ----
+      // Emulation applies to the selected page, so a fresh browser needs a blank one first. The
+      // review page must still load for the first time at phone width.
+      run("chrome-devtools-axi", ["open", "about:blank"], chromeEnv);
       emulate("390x844x3,mobile,touch");
       open(url);
       let g = geometry();
@@ -321,7 +310,7 @@ test(
     } finally {
       run(process.execPath, ["bin/folio-axi.js", "stop", "--port", String(port)], lavishEnv, 15_000);
       run("chrome-devtools-axi", ["stop"], chromeEnv);
-      await rm(temp, { recursive: true, force: true });
+      await rm(temp, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
     }
   },
 );
