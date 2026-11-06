@@ -1,6 +1,5 @@
-// Lint for `pnpm run check`: every sentence or digit-led label chrome-client.js can show needs a
-// Vietnamese entry in src/chrome-i18n.js. Without this, a string from an upstream patch would
-// silently stay English.
+// Lint for `pnpm run check`: scan double-quoted chrome-client.js literals for sentence-like copy
+// and digit-led labels that need a Vietnamese entry in src/chrome-i18n.js.
 import { readFile } from "node:fs/promises";
 
 import { chromeViTable, compileChromeTable, localizeChromeText } from "../src/chrome-i18n.js";
