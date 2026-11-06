@@ -20,8 +20,9 @@ function notifyAdded(parent, nodes) {
 }
 
 function decodeHtml(value) {
-  return value.replace(/&(amp|lt|gt|quot|#39|middot);/g, (_, entity) =>
-    ({ amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'", middot: "·" })[entity],
+  return value.replace(
+    /&(amp|lt|gt|quot|#39|middot);/g,
+    (_, entity) => ({ amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'", middot: "·" })[entity],
   );
 }
 
