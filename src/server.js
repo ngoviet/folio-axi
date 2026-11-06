@@ -326,9 +326,12 @@ export async function serve({
       : resolveListenHosts({ host, env, tailscale, extraHosts: extraListenHosts }),
   );
   const lookupOptions = lookupHost ? { lookup: lookupHost } : {};
+  /** @type {Map<string, Error>} */
+  const unresolved = new Map();
   const listenHosts = await resolveConcreteListenHosts(requestedListenHosts, {
     ...lookupOptions,
     keepUnresolved: true,
+    unresolved,
   });
   const activeTailscaleNetwork = tailscaleNetworkKey(tailscale);
   const serverStateId = stateId(stateFile);
@@ -2223,10 +2226,7 @@ export async function serve({
         await listenOnce(listenHost);
         return null;
       } catch (error) {
-        // A timed-out lookup already spent its wait, and /health answers 503 until this loop ends,
-        // so it goes straight to the background retry instead of outlasting the CLI's start window.
-        const retryable = error?.code !== LISTEN_HOST_LOOKUP_TIMEOUT;
-        if (retryable && !shuttingDown && retryIndex < BIND_RETRY_DELAYS_MS.length) {
+        if (!shuttingDown && retryIndex < BIND_RETRY_DELAYS_MS.length) {
           await new Promise((resolve) => setTimeout(resolve, BIND_RETRY_DELAYS_MS[retryIndex]));
           retryIndex += 1;
           continue;
@@ -2327,17 +2327,11 @@ export async function serve({
     }
     pendingBinds.set(listenHost, error);
   }
-  // Names startup could not resolve go together, so each one's lookup wait overlaps the others'.
-  await Promise.all(
-    bindOrder
-      .filter((candidate) => !isIP(candidate))
-      .map(async (listenHost) => {
-        const error = await bindListener(listenHost);
-        if (!error) return;
-        lastBindError = error;
-        pendingBinds.set(listenHost, error);
-      }),
-  );
+  for (const [listenHost, error] of unresolved) {
+    if (isIP(listenHost)) continue;
+    lastBindError = error;
+    pendingBinds.set(listenHost, error);
+  }
 
   // Loopback floor. A server that cannot reach its requested address is still far more useful on
   // loopback than absent: the local agent CLI keeps working, and the next invocation finds THIS

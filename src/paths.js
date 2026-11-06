@@ -89,24 +89,31 @@ function boundedLookup(lookup, host) {
  * and retried like any other unavailable address and reported, instead of failing or vanishing. A
  * name that resolves to an all-interfaces address is always refused.
  * @param {string[]} hosts
- * @param {{ lookup?: typeof dnsLookup, keepUnresolved?: boolean }} [options]
+ * @param {{ lookup?: typeof dnsLookup, keepUnresolved?: boolean, unresolved?: Map<string, Error> }} [options]
  * @returns {Promise<string[]>}
  */
-export async function resolveConcreteListenHosts(hosts, { lookup = dnsLookup, keepUnresolved = false } = {}) {
+export async function resolveConcreteListenHosts(
+  hosts,
+  { lookup = dnsLookup, keepUnresolved = false, unresolved } = {},
+) {
   // Concurrent, so several stalled names cost one timeout, not one each.
   const lookups = await Promise.all(
     hosts.map((host) =>
-      boundedLookup(lookup, host).catch((error) => {
-        if (keepUnresolved) return [];
-        throw error;
-      }),
+      boundedLookup(lookup, host)
+        .then((addresses) => ({ addresses, error: null }))
+        .catch((error) => {
+          if (keepUnresolved)
+            return { addresses: [], error: error instanceof Error ? error : new Error(String(error)) };
+          throw error;
+        }),
     ),
   );
   const resolved = [];
   for (const [index, host] of hosts.entries()) {
-    const addresses = lookups[index];
+    const { addresses, error } = lookups[index];
     if (!Array.isArray(addresses) || addresses.length === 0) {
       if (!keepUnresolved) throw new Error(`Listen host did not resolve: ${host}`);
+      unresolved?.set(host, error ?? new Error(`Listen host did not resolve: ${host}`));
       if (!resolved.includes(host)) resolved.push(host);
       continue;
     }

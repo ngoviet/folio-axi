@@ -998,6 +998,10 @@ test(
 test("host lookups that hang do not keep the server off loopback", { timeout: 30_000 }, async () => {
   await withTempDir(async (dir) => {
     const names = ["lavish-hanging-1.invalid", "lavish-hanging-2.invalid", "lavish-hanging-3.invalid"];
+    const missing = "lavish-missing.invalid";
+    const empty = "lavish-empty.invalid";
+    const calls = new Map();
+    const logs = [];
     const port = await freePort();
     const startedAt = Date.now();
     const starting = serve({
@@ -1006,13 +1010,20 @@ test("host lookups that hang do not keep the server off loopback", { timeout: 30
       version: VERSION,
       env: {},
       detectTailscale: null,
-      hosts: ["127.0.0.1", ...names],
-      lookupHost: (host) =>
-        names.includes(host)
-          ? new Promise(() => {})
-          : Promise.resolve([{ address: host, family: host.includes(":") ? 6 : 4 }]),
-      log: () => {},
+      hosts: ["127.0.0.1", ...names, missing, empty],
+      lookupHost: async (host) => {
+        calls.set(host, (calls.get(host) ?? 0) + 1);
+        if (names.includes(host)) {
+          if (calls.get(host) === 1) return new Promise(() => {});
+          throw Object.assign(new Error("later failure"), { code: "ENOTFOUND" });
+        }
+        if (host === missing) throw Object.assign(new Error("missing"), { code: "ENOTFOUND" });
+        if (host === empty) return [];
+        return [{ address: host, family: host.includes(":") ? 6 : 4 }];
+      },
+      log: (message) => logs.push(message),
       idleTimeoutMs: null,
+      bindRecoveryDelaysMs: [],
     });
     try {
       const server = await starting;
@@ -1024,6 +1035,10 @@ test("host lookups that hang do not keep the server off loopback", { timeout: 30
         assert.ok(reported.network_warning.includes(name));
       }
       assert.match(reported.network_warning, /the lookup for that name timed out/);
+      assert.match(reported.network_warning, /ENOTFOUND: that name does not resolve right now/);
+      assert.match(reported.network_warning, /Listen host did not resolve: lavish-empty\.invalid/);
+      for (const name of [...names, missing, empty]) assert.equal(calls.get(name), 1);
+      assert.ok(logs.some((line) => line.includes("WARNING") && line.includes("the lookup for that name timed out")));
       await server.close();
     } finally {
       await shutdownAt("127.0.0.1", port);
