@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
 
-import { chromeViTable, compileChromeTable, createChromeLocalizerJs, localizeChromeText } from "../src/chrome-i18n.js";
+import {
+  cardViTable,
+  chromeViTable,
+  compileChromeTable,
+  createChromeLocalizerJs,
+  localizeChromeText,
+} from "../src/chrome-i18n.js";
 import { createChromeHtml } from "../src/server.js";
 
 const table = compileChromeTable(chromeViTable());
@@ -140,4 +146,126 @@ test("localizer initialization failure leaves an English page identified as Engl
 test("the inlined localizer cannot close its own script tag", () => {
   assert.doesNotMatch(createChromeLocalizerJs(), /<\/script/i);
   assert.doesNotThrow(() => new Function(createChromeLocalizerJs()));
+});
+
+const cardTable = compileChromeTable(cardViTable());
+
+test("every annotation card string has a Vietnamese translation", () => {
+  for (const [english, vietnamese] of [
+    ["Annotate text", "Chú thích đoạn chữ"],
+    ["Annotate node", "Chú thích nút sơ đồ"],
+    ["Annotate <p>", "Chú thích <p>"],
+    ["Annotate cell: Row → Column", "Chú thích ô: Row → Column"],
+    ["Annotate <code> in Row → Column", "Chú thích <code> ở Row → Column"],
+    ["Annotate node: Start", "Chú thích nút sơ đồ: Start"],
+    ["Tell the agent what to change about this text...", "Cho agent biết cần đổi gì ở đoạn chữ này..."],
+    ["Tell the agent what to change about this table cell...", "Cho agent biết cần đổi gì ở ô bảng này..."],
+    ["Tell the agent what to change about this diagram node...", "Cho agent biết cần đổi gì ở nút sơ đồ này..."],
+    ["Tell the agent what to change about this element...", "Cho agent biết cần đổi gì ở phần tử này..."],
+    ["Attach image", "Đính kèm ảnh"],
+    [
+      "Enter to queue · Ctrl+Enter to send · paste or drop an image",
+      "Enter để xếp hàng · Ctrl+Enter để gửi · dán hoặc thả ảnh vào",
+    ],
+    [
+      "Enter to queue · ⌘+Enter to send · paste or drop an image",
+      "Enter để xếp hàng · ⌘+Enter để gửi · dán hoặc thả ảnh vào",
+    ],
+    ["Cancel", "Huỷ"],
+    ["Queue", "Xếp hàng"],
+    ["Uploading…", "Đang tải lên…"],
+    ["Upload failed", "Tải lên thất bại"],
+    ["Retry", "Thử lại"],
+    ["Remove", "Bỏ"],
+    ["Remove image", "Bỏ ảnh"],
+    ["Could not read image", "Không đọc được ảnh"],
+    ["UNSUPPORTED_TYPE", "Loại tệp không hỗ trợ"],
+    ["Waiting for an image to finish uploading…", "Đang chờ tải xong ảnh…"],
+    [
+      "An image couldn't be attached. Retry or remove it before queuing.",
+      "Không đính kèm được một ảnh. Hãy thử lại hoặc bỏ ảnh đó trước khi xếp hàng.",
+    ],
+    ["You can attach up to 4 images.", "Bạn được đính kèm tối đa 4 ảnh."],
+    ["You can attach up to 1 image.", "Bạn được đính kèm tối đa 1 ảnh."],
+    ["Image is larger than the 10 MB limit", "Ảnh lớn hơn giới hạn 10 MB"],
+    ["Too many uploads. Wait a moment and retry.", "Tải lên quá nhiều. Đợi một lát rồi thử lại."],
+    ["Upload limit reached for this session (64 MB).", "Đã tới giới hạn tải lên của phiên này (64 MB)."],
+  ]) {
+    assert.equal(localizeChromeText(english, cardTable), vietnamese);
+  }
+});
+
+test("a label the artifact wrote stays verbatim inside a translated card heading", () => {
+  for (const [english, vietnamese] of [
+    ["Annotate cell: Done 3m ago", "Chú thích ô: Done 3m ago"],
+    ["Annotate node: Queue", "Chú thích nút sơ đồ: Queue"],
+    ["Annotate <td> in Published. → just now", "Chú thích <td> ở Published. → just now"],
+    ["Annotate cell: a\nb $1", "Chú thích ô: a\nb $1"],
+  ]) {
+    assert.equal(localizeChromeText(english, cardTable), vietnamese);
+  }
+});
+
+function runLocalizer({ stored = null } = {}) {
+  const posted = [];
+  const documentListeners = [];
+  const windowListeners = [];
+  const root = { nodeType: 1, lang: "", childNodes: [], getAttribute: () => null, closest: () => null };
+  class FakeElement {}
+  /** @type {any} */
+  const toggle = new FakeElement();
+  toggle.closest = (selector) => (selector === "#languageToggle" ? toggle : null);
+  const frame = { contentWindow: { postMessage: (message, target) => posted.push({ message, target }) } };
+  runInNewContext(createChromeLocalizerJs(), {
+    document: {
+      documentElement: root,
+      getElementById: (id) => (id === "artifact" ? frame : null),
+      addEventListener: (type, handler) => documentListeners.push({ type, handler }),
+    },
+    window: { addEventListener: (type, handler) => windowListeners.push({ type, handler }) },
+    localStorage: { getItem: () => stored, setItem() {} },
+    Node: { TEXT_NODE: 3, ELEMENT_NODE: 1 },
+    Element: FakeElement,
+    MutationObserver: class {
+      observe() {}
+    },
+    console,
+  });
+  return {
+    posted,
+    frame,
+    receive(event) {
+      for (const entry of windowListeners) if (entry.type === "message") entry.handler(event);
+    },
+    clickToggle() {
+      for (const entry of documentListeners) if (entry.type === "click") entry.handler({ target: toggle });
+    },
+  };
+}
+
+test("the chrome answers the artifact frame's language request with the current language", () => {
+  const page = runLocalizer({ stored: "en" });
+  page.receive({ source: page.frame.contentWindow, data: { type: "lavish:requestLanguage" } });
+  assert.deepEqual(
+    page.posted.map(({ message, target }) => [message.type, message.language, target]),
+    [["lavish:setLanguage", "en", "*"]],
+  );
+});
+
+test("the chrome tells the artifact frame as soon as the language switches", () => {
+  const page = runLocalizer();
+  page.clickToggle();
+  page.clickToggle();
+  assert.deepEqual(
+    page.posted.map(({ message }) => message.language),
+    ["en", "vi"],
+  );
+});
+
+test("only the artifact frame gets a language answer", () => {
+  const page = runLocalizer();
+  page.receive({ source: {}, data: { type: "lavish:requestLanguage" } });
+  page.receive({ source: page.frame.contentWindow, data: { type: "lavish:annotationMode" } });
+  page.receive({ source: page.frame.contentWindow, data: null });
+  assert.deepEqual(page.posted, []);
 });

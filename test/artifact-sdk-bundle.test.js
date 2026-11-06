@@ -18,6 +18,7 @@ function createElement(tag) {
     nodeType: 1,
     parentElement: null,
     children: [],
+    childNodes: [],
     style: {},
     value: "",
     innerHTML: "",
@@ -116,6 +117,7 @@ function bootSdk({
 } = {}) {
   const posted = [];
   const documentListeners = [];
+  const mutationObservers = [];
   // Deferred work the SDK schedules, run only when a test asks for it: the draft-anchor settle
   // re-query is a real timer, and asserting on it means running it rather than assuming it.
   const timers = [];
@@ -141,9 +143,15 @@ function bootSdk({
     CSS: { escape: (value) => String(value) },
     Element: class Element {},
     MutationObserver: class MutationObserver {
-      observe() {}
+      constructor() {
+        mutationObservers.push(this);
+      }
+      observe(target) {
+        this.target = target;
+      }
       disconnect() {}
     },
+    Node: { TEXT_NODE: 3, ELEMENT_NODE: 1 },
     ResizeObserver: class ResizeObserver {
       observe() {}
       disconnect() {}
@@ -196,6 +204,7 @@ function bootSdk({
   return {
     posted,
     body,
+    shadowObservers: () => mutationObservers.filter((observer) => observer.target?.tagName === "SHADOW-ROOT"),
     api: sandbox.window.lavish,
     // Returns the dispatched event so a test can tell whether the SDK swallowed the click.
     click(target, modifiers = {}) {
@@ -901,4 +910,30 @@ test("setDocumentMeta forwards null to restore, omits unset fields and drops non
     messages.map((entry) => JSON.parse(JSON.stringify({ title: entry.title, icon: entry.icon }))),
     [{ title: null }, {}, {}],
   );
+});
+
+test("the SDK asks the chrome for the language, since the sandboxed frame has no storage of its own", () => {
+  const sdk = bootSdk();
+  assert.ok(sdk.posted.some((message) => message.type === "lavish:requestLanguage"));
+});
+
+test("the card stays English and unobserved until the chrome names a language", () => {
+  const sdk = bootSdk();
+  sdk.click(appendTo(sdk.body, cell("p", "Decision board")));
+  assert.equal(sdk.shadowObservers().length, 0);
+  sdk.sendChromeMessage({ type: "lavish:setLanguage", language: "en" });
+  assert.equal(sdk.shadowObservers().length, 0);
+  sdk.sendChromeMessage({ type: "lavish:setLanguage", language: "vi" });
+  assert.equal(sdk.shadowObservers().length, 1);
+  sdk.sendChromeMessage({ type: "lavish:setLanguage", language: "en" });
+  sdk.sendChromeMessage({ type: "lavish:setLanguage", language: "vi" });
+  assert.equal(sdk.shadowObservers().length, 1, "a switch reuses the one localizer");
+});
+
+test("a language named before the first card applies when the card opens", () => {
+  const sdk = bootSdk();
+  sdk.sendChromeMessage({ type: "lavish:setLanguage", language: "vi" });
+  assert.equal(sdk.shadowObservers().length, 0);
+  sdk.click(appendTo(sdk.body, cell("p", "Decision board")));
+  assert.equal(sdk.shadowObservers().length, 1);
 });
