@@ -220,7 +220,7 @@ test(
         `artifact owns the screen while docked: ${JSON.stringify(g.frame)}`,
       );
       assert.equal(g.chat.inert, true, "the hidden part of the sheet is unreachable");
-      assert.equal(g.toggleLabel, "Show conversation");
+      assert.equal(g.toggleLabel, "Hiện hội thoại");
       assert.equal(g.documentScrollable, false, "the page itself never scrolls");
     }
 
@@ -244,7 +244,7 @@ test(
       open(url);
       let g = geometry();
       assertDocked(g);
-      assert.equal(g.summary, "Saved for the agent");
+      assert.equal(g.summary, "Đã lưu cho agent");
 
       evaluate('() => { document.getElementById("panelHead").click(); return "ok"; }');
       wait(500);

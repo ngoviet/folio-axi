@@ -295,7 +295,7 @@ test(
       })()`);
       assert.doesNotMatch(errorColors, /missing-error-chip/, errorColors);
       const colors = decode(errorColors);
-      assert.match(colors.text, /Unsupported file type/, errorColors);
+      assert.match(colors.text, /Loại tệp không hỗ trợ/, errorColors);
       assert.equal(colors.actual, colors.expected, `error status must render in --danger:\n${errorColors}`);
     } finally {
       run(process.execPath, ["bin/folio-axi.js", "stop", "--port", String(port)], lavishEnv, 15_000);

@@ -13,6 +13,7 @@ test("check script runs all verification commands", async () => {
     "npm run typecheck",
     "npm test",
     "node scripts/build-skill.js --check",
+    "node scripts/check-chrome-i18n.js",
   ]);
 });
 

@@ -678,6 +678,15 @@ body.lavish {
   background: transparent;
   color: var(--fg);
 }
+/* Georgia has no stacked Vietnamese vowels, so "ấ" falls apart in serif headings. */
+html[lang="vi"] {
+  --font-serif: "EB Garamond", Cambria, "Times New Roman", serif;
+}
+/* The language item names the language it switches to. */
+html[lang="vi"] .language-option[data-language-option="vi"],
+html[lang="en"] .language-option[data-language-option="en"] {
+  display: none;
+}
 .menu-item:hover:not(:disabled) {
   background: var(--steel-700);
 }
@@ -1221,6 +1230,9 @@ body.lavish {
   color: var(--fg-muted);
   font-size: 13px;
   line-height: 1.45;
+}
+html[lang="vi"] .chat:empty::before {
+  content: "Agent chưa gửi tin nhắn nào. Bấm vào một phần tử trong trang để chú thích, hoặc gõ ở dưới để bắt đầu.";
 }
 .chat:empty:has(+ .chat-queued:not(:empty))::before {
   display: none;
