@@ -17,7 +17,9 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 function run(command, args, env, timeout = 45_000) {
   const usePowerShell = process.platform === "win32" && command === "chrome-devtools-axi";
   // Chrome can inherit the driver's output handles on Windows, keeping pipes open after it exits.
-  const outputPath = usePowerShell ? path.join(path.dirname(env.CHROME_DEVTOOLS_AXI_USER_DATA_DIR), "driver-output") : "";
+  const outputPath = usePowerShell
+    ? path.join(path.dirname(env.CHROME_DEVTOOLS_AXI_USER_DATA_DIR), "driver-output")
+    : "";
   const outputFd = usePowerShell ? openSync(outputPath, "w+") : undefined;
   let result;
   try {
