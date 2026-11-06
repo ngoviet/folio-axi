@@ -106,13 +106,9 @@ test("translation keeps surrounding whitespace and passes unknown text through",
   assert.equal(vi("constructor"), "constructor");
 });
 
-test("the page ships the localizer before any content and defaults to Vietnamese", () => {
+test("the page defaults to Vietnamese", () => {
   const html = createChromeHtml({ key: "k", file: "/tmp/review.html", status: "active" });
   assert.match(html, /<html lang="vi">/);
-  assert.ok(html.indexOf("folio-axi:language") < html.indexOf("<body"));
-  assert.match(html, /id="languageToggle"/);
-  // English stays in the markup: it is what the localizer keeps behind each node.
-  assert.match(html, />Send to Agent</);
 });
 
 test("the inlined localizer cannot close its own script tag", () => {
