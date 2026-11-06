@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { runInNewContext } from "node:vm";
 
 import { chromeViTable, compileChromeTable, createChromeLocalizerJs, localizeChromeText } from "../src/chrome-i18n.js";
 import { createChromeHtml } from "../src/server.js";
@@ -109,6 +110,31 @@ test("translation keeps surrounding whitespace and passes unknown text through",
 test("the page defaults to Vietnamese", () => {
   const html = createChromeHtml({ key: "k", file: "/tmp/review.html", status: "active" });
   assert.match(html, /<html lang="vi">/);
+});
+
+test("localizer initialization failure leaves an English page identified as English", () => {
+  const text = { nodeType: 3, data: "Send to Agent", parentElement: null };
+  const root = {
+    nodeType: 1,
+    lang: "vi",
+    childNodes: [text],
+    getAttribute: () => null,
+    closest: () => null,
+  };
+  text.parentElement = { tagName: "BUTTON", closest: () => null };
+  runInNewContext(createChromeLocalizerJs(), {
+    document: { documentElement: root },
+    localStorage: { getItem: () => null },
+    Node: { TEXT_NODE: 3, ELEMENT_NODE: 1 },
+    MutationObserver: class {
+      constructor() {
+        throw new Error("observer unavailable");
+      }
+    },
+    console: { error: () => {} },
+  });
+  assert.equal(root.lang, "en");
+  assert.equal(text.data, "Send to Agent");
 });
 
 test("the inlined localizer cannot close its own script tag", () => {

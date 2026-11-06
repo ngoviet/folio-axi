@@ -478,8 +478,6 @@ export function installChromeLocalizer(localize, compile, rawTable, storageKey, 
     syncTree(root);
   }
 
-  root.lang = language;
-  syncTree(root);
   new MutationObserver((records) => {
     for (const record of records) {
       if (record.type === "attributes") syncAttribute(record.target, record.attributeName);
@@ -493,6 +491,8 @@ export function installChromeLocalizer(localize, compile, rawTable, storageKey, 
     attributes: true,
     attributeFilter: attributes,
   });
+  root.lang = language;
+  syncTree(root);
 
   document.addEventListener("click", (event) => {
     if (!(event.target instanceof Element) || !event.target.closest("#languageToggle")) return;
@@ -516,5 +516,5 @@ export function createChromeLocalizerJs() {
     JSON.stringify(LANGUAGE_STORAGE_KEY),
     JSON.stringify(FOREIGN_CONTENT_SELECTOR),
   ];
-  return `try{(${installChromeLocalizer.toString()})(${args.join(",")});}catch(e){console.error(e);}`;
+  return `try{(${installChromeLocalizer.toString()})(${args.join(",")});}catch(e){document.documentElement.lang="en";console.error(e);}`;
 }
