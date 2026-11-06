@@ -38,7 +38,7 @@ async function freePort() {
 }
 
 const ARTIFACT = `<!doctype html>
-<html><head><meta charset="utf-8"><title>Language fixture</title></head>
+<html><head><meta charset="utf-8"><title>Conversation</title></head>
 <body><h1>Send to Agent</h1></body></html>`;
 
 const READ_PAGE = `() => {
@@ -46,6 +46,7 @@ const READ_PAGE = `() => {
   const option = (language) => document.querySelector('[data-language-option="' + language + '"]');
   return JSON.stringify({
     lang: document.documentElement.lang,
+    title: document.title,
     send: text("send"),
     annotate: document.querySelector("#annotation > span:last-child").textContent,
     summary: text("panelSummary"),
@@ -128,6 +129,8 @@ test(
       assert.equal(page.sidebarLabel, "Ẩn hội thoại");
       assert.equal(page.agentReply, "Done", "the agent's words are never translated");
       assert.equal(page.toggleShows, "en", "the menu offers the other language");
+      assert.equal(page.summary, "Đã lưu cho agent", "the dock's own copy is translated");
+      assert.equal(page.title, "Conversation", "the artifact's own title is never translated");
 
       const draft = "Bản nháp: sửa mục 2 nhé";
       evaluate(`() => { document.getElementById("chatInput").value = ${JSON.stringify(draft)}; return "ok"; }`);
@@ -159,6 +162,15 @@ test(
       evaluate('() => { document.getElementById("copyHintText").textContent = "Copied"; return "ok"; }');
       wait(100);
       assert.equal(evaluate('() => document.getElementById("copyHintText").textContent'), "Đã chép");
+
+      // The closed dock previews the agent's own words: a reply that matches a table entry is shown
+      // verbatim while they are out of sight.
+      evaluate('() => { document.getElementById("sidebarToggle").click(); return "ok"; }');
+      wait(200);
+      evaluate('() => { noteAgentReply("Done"); return "ok"; }');
+      wait(200);
+      assert.equal(evaluate('() => document.getElementById("panelSummary").textContent'), "Done");
+      assert.equal(evaluate("() => document.title"), "Conversation");
     } finally {
       run(process.execPath, ["bin/folio-axi.js", "stop", "--port", String(port)], folioEnv, 15_000);
       run("chrome-devtools-axi", ["stop"], chromeEnv);

@@ -38,6 +38,14 @@ test("composed strings translate with their values kept", () => {
     ["Hide conversation (2 queued)", "Ẩn hội thoại (2 đang chờ)"],
     ["Show conversation (new reply)", "Hiện hội thoại (có trả lời mới)"],
     ["Seen 10:42", "Đã thấy 10:42"],
+    ["Seen just now", "Đã thấy vừa xong"],
+    ["Seen 5m ago", "Đã thấy 5 phút trước"],
+    ["Seen 3h ago", "Đã thấy 3 giờ trước"],
+    ["Seen 2d ago", "Đã thấy 2 ngày trước"],
+    ["1 unresolved layout issue", "1 lỗi bố cục chưa xử lý"],
+    ["4 unresolved layout issues", "4 lỗi bố cục chưa xử lý"],
+    ["1 unresolved issue", "1 lỗi chưa xử lý"],
+    ["3 unresolved issues · 2 already queued for a fix", "3 lỗi chưa xử lý · 2 đã chờ sửa"],
     ["Reveal 2/5", "Chỉ chỗ 2/5"],
     ["Remove photo.png", "Bỏ photo.png"],
     ["2 revisions · 1 marked block", "2 phiên bản · 1 khối được đánh dấu"],
@@ -57,6 +65,29 @@ test("composed strings translate with their values kept", () => {
     ],
   ];
   for (const [english, vietnamese] of cases) assert.equal(vi(english), vietnamese);
+});
+
+test("a publish notice that joins its two pieces without a space still reads in Vietnamese", () => {
+  const noSiteId =
+    "The host did not return a site id Folio can use, and --site is half the republish credential, so this page can NEVER be republished or unpublished even though its update key is in hand.";
+  const noSiteIdVi =
+    "Máy chủ không trả về mã site mà Folio dùng được, trong khi --site là một nửa thông tin để xuất bản lại, nên trang này KHÔNG BAO GIỜ xuất bản lại hay gỡ được dù đã có khoá cập nhật.";
+  const incomplete =
+    "ht-ml.app accepted this publish, so the page IS live and PUBLIC - anyone with the link can read it, but its response was malformed and Folio could not read the whole result back. Its address is below. " +
+    "Copy the update key below - it is issued once, though" +
+    noSiteId +
+    " Publishing again creates a SECOND page rather than replacing it.";
+  assert.equal(
+    vi(incomplete),
+    "ht-ml.app đã nhận lượt xuất bản, nên trang ĐANG hoạt động và CÔNG KHAI, ai có link cũng đọc được, nhưng phản hồi sai định dạng nên Folio không đọc lại được toàn bộ kết quả. Địa chỉ ở bên dưới. Hãy chép khoá cập nhật bên dưới, khoá chỉ cấp một lần, nhưng " +
+      noSiteIdVi +
+      " Xuất bản lại sẽ tạo trang THỨ HAI chứ không thay trang cũ.",
+  );
+  // The same warning appended to a complete publish keeps its sentence break.
+  assert.equal(
+    vi("Published. Anyone with the link can view this page. " + noSiteId),
+    "Đã xuất bản. Ai có link cũng xem được trang này. " + noSiteIdVi,
+  );
 });
 
 test("a composed publish status leaves no English sentence behind", () => {

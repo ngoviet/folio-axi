@@ -1,5 +1,6 @@
-// Lint for `pnpm run check`: every sentence chrome-client.js can show needs a Vietnamese entry in
-// src/chrome-i18n.js. Without this, a string from an upstream patch would silently stay English.
+// Lint for `pnpm run check`: every sentence or digit-led label chrome-client.js can show needs a
+// Vietnamese entry in src/chrome-i18n.js. Without this, a string from an upstream patch would
+// silently stay English.
 import { readFile } from "node:fs/promises";
 
 import { chromeViTable, compileChromeTable, localizeChromeText } from "../src/chrome-i18n.js";
@@ -22,7 +23,7 @@ const code = source
 const literals = [...code.matchAll(/"((?:[^"\\\n]|\\.)*)"/g)].map((match) => match[1].replace(/\\u2026/g, "…"));
 const sentences = literals.filter(
   (text) =>
-    /^[A-Z][a-z']* [a-zA-Z]/.test(text) &&
+    (/^[A-Z][a-z']* [a-zA-Z]/.test(text) || /^\d+ [a-z]/.test(text)) &&
     !/[<>{}=]/.test(text) &&
     !KEPT_IN_ENGLISH.some((pattern) => pattern.test(text)),
 );

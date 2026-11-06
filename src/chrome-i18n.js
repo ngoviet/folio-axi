@@ -1,4 +1,4 @@
-/* global Element, MutationObserver, Node, document, window */
+/* global Element, MutationObserver, Node, document */
 
 // Folio's review page speaks Vietnamese by default; English is one click away in the More menu.
 //
@@ -14,9 +14,10 @@
 export const LANGUAGE_STORAGE_KEY = "folio-axi:language";
 
 // Text someone else wrote: the user's notes, agent replies, artifact-declared revisions, and paths.
-// Text and attributes inside these are never translated, even when they match a table entry.
+// The collapsed conversation previews an unread agent reply verbatim, so that state carries the same
+// rule. Text and attributes inside these are never translated, even when they match a table entry.
 export const FOREIGN_CONTENT_SELECTOR =
-  ".chat-md,.bubble-text,.anchor,.note-draft,.revision-label,.revision-time,.revision-summary,.menu-file-text";
+  ".chat-md,.bubble-text,.anchor,.note-draft,.revision-label,.revision-time,.revision-summary,.menu-file-text,.panel-summary.is-unread";
 
 // A whole string on screen, compared after trimming.
 const VI_EXACT = {
@@ -212,6 +213,11 @@ const VI_EXACT = {
   Desktop: "Máy tính",
 };
 
+const NO_SITE_ID_EN =
+  "The host did not return a site id Folio can use, and --site is half the republish credential, so this page can NEVER be republished or unpublished even though its update key is in hand.";
+const NO_SITE_ID_VI =
+  "Máy chủ không trả về mã site mà Folio dùng được, trong khi --site là một nửa thông tin để xuất bản lại, nên trang này KHÔNG BAO GIỜ xuất bản lại hay gỡ được dù đã có khoá cập nhật.";
+
 // Sentences that also appear inside longer composed strings, replaced wherever they occur.
 const VI_FRAGMENTS = [
   [
@@ -224,10 +230,7 @@ const VI_FRAGMENTS = [
   ["Show conversation", "Hiện hội thoại"],
   ["(new reply)", "(có trả lời mới)"],
   // Publish status pieces
-  [
-    " The host did not return a site id Folio can use, and --site is half the republish credential, so this page can NEVER be republished or unpublished even though its update key is in hand.",
-    " Máy chủ không trả về mã site mà Folio dùng được, trong khi --site là một nửa thông tin để xuất bản lại, nên trang này KHÔNG BAO GIỜ xuất bản lại hay gỡ được dù đã có khoá cập nhật.",
-  ],
+  [NO_SITE_ID_EN, NO_SITE_ID_VI],
   [
     "Copy the password now - it is shown once here and Folio does not store it.",
     "Hãy chép mật khẩu ngay: nó chỉ hiện một lần ở đây và Folio không lưu.",
@@ -269,7 +272,7 @@ const VI_FRAGMENTS = [
   ],
   [
     "Copy the update key below - it is issued once, though",
-    "Hãy chép khoá cập nhật bên dưới, khoá chỉ cấp một lần, nhưng",
+    "Hãy chép khoá cập nhật bên dưới, khoá chỉ cấp một lần, nhưng ",
   ],
   ["Copy the update key below - it is issued once.", "Hãy chép khoá cập nhật bên dưới, khoá chỉ cấp một lần."],
   ["PUBLIC - anyone with the link could read it", "CÔNG KHAI, ai có link cũng đọc được"],
@@ -322,6 +325,11 @@ const VI_RULES = [
   [/^Seen (.+)$/, "Đã thấy $1"],
   [/^Working (.+)$/, "Đang làm $1"],
   [/^Done (.+)$/, "Xong $1"],
+  [/\bjust now\b/, "vừa xong"],
+  [/\b(\d+)m ago\b/, "$1 phút trước"],
+  [/\b(\d+)h ago\b/, "$1 giờ trước"],
+  [/\b(\d+)d ago\b/, "$1 ngày trước"],
+  [/^(\d+) unresolved layout issues?/, "$1 lỗi bố cục chưa xử lý"],
   [/^(\d+) unresolved issues?/, "$1 lỗi chưa xử lý"],
   [/ · (\d+) already queued for a fix$/, " · $1 đã chờ sửa"],
   [/^(\d+) selected$/, "Đã chọn $1"],
@@ -415,7 +423,7 @@ export function localizeChromeText(text, table) {
 export function installChromeLocalizer(localize, compile, rawTable, storageKey, foreignSelector) {
   const table = compile(rawTable);
   const attributes = ["title", "aria-label", "placeholder"];
-  const skippedTextParents = new Set(["SCRIPT", "STYLE", "TEXTAREA"]);
+  const skippedTextParents = new Set(["SCRIPT", "STYLE", "TEXTAREA", "TITLE"]);
   const textState = new WeakMap();
   const attributeState = new WeakMap();
   const root = document.documentElement;
@@ -492,9 +500,6 @@ export function installChromeLocalizer(localize, compile, rawTable, storageKey, 
       // Same as above: this page still switches.
     }
     applyLanguage(next);
-  });
-  window.addEventListener("storage", (event) => {
-    if (event.key === storageKey) applyLanguage(normalize(event.newValue));
   });
 }
 
