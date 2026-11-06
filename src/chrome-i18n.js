@@ -9,9 +9,7 @@
 //   re-renders anything or touches a draft;
 // - strings sent to the agent never pass through the DOM, so they stay English;
 // - the boot failsafe is covered too, because the localizer does not wait for `chrome-client.js`.
-// `pnpm run check` scans the double-quoted literals in `chrome-client.js` and the static text of
-// `createChromeHtml`; template literals, the inline failsafe card, and strings composed from
-// several pieces are not scanned, so those need a table entry and a look at the rendered page.
+// For check coverage and its limits, see docs/invariants.md (Things to know when editing).
 
 export const LANGUAGE_STORAGE_KEY = "folio-axi:language";
 
