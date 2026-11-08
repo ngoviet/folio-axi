@@ -2,6 +2,8 @@ packages:
   - "."
 
 trustPolicy: no-downgrade
+trustPolicyExclude:
+  - langium@3.3.1
 blockExoticSubdeps: true
 minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true

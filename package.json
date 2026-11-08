@@ -1,7 +1,7 @@
 {
   "name": "folio-axi",
   "version": "0.2.0",
-  "packageManager": "pnpm@11.1.1",
+  "packageManager": "pnpm@11.11.0",
   "description": "Folio (based on lavish-axi 0.1.96): HTML review pages whose feedback always reaches the right agent session.",
   "type": "module",
   "bin": {
@@ -30,7 +30,7 @@
   "dependencies": {
     "@tailwindcss/browser": "4.2.4",
     "axi-sdk-js": "^0.1.8",
-    "chokidar": "^4.0.3",
+    "chokidar": "^5.0.0",
     "cross-spawn": "7.0.6",
     "daisyui": "^5.5.19",
     "express": "^5.2.1",
