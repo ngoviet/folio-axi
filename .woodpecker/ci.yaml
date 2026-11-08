@@ -20,6 +20,6 @@ steps:
     commands:
       - corepack enable
       - chown -R node:node .
-      - runuser -u node -- env HOME=/home/node corepack prepare pnpm@11.1.1 --activate
+      - runuser -u node -- env HOME=/home/node corepack prepare pnpm@11.11.0 --activate
       - runuser -u node -- env HOME=/home/node pnpm install --frozen-lockfile
       - runuser -u node -- env HOME=/home/node pnpm run check
