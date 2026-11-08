@@ -1,28 +1,20 @@
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { run } from "./helpers/browser-driver.js";
 
 const runBrowserE2e = process.env.FOLIO_AXI_BROWSER_E2E === "1";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+// The last release whose chrome held an EventSource per tab. It predates the Folio rename, so it
+// has its own entrypoint and environment names.
 const baseCommit = "5b871af347444feda1d3002952ec5fc179248629";
-
-function run(command, args, env, timeout = 20_000, cwd = repoRoot) {
-  const result = spawnSync(command, args, {
-    cwd,
-    env: { ...process.env, ...env },
-    encoding: "utf8",
-    timeout,
-  });
-  if (result.error) throw result.error;
-  assert.equal(result.status, 0, `${command} ${args.join(" ")}\n${result.stdout}\n${result.stderr}`);
-  return `${result.stdout || ""}${result.stderr || ""}`;
-}
+const legacyEntrypoint = "bin/lavish-axi.js";
 
 async function waitForHealth(base, child, output) {
   const deadline = Date.now() + 10_000;
@@ -39,9 +31,9 @@ async function waitForHealth(base, child, output) {
   throw new Error(`server did not become healthy\n${output.join("")}`);
 }
 
-async function startServer(root, env, port) {
+async function startServer(root, entrypoint, env, port) {
   const output = [];
-  const child = spawn(process.execPath, [path.join(root, "bin/folio-axi.js"), "server", "--port", String(port)], {
+  const child = spawn(process.execPath, [path.join(root, entrypoint), "server", "--port", String(port)], {
     cwd: root,
     env: { ...process.env, ...env },
     stdio: ["ignore", "pipe", "pipe"],
@@ -112,6 +104,9 @@ test(
       FOLIO_AXI_HOST: "127.0.0.1",
       FOLIO_AXI_LINK_HOST: "127.0.0.1",
     };
+    const legacyEnv = Object.fromEntries(
+      Object.entries(lavishEnv).map(([name, value]) => [name.replace(/^FOLIO_AXI_/, "LAVISH_AXI_"), value]),
+    );
     const chromeEnv = {
       CHROME_DEVTOOLS_AXI_SESSION: `lavish-event-transport-${process.pid}`,
       CHROME_DEVTOOLS_AXI_USER_DATA_DIR: path.join(temp, "chrome"),
@@ -123,9 +118,15 @@ test(
     try {
       await mkdir(oldRoot);
       run("git", ["archive", "--format=tar", "--output", archive, baseCommit], lavishEnv);
-      run("tar", ["-xf", archive, "-C", oldRoot], lavishEnv);
-      await symlink(path.join(repoRoot, "node_modules"), path.join(oldRoot, "node_modules"), "dir");
-      oldServer = await startServer(oldRoot, lavishEnv, port);
+      // GNU tar reads a drive-letter path as a remote host, so extract by relative path.
+      run("tar", ["-xf", path.relative(oldRoot, archive)], lavishEnv, 20_000, oldRoot);
+      // A junction needs no Windows symlink privilege; other platforms ignore the type.
+      await symlink(path.join(repoRoot, "node_modules"), path.join(oldRoot, "node_modules"), "junction");
+      // A tab can only hand its queue and draft to the chrome that replaces it through shared
+      // storage keys, so the archived chrome takes this build's prefix.
+      const legacyChrome = path.join(oldRoot, "src/chrome-client.js");
+      await writeFile(legacyChrome, (await readFile(legacyChrome, "utf8")).replaceAll('"lavish-axi:', '"folio-axi:'));
+      oldServer = await startServer(oldRoot, legacyEntrypoint, legacyEnv, port);
 
       for (let index = 0; index < 7; index += 1) {
         const file = path.join(temp, `board-${index + 1}.html`);
@@ -135,8 +136,8 @@ test(
         );
         const output = run(
           process.execPath,
-          ["bin/folio-axi.js", file, "--no-open", "--no-gate"],
-          lavishEnv,
+          [legacyEntrypoint, file, "--no-open", "--no-gate"],
+          legacyEnv,
           20_000,
           oldRoot,
         );
@@ -193,7 +194,7 @@ test(
 
       await stopServer(oldServer, base, "stop");
       oldServer = undefined;
-      currentServer = await startServer(repoRoot, lavishEnv, port);
+      currentServer = await startServer(repoRoot, "bin/folio-axi.js", lavishEnv, port);
       run("chrome-devtools-axi", ["newpage", sessions[6].url, "--background"], chromeEnv);
 
       const sessionUrls = new Set(sessions.map((session) => session.url));
@@ -219,9 +220,9 @@ test(
             chromeEnv,
             12_000,
           );
-          // This tab still runs the previous build's chrome, so the banner is either that build's
-          // English copy or, were it reloaded, this build's Vietnamese copy for the same reason.
-          assert.match(protectedDraft, /Lavish was stopped|Folio đã dừng/);
+          // This tab still runs the previous build's chrome, so the banner is that build's English copy
+          // for either way the stream ended or, were it reloaded, this build's Vietnamese copy.
+          assert.match(protectedDraft, /Lavish was stopped|no longer running|Folio đã dừng/);
           assert.doesNotMatch(protectedDraft, /updated|cập nhật/);
           run("chrome-devtools-axi", ["eval", '() => document.getElementById("outdatedReload").click()'], chromeEnv);
         }
@@ -296,14 +297,8 @@ test(
     } finally {
       await stopServer(oldServer, base);
       await stopServer(currentServer, base);
-      const stopped = spawnSync("chrome-devtools-axi", ["stop"], {
-        cwd: repoRoot,
-        env: { ...process.env, ...chromeEnv },
-        encoding: "utf8",
-        timeout: 15_000,
-      });
-      assert.ifError(stopped.error);
-      await rm(temp, { recursive: true, force: true });
+      run("chrome-devtools-axi", ["stop"], chromeEnv, 15_000);
+      await rm(temp, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
     }
   },
 );
