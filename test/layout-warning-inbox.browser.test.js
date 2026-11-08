@@ -488,10 +488,10 @@ test("a live reload preserves the review context Folio owns", { skip: !runBrowse
     const after = snapshot();
     assert.match(after, /radio " Pro" checked/, "a Folio-owned answer survives the reload");
     assert.match(after, /checkbox " Include beta cohort" checked/);
-    assert.match(after, /Annotate <p>/, "the open annotation card comes back");
+    assert.match(after, /Chú thích <p>/, "the open annotation card comes back");
 
     // Queueing the restored card proves the unsent text itself survived, not just the card.
-    click(/button "Queue"/);
+    click(/button "Xếp hàng"/);
     wait(800);
     const queuedNote = run(
       "chrome-devtools-axi",

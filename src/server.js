@@ -57,7 +57,14 @@ import {
 import { hostRejectedShareWrite, publishedDespiteError, publishToHtmlApp } from "./html-app.js";
 import { serializeChat, serializeChatAckIds, serializeChatSync } from "./chat-messages.js";
 import { formatServerLogLine, serverStdioIsTimestamped } from "./server-log.js";
-import { createChromeLocalizerJs } from "./chrome-i18n.js";
+import {
+  CARD_FOREIGN_CONTENT_SELECTOR,
+  cardViTable,
+  compileChromeTable,
+  createChromeLocalizerJs,
+  createDomLocalizer,
+  localizeChromeText,
+} from "./chrome-i18n.js";
 import { injectLavishSdk } from "./html-transform.js";
 import {
   bindHost,
@@ -3329,12 +3336,16 @@ export function createSdkJs(
     maxAttachmentCount: Number.isFinite(maxAttachmentCount) ? maxAttachmentCount : undefined,
     maxAttachmentBytes: Number.isFinite(maxAttachmentBytes) ? maxAttachmentBytes : undefined,
     acceptedImageMime: acceptedImageMime.map(String),
+    cardLocalization: { table: cardViTable(), foreignSelector: CARD_FOREIGN_CONTENT_SELECTOR },
   };
   return `(() => {
 const key=${JSON.stringify(key)};
 const artifactRevision=${revision};
 const artifactLoadToken=${JSON.stringify(loadToken)};
 const deriveQueueKey=${deriveLavishQueueKey.toString()};
+const compileChromeTable=${compileChromeTable.toString()};
+const createDomLocalizer=${createDomLocalizer.toString()};
+const localizeChromeText=${localizeChromeText.toString()};
 const isNativeInteractiveControl=${isNativeInteractiveControl.toString()};
 const MODE_TOGGLE_HOTKEY_KEY=${JSON.stringify(MODE_TOGGLE_HOTKEY_KEY)};
 const isModeToggleHotkeyEvent=${isModeToggleHotkeyEvent.toString()};

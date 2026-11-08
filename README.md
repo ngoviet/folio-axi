@@ -192,7 +192,7 @@ Restart the Claude Code session after installing hooks. They run this checkout's
 
 ## Language
 
-The review page defaults to Vietnamese. **English** in the More menu (⋮) switches it in place, and the item then offers **Tiếng Việt** to switch back. The browser remembers the choice in `localStorage` (`folio-axi:language`), and a draft is untouched by the switch. CLI output, the annotation card inside the artifact, and Folio's messages sent to the agent stay in English.
+The review page and annotation card default to Vietnamese. **English** in the More menu (⋮) switches them in place, including an open card, and the item then offers **Tiếng Việt** to switch back. The browser remembers the choice in `localStorage` (`folio-axi:language`), and a draft is untouched by the switch. CLI output and Folio's messages sent to the agent stay in English. If the card cannot receive the language or its localizer fails, it stays in English.
 
 ## CLI Reference
 
