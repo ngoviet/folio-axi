@@ -7,6 +7,8 @@ node_modules
 .no-mistakes
 lavish-code-review.html
 package-lock.json
+# pnpm writes its own lockfile format; Renovate updates would fail format:check
+pnpm-lock.yaml
 CHANGELOG.md
 plugin.json
 .agents
