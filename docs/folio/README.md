@@ -45,7 +45,7 @@ Kế hoạch đầy đủ có sơ đồ: [ke-hoach.html](ke-hoach.html) (bản t
 ## Quy tắc khi làm việc ở repo này
 
 - Luôn giao tiếp với chủ bằng tiếng Việt. Không thêm attribution Claude/Anthropic vào commit, PR hay tệp.
-- Repo **public** từ 04/11/2026 (chủ quyết). CI dùng **Woodpecker tự host**, repo 83 (https://ci.bepmamnon.com/repos/83), không dùng GitHub Actions. Woodpecker đặt `require_approval: forks`: PR từ fork chỉ chạy khi chủ bấm duyệt, nên đọc `.woodpecker/` và script `package.json` của PR trước khi duyệt (pipeline chạy trên PC4, cùng máy prod). Xem `~/.claude/rules/woodpecker-ci.md`; workflow `.github/workflows/ci.yml` của upstream sẽ không chạy.
+- Repo **public** từ 04/11/2026 (chủ quyết). CI dùng **GitHub Actions** (`.github/workflows/ci.yml`, Ubuntu, miễn phí cho repo public). Woodpecker tự host đã tắt 10/11/2026 và không bật lại: PR từ fork lạ sẽ chạy trên PC4, cùng máy prod. Xem `~/.claude/rules/woodpecker-ci.md`.
 - CLI agent đọc output thì theo chuẩn AXI (output gọn, có tổng, lỗi + mã thoát, gợi ý bước tiếp). Checklist: `D:\code\claude_optimize\docs\axi-design-reference.md`.
 - Sửa ít nhất có thể, giữ cấu trúc gần bản gốc để còn lấy được bản sửa của upstream.
 - Bài học về Lavish trên PC1: `D:\code\claude_optimize\docs\lessons-learned.md`, các mục vòng 90, 92, 93, 95, 97.

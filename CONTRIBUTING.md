@@ -9,7 +9,7 @@ We require this to reduce the maintainer's burden of reviewing and merging contr
 `no-mistakes` puts a local git proxy in front of your real remote.
 Pushing through it runs an AI-driven review/test/lint pipeline in an isolated worktree, forwards the push upstream only after every check passes, and opens a clean PR automatically.
 
-CI runs on the self-hosted Woodpecker pipeline in `.woodpecker/ci.yaml`; this repository does not use GitHub Actions.
+CI runs on GitHub Actions (`.github/workflows/ci.yml`).
 
 ## Workflow
 
