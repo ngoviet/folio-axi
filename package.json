@@ -1,7 +1,7 @@
 {
   "name": "folio-axi",
   "version": "0.2.0",
-  "packageManager": "pnpm@11.11.0",
+  "packageManager": "pnpm@11.28.10",
   "description": "Folio (based on lavish-axi 0.1.96): HTML review pages whose feedback always reaches the right agent session.",
   "type": "module",
   "bin": {
@@ -28,7 +28,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@tailwindcss/browser": "4.2.4",
+    "@tailwindcss/browser": "4.3.4",
     "axi-sdk-js": "^0.1.8",
     "chokidar": "^5.0.0",
     "cross-spawn": "7.0.6",
@@ -39,19 +39,19 @@
     "ws": "^8.21.3"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
+    "@eslint/js": "10.0.1",
     "@excalidraw/excalidraw": "0.18.1",
-    "@excalidraw/mermaid-to-excalidraw": "2.2.2",
-    "@types/node": "^25.6.2",
+    "@excalidraw/mermaid-to-excalidraw": "2.3.0",
+    "@types/node": "25.7.0",
     "esbuild": "^0.28.0",
-    "eslint": "^10.3.0",
-    "eslint-config-prettier": "^10.1.8",
-    "globals": "^17.6.0",
+    "eslint": "10.3.0",
+    "eslint-config-prettier": "10.1.8",
+    "globals": "17.6.0",
     "mermaid": "11.12.1",
-    "prettier": "^3.8.3",
+    "prettier": "3.8.3",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "typescript": "^5.9.3"
+    "typescript": "5.9.3"
   },
   "engines": {
     "node": ">=22"
