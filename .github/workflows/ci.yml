@@ -3,6 +3,8 @@
 #
 # Bộ test trình duyệt (*.browser.test.js) chỉ chạy khi FOLIO_AXI_BROWSER_E2E=1 nên ở đây tự bỏ qua.
 # pnpm lấy đúng bản ghim ở trường packageManager qua corepack (Node 24 vẫn kèm corepack).
+# setup-node@v5 thấy trường packageManager thì tự bật cache pnpm và đòi pnpm có sẵn trước
+# khi corepack chạy ("Unable to locate executable file: pnpm"), nên tắt cache đó.
 
 name: CI
 
@@ -25,6 +27,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
+          package-manager-cache: false
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: pnpm run check
