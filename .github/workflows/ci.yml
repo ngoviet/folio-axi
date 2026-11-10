@@ -1,0 +1,30 @@
+# CI của Folio trên GitHub Actions (repo public: ubuntu-latest miễn phí).
+# Không bật Woodpecker tự host: PR từ fork lạ sẽ chạy trên PC4, chung máy với prod.
+#
+# Bộ test trình duyệt (*.browser.test.js) chỉ chạy khi FOLIO_AXI_BROWSER_E2E=1 nên ở đây tự bỏ qua.
+# pnpm lấy đúng bản ghim ở trường packageManager qua corepack (Node 24 vẫn kèm corepack).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      FOLIO_AXI_NO_OPEN: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run check
