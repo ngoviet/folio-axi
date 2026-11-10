@@ -30,7 +30,7 @@
   "dependencies": {
     "@tailwindcss/browser": "4.2.4",
     "axi-sdk-js": "^0.1.8",
-    "chokidar": "^5.0.0",
+    "chokidar": "^6.0.0",
     "cross-spawn": "7.0.6",
     "daisyui": "^5.5.19",
     "express": "^5.2.1",
