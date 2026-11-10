@@ -42,7 +42,7 @@
     "@eslint/js": "^10.0.1",
     "@excalidraw/excalidraw": "0.18.1",
     "@excalidraw/mermaid-to-excalidraw": "2.2.2",
-    "@types/node": "^25.6.2",
+    "@types/node": "^26.0.0",
     "esbuild": "^0.28.0",
     "eslint": "^10.3.0",
     "eslint-config-prettier": "^10.1.8",
