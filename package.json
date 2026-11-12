@@ -1,7 +1,7 @@
 {
   "name": "folio-axi",
   "version": "0.2.0",
-  "packageManager": "pnpm@11.11.0",
+  "packageManager": "pnpm@12.18.0",
   "description": "Folio (based on lavish-axi 0.1.96): HTML review pages whose feedback always reaches the right agent session.",
   "type": "module",
   "bin": {
