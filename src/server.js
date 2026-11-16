@@ -2865,10 +2865,6 @@ function optionalBodyString(value) {
   return trimmed || undefined;
 }
 
-// Confines an asset request lexically first, then - like export-bundle.js's guardedRead -
-// resolves the real (symlink-followed) path and refuses anything that escapes the session's
-// artifact tree (the HTML file's directory), so a symlink placed beside the artifact can't
-// make this route serve an outside file (e.g. ~/.ssh/id_rsa).
 /**
  * The media type to serve an artifact asset with when it may skip the sandbox, else "".
  * @param {string} file
@@ -2885,6 +2881,10 @@ async function isRegularFile(file) {
   );
 }
 
+// Confines an asset request lexically first, then - like export-bundle.js's guardedRead -
+// resolves the real (symlink-followed) path and refuses anything that escapes the session's
+// artifact tree (the HTML file's directory), so a symlink placed beside the artifact can't
+// make this route serve an outside file (e.g. ~/.ssh/id_rsa).
 export async function resolveArtifactAsset(root, assetPath) {
   const file = path.resolve(root, assetPath);
   const relative = path.relative(root, file);
