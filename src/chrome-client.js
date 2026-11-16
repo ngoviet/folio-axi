@@ -729,7 +729,7 @@ function updateSendState() {
   // A raised phone sheet covers the artifact, so it leaves the Tab order until the sheet docks.
   frame.inert = ended || terminalReserved || sheetCoversArtifact;
   // A note queued from the page is only saved in this tab: say that it still has to be sent.
-  queuedHint.hidden = ended || terminalReserved || queued.length === 0;
+  queuedHint.hidden = ended || terminalReserved || !queued.some((prompt) => !isPromptSending(prompt));
   sendButton.disabled = ended || terminalReserved;
   sendAndEndButton.disabled = ended || Boolean(terminalSubmission?.inFlight);
   annotationSwitch.disabled = ended || terminalReserved;

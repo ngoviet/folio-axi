@@ -9562,6 +9562,9 @@ test("a queued answer shows a reminder to send it until it is sent", async () =>
   assert.match(served, /id="queuedHint"[^>]*hidden>Not sent yet[.] Click Send to Agent/);
 
   chrome.element("send").onclick();
+  assert.equal(chrome.queued().length, 1);
+  assert.match(chrome.element("queuedLog").innerHTML, /<small>Sending… /);
+  assert.equal(chrome.element("queuedHint").hidden, true, "a note already sending is not 'not sent yet'");
   chrome.sendSnapshot("uid=1 body");
   await flushPromises();
   await flushPromises();
