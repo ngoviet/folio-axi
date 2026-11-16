@@ -192,6 +192,7 @@ const revisionsDrawer = /** @type {HTMLDivElement} */ (document.getElementById("
 const revisionsSummary = /** @type {HTMLParagraphElement} */ (document.getElementById("revisionsSummary"));
 const revisionsList = /** @type {HTMLDivElement} */ (document.getElementById("revisionsList"));
 const sendHint = /** @type {HTMLDivElement} */ (document.getElementById("sendHint"));
+const queuedHint = /** @type {HTMLDivElement} */ (document.getElementById("queuedHint"));
 const whiteboardOverlay = /** @type {HTMLDivElement} */ (document.getElementById("whiteboardOverlay"));
 const whiteboardFrame = /** @type {HTMLIFrameElement} */ (document.getElementById("whiteboardFrame"));
 const whiteboardCloseButton = /** @type {HTMLButtonElement} */ (document.getElementById("whiteboardClose"));
@@ -339,6 +340,9 @@ let copyHintTimer;
 /** @type {ReturnType<typeof setTimeout> | undefined} */
 let sendHintTimer;
 let sendHintPersistent = false;
+// True while the phone conversation sheet is raised over the artifact. Owned by applySheetState;
+// declared here because updateSendState reads it before the sheet controller is initialised.
+let sheetCoversArtifact = false;
 /** @type {{ kind: "preparation" | "submission" | "terminal", operation: object, preparationType?: string } | null} */
 let sendFailureOwner = null;
 let sendAcknowledgementWarningVisible = false;
@@ -722,7 +726,10 @@ function updateSendState() {
   // A terminal send owns the exact review batch, so freeze interactions inside the
   // artifact without disabling annotation mode. Disabling annotation mode closes the
   // SDK card and destroys an unsent draft before delivery has actually succeeded.
-  frame.inert = ended || terminalReserved;
+  // A raised phone sheet covers the artifact, so it leaves the Tab order until the sheet docks.
+  frame.inert = ended || terminalReserved || sheetCoversArtifact;
+  // A note queued from the page is only saved in this tab: say that it still has to be sent.
+  queuedHint.hidden = ended || terminalReserved || !queued.some((prompt) => !isPromptSending(prompt));
   sendButton.disabled = ended || terminalReserved;
   sendAndEndButton.disabled = ended || Boolean(terminalSubmission?.inFlight);
   annotationSwitch.disabled = ended || terminalReserved;
@@ -1350,6 +1357,8 @@ function applySheetState() {
   const docked = mobile && !open;
   panelScroll.inert = ended || docked;
   chatComposer.inert = ended || docked;
+  sheetCoversArtifact = open;
+  updateSendState();
   const activeElement = document.activeElement;
   if (docked && activeElement && (panelScroll.contains(activeElement) || chatComposer.contains(activeElement))) {
     panelToggle.focus();

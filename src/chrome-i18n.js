@@ -64,6 +64,8 @@ const VI_EXACT = {
 
   // Conversation panel
   Conversation: "Hội thoại",
+  "Page under review": "Trang đang xem",
+  "Not sent yet. Click Send to Agent to deliver it.": "Chưa gửi. Bấm Gửi cho agent để agent nhận được.",
   "Take over here": "Tiếp quản ở đây",
   "Check and reload": "Kiểm tra và tải lại",
   Dismiss: "Bỏ qua",

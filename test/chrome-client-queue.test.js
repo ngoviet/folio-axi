@@ -9524,3 +9524,50 @@ test("a window that is not the artifact frame cannot set the tab", async () => {
   }
   assert.equal(chrome.tab().title, "Plan \u00b7 Folio");
 });
+
+// design-kit audit (10/11): with the phone sheet raised over the artifact, Tab still walked into the
+// covered frame. The frame goes inert while the sheet covers it and comes back when it is docked
+// or the viewport leaves the phone layout.
+test("the artifact frame is inert while the phone conversation sheet covers it", async () => {
+  const chrome = await createChromeHarness({ mobile: true });
+  assert.equal(chrome.frame.inert, false, "a docked sheet leaves the artifact reachable");
+
+  chrome.element("panelHead").dispatch("click");
+  assert.equal(chrome.frame.inert, true, "a raised sheet covers the artifact");
+
+  chrome.setMobile(false);
+  assert.equal(chrome.frame.inert, false, "the desktop side panel never covers the artifact");
+
+  // Widening reset the sheet, so narrowing back docks it: the artifact stays reachable.
+  chrome.setMobile(true);
+  assert.equal(chrome.frame.inert, false);
+  chrome.element("panelHead").dispatch("click");
+  assert.equal(chrome.frame.inert, true);
+  chrome.element("panelHead").dispatch("click");
+  assert.equal(chrome.frame.inert, false);
+});
+
+// An answer picked on the page is only queued in the tab: the agent gets nothing until Send to
+// Agent. Say so next to the button for as long as something is queued.
+test("a queued answer shows a reminder to send it until it is sent", async () => {
+  const chrome = await createChromeHarness();
+  assert.equal(chrome.element("queuedHint").hidden, true);
+
+  chrome.sendFrameMessage({
+    type: "lavish:queuePrompt",
+    prompt: { prompt: "Use plan B", selector: "form#plan", tag: "choice", text: "B" },
+  });
+  assert.equal(chrome.element("queuedHint").hidden, false);
+  const served = createChromeHtml({ key: "abc", file: "/tmp/artifact.html" });
+  assert.match(served, /id="queuedHint"[^>]*hidden>Not sent yet[.] Click Send to Agent/);
+
+  chrome.element("send").onclick();
+  assert.equal(chrome.queued().length, 1);
+  assert.match(chrome.element("queuedLog").innerHTML, /<small>Sending… /);
+  assert.equal(chrome.element("queuedHint").hidden, true, "a note already sending is not 'not sent yet'");
+  chrome.sendSnapshot("uid=1 body");
+  await flushPromises();
+  await flushPromises();
+  assert.equal(chrome.queued().length, 0);
+  assert.equal(chrome.element("queuedHint").hidden, true);
+});
