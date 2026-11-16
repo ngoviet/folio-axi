@@ -261,7 +261,12 @@ function bootSdk({
     },
   };
   const windowListeners = [];
+  const opened = [];
   sandbox.window = {
+    open: (...args) => {
+      opened.push(args);
+      return null;
+    },
     addEventListener: (type, handler) => windowListeners.push({ type, handler }),
     removeEventListener() {},
     setTimeout: scheduleTimer,
@@ -280,6 +285,7 @@ function bootSdk({
 
   return {
     posted,
+    opened,
     body,
     resizeObservers,
     api: sandbox.window.lavish,
@@ -869,9 +875,11 @@ test("a click inside a table cell opens only the note on the exact element click
 
 // In annotate mode a plain click on a link annotates it, so Ctrl-click (Cmd-click on macOS) is the
 // way to follow the link without leaving annotate mode: the SDK steps aside and the browser opens it.
-function buildLink(sdk) {
+function buildLink(sdk, href = "https://example.com/spec") {
   const link = appendTo(sdk.body, cell("a", "Read the spec"));
-  link.setAttribute("href", "https://example.com/spec");
+  link.setAttribute("href", href);
+  // A real anchor's `href` property is the resolved absolute URL.
+  link.href = href;
   const inner = appendTo(link, cell("span", "spec"));
   return { link, inner };
 }
@@ -961,6 +969,91 @@ test("Ctrl-click on a link after a text selection does not eat the next plain cl
   sdk.click(paragraph);
 
   assert.match(sdk.card().innerHTML, /Annotate &lt;p&gt;/);
+});
+
+// The plain click above gives no sign that the link can still be opened, so a link's card carries
+// an Open link button and names the click that skips the card.
+for (const [platform, followKey] of [
+  ["Win32", "Ctrl"],
+  ["MacIntel", "⌘"],
+]) {
+  test(`a link's annotation card on ${platform} offers to open the link and names ${followKey}+click`, () => {
+    const sdk = bootSdk({ platform });
+    const { inner } = buildLink(sdk);
+
+    sdk.click(inner);
+
+    const card = sdk.card();
+    assert.equal(card.querySelector(".lavish-open-link").textContent.trim(), "Open link ↗");
+    assert.equal(
+      card.querySelector(".lavish-link-hint").textContent,
+      `${followKey}+click or middle-click opens the link directly`,
+    );
+    assert.equal(
+      card.querySelector(".lavish-hint").textContent,
+      `Enter to queue · ${followKey}+Enter to send · paste or drop an image`,
+    );
+  });
+}
+
+test("Open link opens the link in a new tab and closes a card that holds nothing yet", () => {
+  const sdk = bootSdk();
+  const { link } = buildLink(sdk);
+  sdk.click(link);
+
+  assert.notEqual(link.style.outline, "", "the open card highlights the link");
+
+  sdk.card().querySelector(".lavish-open-link").onclick();
+
+  assert.deepEqual(sdk.opened, [["https://example.com/spec", "_blank", "noopener"]]);
+  assert.equal(link.style.outline, "", "the highlight is cleared, proving the card closed");
+});
+
+test("Open link keeps a card with typed text open", () => {
+  const sdk = bootSdk();
+  const { link } = buildLink(sdk);
+  sdk.click(link);
+  const card = sdk.card();
+  card.querySelector("textarea").value = "Wrong spec version";
+
+  card.querySelector(".lavish-open-link").onclick();
+
+  assert.equal(sdk.opened.length, 1);
+  assert.notEqual(link.style.outline, "", "the card stays open");
+  assert.equal(card.querySelector("textarea").value, "Wrong spec version");
+});
+
+test("a card for anything but an http(s) link offers no Open link button", () => {
+  for (const build of [
+    (sdk) => appendTo(sdk.body, cell("p", "Just prose")),
+    (sdk) => buildLink(sdk, "javascript:alert(1)").link,
+    (sdk) => buildLink(sdk, "mailto:someone@example.com").link,
+  ]) {
+    const sdk = bootSdk();
+    sdk.click(build(sdk));
+    assert.doesNotMatch(sdk.card().innerHTML, /lavish-open-link|lavish-link-hint/);
+  }
+});
+
+test("a text selection inside a link annotates the text and offers no Open link button", () => {
+  const sdk = bootSdk();
+  const { inner } = buildLink(sdk);
+
+  sdk.selectText(inner, "spec");
+
+  assert.match(sdk.card().innerHTML, /Annotate text/);
+  assert.doesNotMatch(sdk.card().innerHTML, /lavish-open-link/);
+});
+
+test("a link's card translates its Open link button and hint", () => {
+  const sdk = bootSdk();
+  const { link } = buildLink(sdk);
+  sdk.sendChromeMessage({ type: "lavish:setLanguage", language: "vi" });
+  sdk.click(link);
+
+  const card = sdk.card();
+  assert.equal(card.querySelector(".lavish-open-link").textContent.trim(), "Mở link ↗");
+  assert.equal(card.querySelector(".lavish-link-hint").textContent, "Ctrl+bấm hoặc bấm chuột giữa để mở thẳng link");
 });
 
 test("setDocumentMeta posts the title and icon the page asked for, stamped with the load token", () => {

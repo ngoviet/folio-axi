@@ -413,6 +413,7 @@ const VI_CARD_EXACT = {
   "Tell the agent what to change about this diagram node...": "Cho agent biết cần đổi gì ở nút sơ đồ này...",
   "Tell the agent what to change about this element...": "Cho agent biết cần đổi gì ở phần tử này...",
   "Attach image": "Đính kèm ảnh",
+  "Open link": "Mở link",
   Queue: "Xếp hàng",
   Remove: "Bỏ",
   "Remove image": "Bỏ ảnh",
@@ -444,6 +445,7 @@ const VI_CARD_RULES = [
     /^Enter to queue · (.+)\+Enter to send · paste or drop an image$/,
     "Enter để xếp hàng · $1+Enter để gửi · dán hoặc thả ảnh vào",
   ],
+  [/^(.+)\+click or middle-click opens the link directly$/, "$1+bấm hoặc bấm chuột giữa để mở thẳng link"],
 ];
 
 function escapeRegExp(text) {

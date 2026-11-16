@@ -2293,6 +2293,80 @@ test("/artifact serves files copied under the artifact directory", async () => {
   }
 });
 
+test("/artifact serves video and audio unsandboxed so a top-level tab can play them", async () => {
+  // A sandboxed top-level media document has an opaque origin, so Chrome refuses its own reload of
+  // the file as a cross-origin request and the video never plays. Media documents run no script,
+  // so they drop the sandbox; every active type (HTML, SVG, XML) and every other asset keeps it.
+  const parent = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
+  const dir = path.join(parent, ".folio");
+  const mediaDir = path.join(dir, "media");
+  const artifact = path.join(dir, "artifact.html");
+  await mkdir(dir);
+  await mkdir(mediaDir);
+  await writeFile(artifact, '<!doctype html><video src="media/clip.mp4"></video>');
+  await writeFile(path.join(mediaDir, "clip.mp4"), Buffer.from([0, 0, 0, 24, 102, 116, 121, 112]));
+  await writeFile(path.join(mediaDir, "UPPER.MP4"), Buffer.from([0, 0, 0, 24, 102, 116, 121, 112]));
+  await writeFile(path.join(mediaDir, "song.mp3"), Buffer.from([73, 68, 51, 4]));
+  await writeFile(path.join(mediaDir, "clip.webm"), Buffer.from([26, 69, 223, 163]));
+  // An HTML payload behind a media extension must stay a media document, never HTML.
+  await writeFile(path.join(mediaDir, "trick.mp4"), "<!doctype html><script>document.title = 'ran'</script>");
+  await writeFile(path.join(mediaDir, "icon.svg"), '<svg xmlns="http://www.w3.org/2000/svg"><script>1</script></svg>');
+  await writeFile(path.join(mediaDir, "page.html"), "<!doctype html><script>document.title = 'popup'</script>");
+  await writeFile(path.join(mediaDir, "feed.xml"), "<?xml version='1.0'?><root/>");
+  await writeFile(path.join(mediaDir, "photo.png"), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  const server = await serve({ port: 0, stateFile: path.join(dir, "state.json"), version: "9.9.9-test" });
+  try {
+    const base = `http://127.0.0.1:${server.port}`;
+    const sessionRes = await fetch(`${base}/api/sessions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ file: artifact }),
+    });
+    const session = await sessionRes.json();
+    const asset = (name, init) => fetch(`${base}/artifact/${session.key}/media/${name}`, init);
+    const expectedSandbox =
+      "sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads";
+
+    for (const [name, type] of [
+      ["clip.mp4", "video/mp4"],
+      ["UPPER.MP4", "video/mp4"],
+      ["song.mp3", "audio/mpeg"],
+      ["clip.webm", "video/webm"],
+      ["trick.mp4", "video/mp4"],
+    ]) {
+      const res = await asset(name);
+      assert.equal(res.status, 200, name);
+      assert.equal(res.headers.get("content-security-policy"), null, `${name} must not be sandboxed`);
+      assert.equal(res.headers.get("content-type"), type, name);
+      assert.equal(res.headers.get("x-content-type-options"), "nosniff", name);
+      await res.arrayBuffer();
+    }
+
+    // Seeking a video sends a Range request; the partial response is still an unsandboxed media document.
+    const ranged = await asset("clip.mp4", { headers: { range: "bytes=0-3" } });
+    assert.equal(ranged.status, 206);
+    assert.equal(ranged.headers.get("content-security-policy"), null);
+    assert.equal(ranged.headers.get("content-type"), "video/mp4");
+    assert.deepEqual([...new Uint8Array(await ranged.arrayBuffer())], [0, 0, 0, 24]);
+
+    for (const name of ["icon.svg", "page.html", "feed.xml", "photo.png"]) {
+      const res = await asset(name);
+      assert.equal(res.status, 200, name);
+      assert.equal(res.headers.get("content-security-policy"), expectedSandbox, `${name} must stay sandboxed`);
+      await res.arrayBuffer();
+    }
+
+    // A media path that does not exist answers with the sandbox, like every other failure.
+    const missing = await asset("absent.mp4");
+    assert.equal(missing.status, 404);
+    assert.equal(missing.headers.get("content-security-policy"), expectedSandbox);
+    await missing.arrayBuffer();
+  } finally {
+    await server.close();
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
 test("/artifact refuses to serve a symlink that escapes the artifact directory", { skip: NO_SYMLINKS }, async () => {
   const parent = await mkdtemp(path.join(tmpdir(), "lavish-serve-"));
   const outside = await mkdtemp(path.join(tmpdir(), "lavish-outside-"));

@@ -163,6 +163,9 @@ test("every annotation card string has a Vietnamese translation", () => {
     ["Tell the agent what to change about this diagram node...", "Cho agent biết cần đổi gì ở nút sơ đồ này..."],
     ["Tell the agent what to change about this element...", "Cho agent biết cần đổi gì ở phần tử này..."],
     ["Attach image", "Đính kèm ảnh"],
+    ["Open link", "Mở link"],
+    ["Ctrl+click or middle-click opens the link directly", "Ctrl+bấm hoặc bấm chuột giữa để mở thẳng link"],
+    ["⌘+click or middle-click opens the link directly", "⌘+bấm hoặc bấm chuột giữa để mở thẳng link"],
     [
       "Enter to queue · Ctrl+Enter to send · paste or drop an image",
       "Enter để xếp hàng · Ctrl+Enter để gửi · dán hoặc thả ảnh vào",

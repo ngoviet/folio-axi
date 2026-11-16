@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
-import { readFile, realpath } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { createServer, get as httpGet } from "node:http";
 import { isIP } from "node:net";
 import { homedir } from "node:os";
@@ -137,9 +137,29 @@ const LIVE_EVENT_HEARTBEAT_MS = 30_000;
 const DEFAULT_BROWSER_DISCONNECT_GRACE_MS = null;
 // An escaped popup can navigate to an artifact-owned HTML or SVG asset on the
 // server origin. Keep every artifact response sandboxed at the response layer
-// so active documents stay opaque-origin even when they are top-level.
+// so active documents stay opaque-origin even when they are top-level. The one
+// exception is PASSIVE_MEDIA_TYPES below.
 const ARTIFACT_CONTENT_SECURITY_POLICY =
   "sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads";
+// Video and audio assets that a top-level tab must be able to play, so the asset route serves
+// them without the sandbox (see the comment there). The list is by extension and the route sends
+// this exact type with nosniff, so no other bytes can ride on it. Raster images already render in
+// an opaque-origin document, and SVG, HTML and XML can run script, so they all keep the sandbox.
+const PASSIVE_MEDIA_TYPES = new Map([
+  [".mp4", "video/mp4"],
+  [".m4v", "video/mp4"],
+  [".webm", "video/webm"],
+  [".ogv", "video/ogg"],
+  [".mov", "video/quicktime"],
+  [".mp3", "audio/mpeg"],
+  [".m4a", "audio/mp4"],
+  [".aac", "audio/aac"],
+  [".wav", "audio/wav"],
+  [".flac", "audio/flac"],
+  [".ogg", "audio/ogg"],
+  [".oga", "audio/ogg"],
+  [".opus", "audio/ogg"],
+]);
 // Sweep orphaned/expired attachments periodically, not just at startup: a
 // detached server can run for days, and an upload whose /prompts follow-up never
 // arrived would otherwise linger until the next restart.
@@ -1739,6 +1759,17 @@ export async function serve({
         res.status(403).send("Forbidden");
         return;
       }
+      const mediaType = passiveMediaType(file);
+      if (mediaType && (await isRegularFile(file))) {
+        // A video or audio file opened in its own tab (an artifact link, a middle-click) becomes a
+        // top-level media document. Sandboxed, its origin is opaque, Chrome refuses the document's
+        // own load of the file as a cross-origin request, and the video never plays. A media
+        // document runs no script, so it needs no sandbox. The exact type plus nosniff keep the
+        // browser from rendering these bytes as anything else; failures keep the sandbox.
+        res.removeHeader("content-security-policy");
+        res.setHeader("x-content-type-options", "nosniff");
+        res.type(mediaType);
+      }
       res.sendFile(file, { dotfiles: "allow" });
     } catch (error) {
       next(error);
@@ -2832,6 +2863,22 @@ function normalizeOrigin(value) {
 function optionalBodyString(value) {
   const trimmed = String(value ?? "").trim();
   return trimmed || undefined;
+}
+
+/**
+ * The media type to serve an artifact asset with when it may skip the sandbox, else "".
+ * @param {string} file
+ */
+function passiveMediaType(file) {
+  return PASSIVE_MEDIA_TYPES.get(path.extname(file).toLowerCase()) || "";
+}
+
+/** @param {string} file */
+async function isRegularFile(file) {
+  return stat(file).then(
+    (info) => info.isFile(),
+    () => false,
+  );
 }
 
 // Confines an asset request lexically first, then - like export-bundle.js's guardedRead -
