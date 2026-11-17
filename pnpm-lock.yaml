@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@tailwindcss/browser':
-        specifier: 4.2.4
-        version: 4.2.4
+        specifier: 4.3.5
+        version: 4.3.5
       axi-sdk-js:
         specifier: ^0.1.8
         version: 0.1.14
@@ -37,7 +37,7 @@ importers:
         version: 8.22.2
     devDependencies:
       '@eslint/js':
-        specifier: ^10.0.1
+        specifier: 10.0.1
         version: 10.0.1(eslint@10.14.0)
       '@excalidraw/excalidraw':
         specifier: 0.18.1
@@ -46,25 +46,25 @@ importers:
         specifier: 2.2.2
         version: 2.2.2
       '@types/node':
-        specifier: ^25.6.2
+        specifier: 25.9.9
         version: 25.9.9
       esbuild:
-        specifier: ^0.28.0
+        specifier: 0.28.2
         version: 0.28.2
       eslint:
-        specifier: ^10.3.0
+        specifier: 10.14.0
         version: 10.14.0
       eslint-config-prettier:
-        specifier: ^10.1.8
+        specifier: 10.1.8
         version: 10.1.8(eslint@10.14.0)
       globals:
-        specifier: ^17.6.0
+        specifier: 17.14.0
         version: 17.14.0
       mermaid:
         specifier: 11.12.1
         version: 11.12.1
       prettier:
-        specifier: ^3.8.3
+        specifier: 3.9.10
         version: 3.9.10
       react:
         specifier: 18.3.1
@@ -73,7 +73,7 @@ importers:
         specifier: 18.3.1
         version: 18.3.1(react@18.3.1)
       typescript:
-        specifier: ^5.9.3
+        specifier: 5.9.3
         version: 5.9.3
 
 packages:
@@ -661,8 +661,8 @@ packages:
   '@radix-ui/rect@1.1.0':
     resolution: {integrity: sha512-A9+lCBZoaMJlVKcRBz2YByCG+Cp2t6nAnMnNba+XiWxnj6r4JUFqfsgwocMBZU9LPtdxC6wB56ySYpc7LQIoJg==}
 
-  '@tailwindcss/browser@4.2.4':
-    resolution: {integrity: sha512-yd+3CxxuF1KDt9Q+405JR3/vyotvS5eMIsZPEynEak/JybvFVn8mVmLjVUxgNmrFB6EGCc89lXBECzIZA+YeXQ==}
+  '@tailwindcss/browser@4.3.5':
+    resolution: {integrity: sha512-jm+efl1BzNaCMLSd1gSApQjaXYbuiwUtJLVPA2JVEZqN1MluOlZLR2LVnWvokY9B6Di1uJKq4SGMS/rupr0kbg==}
 
   '@toon-format/toon@2.3.1':
     resolution: {integrity: sha512-sWqEMeAJGMda9qRrfPKrX3C4c33CO9SJuvJzzrcBEn5sbDB+k6pSLkDsfN0rVnLQwR97MV3sDgVbcxQNsq8xVw==}
@@ -2423,7 +2423,7 @@ snapshots:
 
   '@radix-ui/rect@1.1.0': {}
 
-  '@tailwindcss/browser@4.2.4': {}
+  '@tailwindcss/browser@4.3.5': {}
 
   '@toon-format/toon@2.3.1': {}
 
