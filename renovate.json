@@ -1,4 +1,14 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["local>ngoviet/dcode-ops//renovate/default"]
+  "extends": ["local>ngoviet/dcode-ops//renovate/default"],
+  "packageRules": [
+    {
+      "description": "Whiteboard pins are exact on purpose: a bump needs a deliberate re-probe of native Mermaid-to-Excalidraw conversion (test/whiteboard-pins.test.js, mermaid-to-excalidraw#108). Keep them out of the auto-merged patch/minor group and list them on the Dependency Dashboard for approval instead of opening a PR that fails that test.",
+      "matchPackageNames": ["mermaid", "@excalidraw/excalidraw", "@excalidraw/mermaid-to-excalidraw"],
+      "groupName": "whiteboard pins",
+      "groupSlug": "whiteboard-pins",
+      "automerge": false,
+      "dependencyDashboardApproval": true
+    }
+  ]
 }
