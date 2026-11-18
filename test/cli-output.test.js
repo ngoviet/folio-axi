@@ -689,7 +689,7 @@ test("theme-aware Mermaid snippet serializes rapid theme-change renders", async 
       return new Promise((resolve) => {
         pendingRenders.push(() => {
           activeRenders -= 1;
-          resolve();
+          resolve(undefined);
         });
       });
     },
@@ -1190,11 +1190,11 @@ async function startFailingHtmlApp(status, detail) {
       res.end(JSON.stringify({ detail }));
     });
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(undefined)));
   const address = server.address();
   return {
     port: typeof address === "object" && address ? address.port : 0,
-    close: () => new Promise((resolve) => server.close(() => resolve())),
+    close: () => new Promise((resolve) => server.close(() => resolve(undefined))),
   };
 }
 
@@ -1442,11 +1442,11 @@ async function startIncompleteHtmlApp(body) {
       res.end(JSON.stringify(body));
     });
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(undefined)));
   const address = server.address();
   return {
     port: typeof address === "object" && address ? address.port : 0,
-    close: () => new Promise((resolve) => server.close(() => resolve())),
+    close: () => new Promise((resolve) => server.close(() => resolve(undefined))),
   };
 }
 
@@ -1845,7 +1845,7 @@ test("poll feedback and the next step are emitted before the bulky DOM snapshot"
     res.writeHead(404);
     res.end();
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(undefined)));
   try {
     const address = server.address();
     assert.ok(address && typeof address !== "string");
@@ -2674,7 +2674,7 @@ test("fetchJson retries transient connection failures", async () => {
     res.end(JSON.stringify({ status: "waiting" }));
   });
 
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(undefined)));
   try {
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("test server did not bind to a TCP port");
@@ -2696,7 +2696,7 @@ test("fetchJson reports interrupted response body failures without retrying", as
     res.end("{");
   });
 
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(undefined)));
   try {
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("test server did not bind to a TCP port");
@@ -2770,11 +2770,11 @@ async function startFakeHtmlApp(requests) {
       );
     });
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(undefined)));
   const address = server.address();
   return {
     port: typeof address === "object" && address ? address.port : 0,
-    close: () => new Promise((resolve) => server.close(() => resolve())),
+    close: () => new Promise((resolve) => server.close(() => resolve(undefined))),
   };
 }
 

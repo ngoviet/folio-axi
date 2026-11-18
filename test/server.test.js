@@ -3938,11 +3938,11 @@ async function startFailingHtmlApp(status) {
       res.end(JSON.stringify({ detail: "host said no" }));
     });
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(undefined)));
   const address = server.address();
   return {
     port: typeof address === "object" && address ? address.port : 0,
-    close: () => new Promise((resolve) => server.close(() => resolve())),
+    close: () => new Promise((resolve) => server.close(() => resolve(undefined))),
   };
 }
 
@@ -5531,7 +5531,7 @@ test("a poll dropped before it arms never leaves presence listening", async () =
         const target = `/api/poll?file=${encodeURIComponent(artifact)}`;
         socket.write(`GET ${target} HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\n\r\n`, () => {
           socket.destroy();
-          resolve();
+          resolve(undefined);
         });
       });
       socket.on("error", reject);
@@ -5712,7 +5712,7 @@ test("a disconnect during immediate feedback take requeues the batch without wor
     /** @type {() => void} */
     let releaseTake = () => {};
     const takeReleased = new Promise((resolve) => {
-      releaseTake = () => resolve();
+      releaseTake = () => resolve(undefined);
     });
     let takeStarted;
     const takePending = new Promise((resolve) => {
@@ -5794,7 +5794,7 @@ test("a disconnect during event-driven feedback take requeues the batch without 
     /** @type {() => void} */
     let releaseTake = () => {};
     const takeReleased = new Promise((resolve) => {
-      releaseTake = () => resolve();
+      releaseTake = () => resolve(undefined);
     });
     let takeStarted;
     const takePending = new Promise((resolve) => {
@@ -5837,7 +5837,7 @@ test("a disconnect during event-driven feedback take requeues the batch without 
         const timer = setTimeout(() => reject(new Error("timed out waiting for closed poll feedback restore")), 500);
         restoreCompleted = () => {
           clearTimeout(timer);
-          resolve();
+          resolve(undefined);
         };
       });
       SessionStore.prototype.queuePrompts = async function (sessionKey, payload, options) {
@@ -5917,7 +5917,7 @@ test("a restore that fails to persist is logged instead of silently dropping the
     /** @type {() => void} */
     let releaseTake = () => {};
     const takeReleased = new Promise((resolve) => {
-      releaseTake = () => resolve();
+      releaseTake = () => resolve(undefined);
     });
     let takeStarted;
     const takePending = new Promise((resolve) => {
@@ -6585,11 +6585,11 @@ async function startFakeHtmlApp(requests, responseBody = null) {
       res.end(JSON.stringify(body));
     });
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(undefined)));
   const address = server.address();
   return {
     port: typeof address === "object" && address ? address.port : 0,
-    close: () => new Promise((resolve) => server.close(() => resolve())),
+    close: () => new Promise((resolve) => server.close(() => resolve(undefined))),
   };
 }
 

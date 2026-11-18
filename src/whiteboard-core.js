@@ -697,7 +697,7 @@ export function savedSceneHasPreservableEdits(saved) {
 }
 
 /**
- * @param {object | null | undefined} saved
+ * @param {Record<string, any> | null | undefined} saved
  * @param {string} currentSourceHash
  * @returns {"convert" | "restore" | "prompt"}
  */

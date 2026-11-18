@@ -24,7 +24,7 @@ function createFetchSpy(options = {}) {
         timer.unref?.();
         release = () => {
           clearTimeout(timer);
-          resolve();
+          resolve(undefined);
         };
       });
     }
