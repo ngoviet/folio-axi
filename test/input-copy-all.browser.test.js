@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { access, mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -9,30 +9,12 @@ import test from "node:test";
 
 import { parse } from "parse5";
 
+import { chromePath, removeChromeRoot, stopChromeTree } from "./helpers/headless-chrome.js";
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const playbooksPath = process.env.FOLIO_AXI_PLAYBOOKS_MODULE || path.join(repoRoot, "src/playbooks.js");
 const { PLAYBOOKS } = await import(pathToFileURL(playbooksPath).href);
 let chromeLaunchState;
-
-async function chromePath() {
-  const candidates = [
-    process.env.CHROME_PATH,
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Chromium.app/Contents/MacOS/Chromium",
-    "/usr/bin/google-chrome",
-    "/usr/bin/chromium",
-    "/usr/bin/chromium-browser",
-  ].filter(Boolean);
-  for (const candidate of candidates) {
-    try {
-      await access(candidate);
-      return candidate;
-    } catch {
-      continue;
-    }
-  }
-  return "";
-}
 
 async function headlessChromeState(chrome) {
   if (chromeLaunchState) return chromeLaunchState;
@@ -49,7 +31,7 @@ async function headlessChromeState(chrome) {
         "--dump-dom",
         "about:blank",
       ],
-      { stdio: "ignore", timeout: 15_000 },
+      { stdio: "ignore", timeout: 15_000, windowsHide: true },
     );
     chromeLaunchState =
       result.status === 0
@@ -59,7 +41,7 @@ async function headlessChromeState(chrome) {
             reason: `Chrome or Chromium could not launch headless (${result.signal || `exit ${result.status}`})`,
           };
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await removeChromeRoot(root);
   }
   return chromeLaunchState;
 }
@@ -144,16 +126,10 @@ function probeScript(scenario, { clicks = 1 } = {}) {
 
 function dumpChromeDom(chrome, args, timeoutMs) {
   return new Promise((resolve, reject) => {
-    const child = spawn(chrome, args, { detached: true, stdio: ["ignore", "pipe", "ignore"] });
+    const child = spawn(chrome, args, { detached: true, stdio: ["ignore", "pipe", "ignore"], windowsHide: true });
     let stdout = "";
     let settled = false;
-    const stop = () => {
-      try {
-        process.kill(-child.pid, "SIGKILL");
-      } catch {
-        child.kill("SIGKILL");
-      }
-    };
+    const stop = () => stopChromeTree(child);
     const finish = (error) => {
       if (settled) return;
       settled = true;
@@ -196,10 +172,6 @@ function resultFromDump(html) {
 }
 
 async function runBrowserScenario(t, scenario, fixture, options = {}) {
-  if (process.platform === "win32") {
-    t.skip("the headless dump harness relies on POSIX process-group cleanup");
-    return null;
-  }
   const snippet = copyAllHtmlSnippet();
   const chrome = await chromePath();
   if (!chrome) {
@@ -248,7 +220,7 @@ async function runBrowserScenario(t, scenario, fixture, options = {}) {
   } finally {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
-    await rm(root, { recursive: true, force: true });
+    await removeChromeRoot(root);
   }
 }
 

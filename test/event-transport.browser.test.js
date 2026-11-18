@@ -117,7 +117,13 @@ test(
 
     try {
       await mkdir(oldRoot);
-      run("git", ["archive", "--format=tar", "--output", archive, baseCommit], lavishEnv);
+      // The old tree's only symlink, .claude/skills, is agent tooling the server never reads, and
+      // Windows tar cannot create it without the symlink privilege.
+      run(
+        "git",
+        ["archive", "--format=tar", "--output", archive, baseCommit, "--", ".", ":(exclude).claude"],
+        lavishEnv,
+      );
       // GNU tar reads a drive-letter path as a remote host, so extract by relative path.
       run("tar", ["-xf", path.relative(oldRoot, archive)], lavishEnv, 20_000, oldRoot);
       // A junction needs no Windows symlink privilege; other platforms ignore the type.

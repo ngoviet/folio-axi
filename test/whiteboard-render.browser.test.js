@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { access, cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -10,27 +10,9 @@ import test from "node:test";
 import * as esbuild from "esbuild";
 import { parse } from "parse5";
 
-const projectRoot = fileURLToPath(new URL("..", import.meta.url));
+import { chromePath, removeChromeRoot, stopChromeTree } from "./helpers/headless-chrome.js";
 
-async function chromePath() {
-  const candidates = [
-    process.env.CHROME_PATH,
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Chromium.app/Contents/MacOS/Chromium",
-    "/usr/bin/google-chrome",
-    "/usr/bin/chromium",
-    "/usr/bin/chromium-browser",
-  ].filter(Boolean);
-  for (const candidate of candidates) {
-    try {
-      await access(candidate);
-      return candidate;
-    } catch {
-      continue;
-    }
-  }
-  return "";
-}
+const projectRoot = fileURLToPath(new URL("..", import.meta.url));
 
 function contentType(file) {
   if (file.endsWith(".html")) return "text/html; charset=utf-8";
@@ -42,16 +24,10 @@ function contentType(file) {
 
 function dumpChromeDom(chrome, args, timeoutMs) {
   return new Promise((resolve, reject) => {
-    const child = spawn(chrome, args, { detached: true, stdio: ["ignore", "pipe", "ignore"] });
+    const child = spawn(chrome, args, { detached: true, stdio: ["ignore", "pipe", "ignore"], windowsHide: true });
     let stdout = "";
     let settled = false;
-    const stop = () => {
-      try {
-        process.kill(-child.pid, "SIGKILL");
-      } catch {
-        child.kill("SIGKILL");
-      }
-    };
+    const stop = () => stopChromeTree(child);
     const finish = (error) => {
       if (settled) return;
       settled = true;
@@ -176,7 +152,7 @@ async function runBrowserFixture(t, fixtureName) {
       await new Promise((resolve) => server.close(resolve));
     }
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await removeChromeRoot(root);
   }
 }
 
