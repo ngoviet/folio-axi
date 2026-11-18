@@ -1011,7 +1011,7 @@ test("a Send started after another snapshot wins remains live while that POST is
   const posts = [];
   let releaseFirstPost = () => {};
   const firstPost = new Promise((resolve) => {
-    releaseFirstPost = () => resolve();
+    releaseFirstPost = () => resolve(undefined);
   });
   const chrome = await createChromeHarness({
     fetchImpl: async (url, init = {}) => {
@@ -5979,7 +5979,7 @@ test("chrome send and end during an in-flight submit still ends after the submit
   const posts = [];
   let resolveFirstPost = () => {};
   const firstPost = new Promise((resolve) => {
-    resolveFirstPost = () => resolve();
+    resolveFirstPost = () => resolve(undefined);
   });
   const chrome = await createChromeHarness({
     fetchImpl: async (url, init = {}) => {
@@ -6701,7 +6701,7 @@ test("whiteboard close stays responsive while overlay initialization is pending"
     fetchImpl: async (url) => {
       if (delayOverlaySources && url.includes("/mermaid-sources")) {
         await new Promise((resolve) => {
-          releaseOverlaySources = () => resolve();
+          releaseOverlaySources = () => resolve(undefined);
         });
       }
       return whiteboardFetch(url);

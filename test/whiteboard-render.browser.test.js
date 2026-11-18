@@ -123,7 +123,7 @@ async function runBrowserFixture(t, fixtureName) {
         response.writeHead(404).end();
       }
     });
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(undefined)));
     try {
       const address = server.address();
       if (!address || typeof address === "string") throw new Error("test server did not bind to a TCP port");

@@ -1866,7 +1866,7 @@ export function createArtifactSdk(
     return new Promise((resolve) => {
       function step(remaining) {
         if (remaining <= 0) {
-          resolve();
+          resolve(undefined);
           return;
         }
         const next = () => step(remaining - 1);
@@ -1892,7 +1892,7 @@ export function createArtifactSdk(
         if (settleTimer) window.clearTimeout(settleTimer);
         if (maxTimer) window.clearTimeout(maxTimer);
         if (observer) observer.disconnect();
-        resolve();
+        resolve(undefined);
       };
       const scheduleFinish = () => {
         if (settleTimer) window.clearTimeout(settleTimer);

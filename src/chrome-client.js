@@ -352,7 +352,7 @@ let sendHintPersistent = false;
 // True while the phone conversation sheet is raised over the artifact. Owned by applySheetState;
 // declared here because updateSendState reads it before the sheet controller is initialised.
 let sheetCoversArtifact = false;
-/** @type {{ kind: "preparation" | "submission" | "terminal", operation: object, preparationType?: string } | null} */
+/** @type {{ kind: "preparation" | "submission" | "terminal", operation: Record<string, any>, preparationType?: string } | null} */
 let sendFailureOwner = null;
 let sendAcknowledgementWarningVisible = false;
 

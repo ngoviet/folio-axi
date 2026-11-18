@@ -287,7 +287,7 @@ test("reply refuses a missing session, an unreachable server, and a non-success 
     res.setHeader("content-type", "application/json");
     res.end(JSON.stringify({ version: "not-folio" }));
   });
-  await new Promise((resolve) => holder.listen(0, "127.0.0.1", () => resolve()));
+  await new Promise((resolve) => holder.listen(0, "127.0.0.1", () => resolve(undefined)));
   const port = /** @type {import("node:net").AddressInfo} */ (holder.address()).port;
   const dir = await mkdtemp(path.join(os.tmpdir(), "lavish-reply-down-"));
   const artifact = path.join(dir, "artifact.html");
@@ -301,7 +301,7 @@ test("reply refuses a missing session, an unreachable server, and a non-success 
     assert.match(down.stdout, /SERVER_ERROR/);
     assert.doesNotMatch(down.stdout, /status: sent/);
   } finally {
-    await new Promise((resolve, reject) => holder.close((error) => (error ? reject(error) : resolve())));
+    await new Promise((resolve, reject) => holder.close((error) => (error ? reject(error) : resolve(undefined))));
     await rm(dir, { recursive: true, force: true });
   }
 });
@@ -440,7 +440,7 @@ test("reply fails with a timeout when the server stalls before headers or mid-bo
     received.push(req.url);
     stalls[req.url](req, res);
   });
-  await new Promise((resolve) => stalling.listen(0, "127.0.0.1", () => resolve()));
+  await new Promise((resolve) => stalling.listen(0, "127.0.0.1", () => resolve(undefined)));
   const port = /** @type {import("node:net").AddressInfo} */ (stalling.address()).port;
   try {
     for (const stage of Object.keys(stalls)) {
@@ -460,6 +460,6 @@ test("reply fails with a timeout when the server stalls before headers or mid-bo
     assert.deepEqual(received, Object.keys(stalls));
   } finally {
     stalling.closeAllConnections();
-    await new Promise((resolve) => stalling.close(() => resolve()));
+    await new Promise((resolve) => stalling.close(() => resolve(undefined)));
   }
 });
