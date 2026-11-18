@@ -2341,7 +2341,20 @@ export function createArtifactSdk(
     // So a link's card offers to open it and names the click that skips the card. Only http(s):
     // `link.href` is the resolved URL, and a javascript: or mailto: link has no tab to open.
     const linkEl = options.range ? null : /** @type {HTMLAnchorElement | null} */ (target?.closest?.("a[href]"));
-    const link = linkEl && /^https?:/i.test(String(linkEl.href || "")) ? linkEl : null;
+    // A link to a place in this page (`#section`) resolves to the artifact's own URL, and a tab opened
+    // on it is a second, disconnected copy of the review, so it gets no Open link either.
+    const inThisPage = (/** @type {HTMLAnchorElement} */ anchor) => {
+      try {
+        const destination = new URL(anchor.href);
+        const here = new URL(window.location.href);
+        destination.hash = "";
+        here.hash = "";
+        return destination.href === here.href;
+      } catch {
+        return false;
+      }
+    };
+    const link = linkEl && /^https?:/i.test(String(linkEl.href || "")) && !inThisPage(linkEl) ? linkEl : null;
     card.innerHTML =
       '<div class="lavish-heading">' +
       heading +

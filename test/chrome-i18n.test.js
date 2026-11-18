@@ -143,6 +143,76 @@ test("localizer initialization failure leaves an English page identified as Engl
   assert.equal(text.data, "Send to Agent");
 });
 
+// A tiny element: enough DOM for createDomLocalizer, matching only `tag.class` selectors.
+function fakeElement(tag, className, attributes = {}, children = []) {
+  const element = {
+    nodeType: 1,
+    tagName: tag.toUpperCase(),
+    parentElement: null,
+    childNodes: [],
+    attributes: { ...attributes },
+    getAttribute: (name) => (name in element.attributes ? element.attributes[name] : null),
+    setAttribute: (name, value) => {
+      element.attributes[name] = value;
+    },
+    matches: (selectors) =>
+      selectors.split(",").some((selector) => {
+        const [wanted, ...classes] = selector.trim().split(".");
+        const own = className.split(/\s+/);
+        return (!wanted || wanted.toUpperCase() === element.tagName) && classes.every((name) => own.includes(name));
+      }),
+    closest: (selectors) => {
+      for (let node = element; node; node = node.parentElement) if (node.matches(selectors)) return node;
+      return null;
+    },
+  };
+  for (const child of children) {
+    const node = typeof child === "string" ? { nodeType: 3, data: child } : child;
+    node.parentElement = element;
+    element.childNodes.push(node);
+  }
+  return element;
+}
+
+// File names and paths are the user's words. Translating them made a thumbnail called
+// "Working draft.png" read "Đang làm draft.png" on hover.
+test("the Vietnamese chrome keeps the user's file names and paths verbatim", () => {
+  const thumbnail = fakeElement("img", "bubble-attachment", { alt: "Working draft.png", title: "Working draft.png" });
+  const expired = fakeElement("span", "bubble-attachment bubble-attachment-expired", { title: "Done state.png" }, [
+    "Image expired",
+  ]);
+  const ended = fakeElement("p", "ended-copy", {}, ["D:\\work\\3 revisions\\Layout failure.html"]);
+  const root = fakeElement("body", "", {}, [thumbnail, expired, ended]);
+  const install = new Function(
+    "Node",
+    "MutationObserver",
+    "document",
+    "localStorage",
+    "window",
+    "console",
+    createChromeLocalizerJs(),
+  );
+  install(
+    { TEXT_NODE: 3, ELEMENT_NODE: 1 },
+    class {
+      observe() {}
+    },
+    { documentElement: root, addEventListener() {}, getElementById: () => null },
+    { getItem: () => null },
+    { addEventListener() {} },
+    {
+      error: (error) => {
+        throw error;
+      },
+    },
+  );
+  assert.equal(root.lang, "vi", "the localizer installed");
+  assert.equal(thumbnail.getAttribute("title"), "Working draft.png");
+  assert.equal(expired.getAttribute("title"), "Done state.png");
+  assert.notEqual(expired.childNodes[0].data, "Image expired", "Folio's own words are still translated");
+  assert.equal(ended.childNodes[0].data, "D:\\work\\3 revisions\\Layout failure.html");
+});
+
 test("the inlined localizer cannot close its own script tag", () => {
   assert.doesNotMatch(createChromeLocalizerJs(), /<\/script/i);
   assert.doesNotThrow(() => new Function(createChromeLocalizerJs()));
