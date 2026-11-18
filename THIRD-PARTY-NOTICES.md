@@ -6,12 +6,12 @@ The whiteboard bundle (`dist/whiteboard/`) is built from these packages by `scri
 
 ## Bundled into `dist/whiteboard/whiteboard.js` and `whiteboard.css`
 
-| Package                                              | License | Copyright                                         |
-| ---------------------------------------------------- | ------- | ------------------------------------------------- |
-| `@excalidraw/excalidraw`                             | MIT     | Copyright (c) 2020 Excalidraw                     |
-| `@excalidraw/mermaid-to-excalidraw`                  | MIT     | Copyright (c) 2023 Excalidraw                     |
-| `mermaid` (exact 11.12.1, bundled for the converter) | MIT     | Copyright (c) 2014 - 2022 Knut Sveidqvist         |
-| `react`, `react-dom`                                 | MIT     | Copyright (c) Meta Platforms, Inc. and affiliates |
+| Package                                               | License | Copyright                                         |
+| ----------------------------------------------------- | ------- | ------------------------------------------------- |
+| `@excalidraw/excalidraw`                              | MIT     | Copyright (c) 2020 Excalidraw                     |
+| `@excalidraw/mermaid-to-excalidraw`                   | MIT     | Copyright (c) 2023 Excalidraw                     |
+| `pele` (exact 1.13.0, the converter's Mermaid parser) | MIT     | Copyright (c) 2026 kepano                         |
+| `react`, `react-dom`                                  | MIT     | Copyright (c) Meta Platforms, Inc. and affiliates |
 
 The full MIT license text applies to each of the packages above:
 

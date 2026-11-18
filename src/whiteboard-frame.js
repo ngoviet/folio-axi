@@ -7,9 +7,10 @@
 // where the chrome hosts one frame full-viewport (reached from the inline
 // frame's fullscreen action). The `mode` field of the init message selects the
 // placement-specific UI; everything else is identical. Bundled by
-// `scripts/build.js` (esbuild) together with Excalidraw, the Mermaid
-// converter, its own exactly-pinned mermaid, and React into
-// `dist/whiteboard/whiteboard.js`, so nothing here loads from the network.
+// `scripts/build.js` (esbuild) together with Excalidraw, the exactly-pinned
+// Mermaid converter (which parses and lays diagrams out with Pele, not
+// mermaid), and React into `dist/whiteboard/whiteboard.js`, so nothing here
+// loads from the network.
 //
 // The frame owns all whiteboard UI. It holds no server access; the chrome does
 // the same-origin fetches. Untrusted Mermaid text therefore renders only
@@ -34,7 +35,7 @@ import {
   conversionUsesUnverifiedLibraries,
   createWhiteboardPersistencePayload,
   findDuplicateElementIds,
-  libraryIconMermaidConfig,
+  libraryIconMermaidSource,
   placeLibraryIcons,
   prepareLibraryIconSkeletons,
   repairSavedSceneTextMetrics,
@@ -450,9 +451,8 @@ async function convertSource(source) {
     ...directive,
     item: findLibraryItem(state.libraries, directive.ref),
   }));
-  const { elements: parsedSkeletons, files } = await parseMermaidToExcalidraw(source, {
+  const { elements: parsedSkeletons, files } = await parseMermaidToExcalidraw(libraryIconMermaidSource(icons, source), {
     themeVariables: { fontSize: `${MERMAID_FONT_SIZE}px` },
-    ...libraryIconMermaidConfig(icons, source),
   });
   const { skeletons, missing } = prepareLibraryIconSkeletons(restoreMermaidLabelLineBreaks(parsedSkeletons), icons, {
     labelFontSize: MERMAID_FONT_SIZE,

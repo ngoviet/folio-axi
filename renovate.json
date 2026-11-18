@@ -3,8 +3,8 @@
   "extends": ["local>ngoviet/dcode-ops//renovate/default"],
   "packageRules": [
     {
-      "description": "Whiteboard pins are exact on purpose: a bump needs a deliberate re-probe of native Mermaid-to-Excalidraw conversion (test/whiteboard-pins.test.js, mermaid-to-excalidraw#108). Keep them out of the auto-merged patch/minor group and list them on the Dependency Dashboard for approval instead of opening a PR that fails that test.",
-      "matchPackageNames": ["mermaid", "@excalidraw/excalidraw", "@excalidraw/mermaid-to-excalidraw"],
+      "description": "Whiteboard pins are exact on purpose: a bump needs a deliberate re-probe of native Mermaid-to-Excalidraw conversion (the native-conversion test in test/whiteboard-render.browser.test.js, mermaid-to-excalidraw#108), and a converter bump must move the Excalidraw override in pnpm-workspace.yaml with it (test/whiteboard-pins.test.js). Converter 3.x no longer depends on mermaid, so mermaid is not a dependency any more. Keep them out of the auto-merged patch/minor group and list them on the Dependency Dashboard for approval.",
+      "matchPackageNames": ["@excalidraw/excalidraw", "@excalidraw/mermaid-to-excalidraw"],
       "groupName": "whiteboard pins",
       "groupSlug": "whiteboard-pins",
       "automerge": false,

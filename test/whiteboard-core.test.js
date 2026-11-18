@@ -5,10 +5,10 @@ import {
   conversionUsesUnverifiedLibraries,
   createWhiteboardPersistencePayload,
   findDuplicateElementIds,
-  LIBRARY_ICON_GROWN_SPACING,
+  LIBRARY_ICON_GROWTH,
   LIBRARY_ICON_HEIGHT,
   LIBRARY_ICON_MAX_WIDTH,
-  libraryIconMermaidConfig,
+  libraryIconMermaidSource,
   libraryIconSize,
   normalizeExcalidrawSceneTarget,
   placeLibraryIcons,
@@ -746,25 +746,44 @@ function itemOfSize(width, height) {
   return { ref: "x/y", elements: [{ id: "r", type: "rectangle", x: 0, y: 0, width, height }] };
 }
 
-test("libraryIconMermaidConfig adds spacing only on the axis icon nodes grow along", () => {
+// Splits a converted source into its spacing directive (parsed) and the source
+// with that line taken out.
+function splitIconDirective(converted) {
+  const lines = converted.split("\n");
+  const index = lines.findIndex((line) => line.startsWith("%%{init: "));
+  if (index < 0) return { index, flowchart: null, rest: converted };
+  const config = JSON.parse(lines[index].slice("%%{init: ".length, -"}%%".length));
+  lines.splice(index, 1);
+  return { index, flowchart: config.flowchart, rest: lines.join("\n") };
+}
+
+test("libraryIconMermaidSource widens only the gap icon nodes grow along", () => {
   const icon = [{ item: lambdaItem() }];
-  assert.deepEqual(libraryIconMermaidConfig([], "flowchart TB"), {});
-  assert.deepEqual(libraryIconMermaidConfig([{ item: null }], "flowchart TB"), {});
-  // Icon nodes grow taller: in a top-down chart that is the gap between ranks,
-  // in a left-right chart the gap between nodes of one rank.
-  assert.deepEqual(libraryIconMermaidConfig(icon, "flowchart TB\n  a --> b"), {
-    flowchart: { curve: "linear", nodeSpacing: 50, rankSpacing: LIBRARY_ICON_GROWN_SPACING },
-  });
-  assert.deepEqual(libraryIconMermaidConfig(icon, "%% note\ngraph TD\n  a --> b"), {
-    flowchart: { curve: "linear", nodeSpacing: 50, rankSpacing: LIBRARY_ICON_GROWN_SPACING },
-  });
-  assert.deepEqual(libraryIconMermaidConfig(icon, "flowchart LR\n  a --> b"), {
-    flowchart: { curve: "linear", nodeSpacing: LIBRARY_ICON_GROWN_SPACING, rankSpacing: 50 },
-  });
-  assert.deepEqual(libraryIconMermaidConfig(icon, "flowchart RL"), libraryIconMermaidConfig(icon, "flowchart LR"));
-  assert.deepEqual(libraryIconMermaidConfig(icon, "flowchart"), libraryIconMermaidConfig(icon, "flowchart TB"));
+  assert.equal(libraryIconMermaidSource([], "flowchart TB\n  a --> b"), "flowchart TB\n  a --> b");
+  assert.equal(libraryIconMermaidSource([{ item: null }], "flowchart TB\n  a --> b"), "flowchart TB\n  a --> b");
+  // mermaid-to-excalidraw 3.x lays flowcharts out 60px apart within a rank and
+  // 72px between ranks (Pele's 40 and 48, times 1.5). Icon nodes grow taller:
+  // in a top-down chart that is the gap between ranks, in a left-right chart
+  // the gap between nodes of one rank.
+  const topDown = { curve: "linear", nodeSpacing: 60, rankSpacing: 72 + LIBRARY_ICON_GROWTH };
+  const leftRight = { curve: "linear", nodeSpacing: 60 + LIBRARY_ICON_GROWTH, rankSpacing: 72 };
+  const tb = splitIconDirective(libraryIconMermaidSource(icon, "flowchart TB\n  a --> b"));
+  assert.deepEqual(tb, { index: 0, flowchart: topDown, rest: "flowchart TB\n  a --> b" });
+  // The directive goes right before the header line, after leading comments.
+  const commented = splitIconDirective(libraryIconMermaidSource(icon, "%% note\ngraph TD\n  a --> b"));
+  assert.deepEqual(commented, { index: 1, flowchart: topDown, rest: "%% note\ngraph TD\n  a --> b" });
+  assert.deepEqual(splitIconDirective(libraryIconMermaidSource(icon, "flowchart LR\n  a --> b")).flowchart, leftRight);
+  assert.deepEqual(splitIconDirective(libraryIconMermaidSource(icon, "flowchart RL")).flowchart, leftRight);
+  assert.deepEqual(splitIconDirective(libraryIconMermaidSource(icon, "flowchart")).flowchart, topDown);
+  // After frontmatter, so the diagram's own config is read first and this wins.
   const frontmatter = "---\nconfig:\n  flowchart:\n    curve: basis\n---\nflowchart LR\n  a --> b";
-  assert.deepEqual(libraryIconMermaidConfig(icon, frontmatter), libraryIconMermaidConfig(icon, "flowchart LR"));
+  assert.deepEqual(splitIconDirective(libraryIconMermaidSource(icon, frontmatter)), {
+    index: 5,
+    flowchart: leftRight,
+    rest: frontmatter,
+  });
+  // A source with no header line is left alone.
+  assert.equal(libraryIconMermaidSource(icon, "%% only a comment"), "%% only a comment");
 });
 
 test("libraryIconSize scales every item to one icon height within a width cap", () => {

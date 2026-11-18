@@ -2,14 +2,16 @@ packages:
   - "."
 
 trustPolicy: no-downgrade
-# langium@3.3.1 (pinned exactly by @mermaid-js/parser 0.6.3, via mermaid 11.12 and
-# mermaid-to-excalidraw 2.x) has no provenance while langium@3.0.0 did. Checked on the
-# npm registry 2026-11-09: same publisher (msujew) since 3.1.0, released 2025-01-23,
-# gitHead ef7ff4e matches the upstream "Release 3.3.1" commit, so not a takeover.
-# Remove once mermaid >= 11.16 and mermaid-to-excalidraw 3.x drop parser 0.6.x.
-trustPolicyExclude:
-  - langium@3.3.1
 blockExoticSubdeps: true
+# @excalidraw/excalidraw 0.18.1 depends on mermaid-to-excalidraw 2.2.2 for its own
+# Mermaid paste and text-to-diagram dialog, and 2.2.2 pulls in mermaid 11.12.1
+# (CVE-2026-41150, CVE-2026-41159). Point it at the converter the whiteboard pins
+# (3.x, parsed by Pele, no mermaid) so mermaid leaves the bundle. It calls only
+# parseMermaidToExcalidraw(text) and reads { elements, files }, which 3.x keeps.
+# Keep this equal to the devDependency: test/whiteboard-pins.test.js checks that
+# Excalidraw resolves the pinned converter.
+overrides:
+  "@excalidraw/excalidraw>@excalidraw/mermaid-to-excalidraw": 3.6.0
 minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
 minimumReleaseAgeExclude:

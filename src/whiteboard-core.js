@@ -4,7 +4,11 @@
 // normal module imports in the bundled whiteboard frame (unlike mermaid-node.js
 // helpers, these are never serialized with `.toString()`).
 
-import { LIBRARY_REF_CUSTOM_DATA_KEY, mermaidHeaderLine, parseLibraryIconDirectives } from "./whiteboard-libraries.js";
+import {
+  LIBRARY_REF_CUSTOM_DATA_KEY,
+  mermaidHeaderLineIndex,
+  parseLibraryIconDirectives,
+} from "./whiteboard-libraries.js";
 
 export const WHITEBOARD_PROMPT_TAG = "whiteboard";
 export const EXCALIDRAW_SCENE_TARGET_TYPE = "excalidraw-scene";
@@ -192,11 +196,15 @@ export function restoreMermaidLabelLineBreaks(elements, { measure } = {}) {
 // very wide items are capped by width instead.
 export const LIBRARY_ICON_HEIGHT = 64;
 export const LIBRARY_ICON_MAX_WIDTH = 120;
-// Icon nodes are about 50px taller than the boxes Mermaid lays out, so the
-// gap along that axis needs Mermaid's default 50px plus that growth, or
-// neighbours overlap. The other axis keeps Mermaid's default.
-export const LIBRARY_ICON_GROWN_SPACING = 100;
-const MERMAID_DEFAULT_SPACING = 50;
+// Icon nodes are about 50px taller than the boxes the converter lays out, so
+// the gap along that axis needs the converter's own gap plus that growth, or
+// neighbours crowd or overlap. The other axis keeps the converter's gap.
+// mermaid-to-excalidraw 3.x lays flowcharts out with Pele's gaps scaled by 1.5
+// (40px between nodes of a rank, 48px between ranks; `getPeleConfig` in its
+// dist/pele/parsePele.js).
+export const LIBRARY_ICON_GROWTH = 50;
+const CONVERTER_FLOWCHART_NODE_SPACING = 60;
+const CONVERTER_FLOWCHART_RANK_SPACING = 72;
 const LIBRARY_ICON_PADDING = 8;
 const LIBRARY_ICON_LABEL_GAP = 6;
 const LIBRARY_ICON_ARROW_GAP = 4;
@@ -258,23 +266,32 @@ function commonBounds(elements) {
 }
 
 /**
- * Extra Mermaid config for a diagram that places at least one icon. The
- * converter merges `flowchart` shallowly over its own, so its linear curve is
- * restated here.
+ * The Mermaid source to convert for a diagram that places at least one icon:
+ * a `%%{init}%%` directive just before its header line widens the gap along the
+ * axis icon nodes grow along (between ranks top-down, between the nodes of a
+ * rank left-right). mermaid-to-excalidraw 3.x ignores a caller's flowchart
+ * config, and a diagram's own flowchart config replaces the converter's whole
+ * section, so the directive restates its linear curve and its other gap.
+ * Only the converted copy carries the directive; the artifact's source is
+ * unchanged.
  * @param {{ item: unknown }[]} icons
  * @param {string} source
- * @returns {{ flowchart?: { curve: "linear", nodeSpacing: number, rankSpacing: number } }}
+ * @returns {string}
  */
-export function libraryIconMermaidConfig(icons, source) {
-  if (!(Array.isArray(icons) && icons.some((icon) => icon.item))) return {};
-  const leftRight = /^(?:flowchart|graph)\s+(LR|RL)\b/i.test(mermaidHeaderLine(source));
-  return {
-    flowchart: {
-      curve: "linear",
-      nodeSpacing: leftRight ? LIBRARY_ICON_GROWN_SPACING : MERMAID_DEFAULT_SPACING,
-      rankSpacing: leftRight ? MERMAID_DEFAULT_SPACING : LIBRARY_ICON_GROWN_SPACING,
-    },
+export function libraryIconMermaidSource(icons, source) {
+  const text = String(source || "");
+  if (!(Array.isArray(icons) && icons.some((icon) => icon.item))) return text;
+  const lines = text.split(/\r?\n/);
+  const header = mermaidHeaderLineIndex(lines);
+  if (header < 0) return text;
+  const leftRight = /^(?:flowchart|graph)\s+(LR|RL)\b/i.test(lines[header].trim());
+  const flowchart = {
+    curve: "linear",
+    nodeSpacing: CONVERTER_FLOWCHART_NODE_SPACING + (leftRight ? LIBRARY_ICON_GROWTH : 0),
+    rankSpacing: CONVERTER_FLOWCHART_RANK_SPACING + (leftRight ? 0 : LIBRARY_ICON_GROWTH),
   };
+  lines.splice(header, 0, `%%{init: ${JSON.stringify({ flowchart })}}%%`);
+  return lines.join("\n");
 }
 
 export function libraryIconSize(item) {
