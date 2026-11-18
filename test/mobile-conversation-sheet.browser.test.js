@@ -72,6 +72,12 @@ const GEOMETRY = `() => {
     send: rect(document.getElementById("send")),
     sendAndEnd: rect(document.getElementById("sendAndEnd")),
     textarea: rect(document.getElementById("chatInput")),
+    styles: {
+      chatInputFontPx: parseFloat(getComputedStyle(document.getElementById("chatInput")).fontSize),
+      sharePasswordFontPx: parseFloat(getComputedStyle(document.getElementById("sharePassword")).fontSize),
+      bannerBackground: getComputedStyle(document.getElementById("presenceBanner")).backgroundColor,
+      bannerBorderTopPx: parseFloat(getComputedStyle(document.getElementById("presenceBanner")).borderTopWidth),
+    },
     summary: document.getElementById("panelSummary").textContent,
     toggleLabel: document.getElementById("panelToggle").getAttribute("aria-label"),
     documentScrollable: document.documentElement.scrollHeight > innerHeight || document.documentElement.scrollWidth > innerWidth,
@@ -234,6 +240,12 @@ test(
       let g = geometry();
       assertDocked(g);
       assert.equal(g.summary, "Đã lưu cho agent");
+      // iOS zooms the whole page into a typing field under 16px, and the status line inside the
+      // sheet, itself a card, is a rule rather than a nested box.
+      assert.ok(g.styles.chatInputFontPx >= 16, `composer is at least 16px: ${JSON.stringify(g.styles)}`);
+      assert.ok(g.styles.sharePasswordFontPx >= 16, `share password is at least 16px: ${JSON.stringify(g.styles)}`);
+      assert.equal(g.styles.bannerBackground, "rgba(0, 0, 0, 0)");
+      assert.equal(g.styles.bannerBorderTopPx, 0);
 
       evaluate('() => { document.getElementById("panelHead").click(); return "ok"; }');
       wait(500);
@@ -307,6 +319,8 @@ test(
       assert.equal(g.panel.right - g.panel.left, 360, "desktop panel keeps its width");
       assert.equal(g.chat.inert, false);
       assert.equal(g.frame.right, g.panel.left, "artifact and panel sit side by side");
+      assert.ok(g.styles.bannerBorderTopPx > 0, `desktop status line keeps its box: ${JSON.stringify(g.styles)}`);
+      assert.notEqual(g.styles.bannerBackground, "rgba(0, 0, 0, 0)");
     } finally {
       run(process.execPath, ["bin/folio-axi.js", "stop", "--port", String(port)], lavishEnv, 15_000);
       run("chrome-devtools-axi", ["stop"], chromeEnv);

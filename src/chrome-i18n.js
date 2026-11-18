@@ -22,7 +22,7 @@ export const LANGUAGE_STORAGE_KEY = "folio-axi:language";
 // rule, and so does the attachment name the chip shows. Text and attributes inside these are never
 // translated, even when they match a table entry.
 export const FOREIGN_CONTENT_SELECTOR =
-  ".chat-md,.bubble-text,.anchor,.note-draft,.revision-label,.revision-time,.revision-summary,.menu-file-text,.panel-summary.is-unread,.chat-attachment-copy > strong,img.bubble-attachment,.ended-copy";
+  ".chat-md,.bubble-text,.anchor,.note-draft,.revision-label,.revision-time,.revision-summary,.menu-file-text,.panel-summary.is-unread,.chat-attachment-copy > strong,img.bubble-attachment,#endedOverlay .ended-copy";
 
 // Elements whose own attributes are someone else's text while their text is Folio's: an expired
 // image says "Image expired" in the chrome's language, and its tooltip is the user's file name.

@@ -86,51 +86,6 @@ test("chrome.css declares no font size under 12px", async () => {
   assert.deepEqual(small, []);
 });
 
-// The rules inside every `@media (max-width: 860px)` block, the phone layout.
-function phoneRules(css) {
-  const blocks = [];
-  const opener = /@media \(max-width: 860px\) \{/g;
-  for (let match = opener.exec(css); match; match = opener.exec(css)) {
-    let depth = 1;
-    let index = match.index + match[0].length;
-    const start = index;
-    while (depth > 0 && index < css.length) {
-      if (css[index] === "{") depth += 1;
-      if (css[index] === "}") depth -= 1;
-      index += 1;
-    }
-    blocks.push(css.slice(start, index - 1));
-  }
-  return blocks.join("\n");
-}
-
-// The declarations of every rule whose selector list names `selector`.
-function ruleBody(css, selector) {
-  const bodies = [];
-  for (const match of css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    const selectors = match[1].split(",").map((part) => part.trim());
-    if (selectors.includes(selector)) bodies.push(match[2]);
-  }
-  return bodies.join("\n");
-}
-
-// design-kit audit (18/11): typing into a 14px field makes iOS zoom the whole review in.
-test("typing fields are at least 16px on a phone", async () => {
-  const css = phoneRules(await readFile(new URL("../src/chrome.css", import.meta.url), "utf8"));
-  for (const selector of [".composer textarea", ".share-grid input"]) {
-    assert.match(ruleBody(css, selector), /font-size:\s*max\(16px,\s*1em\)/, selector);
-  }
-});
-
-// design-kit audit (18/11): Impeccable flagged the boxed status line inside the phone sheet,
-// which is itself a card, as a card inside a card.
-test("the status line inside the phone sheet is not a nested box", async () => {
-  const css = phoneRules(await readFile(new URL("../src/chrome.css", import.meta.url), "utf8"));
-  const body = ruleBody(css, ".presence-banner");
-  assert.match(body, /background:\s*transparent/);
-  assert.match(body, /border:\s*0/);
-});
-
 test("the artifact iframe has an accessible name", () => {
   const html = createChromeHtml({ key: "abc", file: "/tmp/artifact.html" });
   const iframe = /<iframe id="artifact"[^>]*>/.exec(html);
