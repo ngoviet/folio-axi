@@ -145,6 +145,12 @@ test("localizer initialization failure leaves an English page identified as Engl
 
 // A tiny element: enough DOM for createDomLocalizer, matching `tag.class#id` selectors joined by
 // the descendant combinator.
+/**
+ * @param {string} tag
+ * @param {string} className
+ * @param {Record<string, string>} [attributes]
+ * @param {any[]} [children]
+ */
 function fakeElement(tag, className, attributes = {}, children = []) {
   const element = {
     nodeType: 1,
