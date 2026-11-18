@@ -660,3 +660,199 @@ test("failed state replacement leaves the existing destination intact and remove
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+// Folio (design item 6): the Claude Code session that owns a page can end while the page stays
+// open in the browser. The SessionEnd hook reports that here so the page can say so.
+function agentSession(base, body, headers = {}) {
+  return fetch(`${base}/api/agent-session`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...headers },
+    body: JSON.stringify(body),
+  });
+}
+
+async function ownerClosed(base, key) {
+  const html = await fetch(`${base}/session/${key}`).then((res) => res.text());
+  return /"initialOwnerClosed":true/.test(html);
+}
+
+test("a closed agent session is recorded on the pages it owns and shown to the page", async () => {
+  await withServer(async ({ base, artifact, stateFile }) => {
+    const { key } = await open(base, artifact, "sess-a");
+    assert.equal(await ownerClosed(base, key), false);
+
+    const other = await agentSession(base, { session_id: "sess-b", state: "closed" }).then((res) => res.json());
+    assert.deepEqual(other, { status: "closed", pages: 0 });
+    assert.equal(await ownerClosed(base, key), false);
+
+    const closed = await agentSession(base, { session_id: "sess-a", state: "closed" }).then((res) => res.json());
+    assert.deepEqual(closed, { status: "closed", pages: 1 });
+    assert.ok((await new SessionStore(stateFile).findByKey(key)).owner_closed_at);
+    assert.equal(await ownerClosed(base, key), true);
+
+    const again = await agentSession(base, { session_id: "sess-a", state: "closed" }).then((res) => res.json());
+    assert.deepEqual(again, { status: "closed", pages: 0 }, "an already closed page is not reported twice");
+
+    const active = await agentSession(base, { session_id: "sess-a", state: "active" }).then((res) => res.json());
+    assert.deepEqual(active, { status: "active", pages: 1 });
+    assert.equal(await ownerClosed(base, key), false);
+  });
+});
+
+test("the owner's own activity, a reply, or a takeover clears the closed mark", async () => {
+  await withServer(async ({ base, artifact, stateFile }) => {
+    const { key } = await open(base, artifact, "sess-a");
+    const close = () => agentSession(base, { session_id: "sess-a", state: "closed" });
+
+    await close();
+    await poll(base, artifact, { session_id: "sess-a" });
+    assert.equal(await ownerClosed(base, key), false, "the owner polled");
+
+    await close();
+    await fetch(`${base}/api/${key}/agent-reply`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "still here" }),
+    });
+    assert.equal(await ownerClosed(base, key), false, "an agent replied");
+
+    await close();
+    await open(base, artifact, "sess-a");
+    assert.equal(await ownerClosed(base, key), false, "the owner opened the page again");
+
+    await close();
+    const query = new URLSearchParams({ file: artifact, timeoutMs: "0", session_id: "sess-b", takeover: "1" });
+    await fetch(`${base}/api/poll?${query}`, { method: "POST" });
+    const session = await new SessionStore(stateFile).findByKey(key);
+    assert.equal(session.owner_session_id, "sess-b");
+    assert.equal(session.owner_closed_at, undefined, "a new owner took over");
+  });
+});
+
+test("agent-session rejects a foreign origin, a bad id and an unknown state", async () => {
+  await withServer(async ({ base, artifact, stateFile }) => {
+    const { key } = await open(base, artifact, "sess-a");
+    const foreign = await agentSession(
+      base,
+      { session_id: "sess-a", state: "closed" },
+      { origin: "https://evil.example" },
+    );
+    assert.equal(foreign.status, 403);
+    assert.equal((await agentSession(base, { session_id: "bad id;", state: "closed" })).status, 400);
+    assert.equal((await agentSession(base, { session_id: "sess-a", state: "gone" })).status, 400);
+    assert.equal((await new SessionStore(stateFile).findByKey(key)).owner_closed_at, undefined);
+  });
+});
+
+test("the page hears live when its agent session closes and comes back", async () => {
+  await withServer(async ({ base, artifact }) => {
+    const { key } = await open(base, artifact, "sess-a");
+    const { default: WebSocket } = await import("ws");
+    const socket = new WebSocket(`${base.replace(/^http/, "ws")}/events/${key}`, { origin: base });
+    const seen = [];
+    socket.on("message", (raw) => {
+      const message = JSON.parse(String(raw));
+      if (message.type === "agent-session") seen.push(message.data.closed);
+    });
+    await new Promise((resolve, reject) => socket.once("open", resolve).once("error", reject));
+    const until = async (length) => {
+      for (let i = 0; i < 200 && seen.length < length; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+    };
+    try {
+      await until(1);
+      await agentSession(base, { session_id: "sess-a", state: "closed" });
+      await until(2);
+      await poll(base, artifact, { session_id: "sess-a" });
+      await until(3);
+      assert.deepEqual(seen, [false, true, false]);
+    } finally {
+      socket.close();
+    }
+  });
+});
+
+function runHook(event, input, env) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      [fileURLToPath(new URL("../bin/folio-axi.js", import.meta.url)), "hook", event],
+      { env: { ...process.env, ...env } },
+    );
+    let output = "";
+    child.stdout.on("data", (chunk) => (output += chunk));
+    child.stderr.on("data", (chunk) => (output += chunk));
+    child.on("error", reject);
+    child.on("close", (code) => resolve({ code, output }));
+    child.stdin.end(JSON.stringify(input));
+  });
+}
+
+test("the SessionEnd hook marks pages through the running server, and SessionStart unmarks them", async () => {
+  await withServer(async ({ base, dir, artifact, stateFile }) => {
+    const { key } = await open(base, artifact, "sess-a");
+    // The test server keeps state.json beside the artifact, so that directory is its state dir.
+    const env = { FOLIO_AXI_STATE_DIR: dir, FOLIO_AXI_PORT: new URL(base).port };
+    const input = { session_id: "sess-a", cwd: dir, reason: "prompt_input_exit" };
+    const ended = await runHook("session-end", input, env);
+    assert.deepEqual(ended, { code: 0, output: "" });
+    assert.ok((await new SessionStore(stateFile).findByKey(key)).owner_closed_at);
+    assert.equal(await ownerClosed(base, key), true);
+
+    const resumed = await runHook("session-start", { ...input, source: "resume" }, env);
+    assert.equal(resumed.code, 0);
+    assert.match(resumed.output, /owner: this session/);
+    assert.equal(await ownerClosed(base, key), false);
+  });
+});
+
+test("the SessionEnd hook writes the mark itself when no server of this installation answers", async () => {
+  await withServer(async ({ base, dir, artifact }) => {
+    // Another installation: its own state file, and the port answers with a different state id.
+    const elsewhere = await mkdtemp(path.join(tmpdir(), "folio-elsewhere-"));
+    try {
+      const store = new SessionStore(path.join(elsewhere, "state.json"));
+      const session = await store.upsertSession(artifact, "http://localhost", { ownerSessionId: "sess-z" });
+      const input = { session_id: "sess-z", cwd: dir };
+      const foreign = { FOLIO_AXI_STATE_DIR: elsewhere, FOLIO_AXI_PORT: new URL(base).port };
+      assert.deepEqual(await runHook("session-end", input, foreign), { code: 0, output: "" });
+      assert.ok((await store.findByKey(session.key)).owner_closed_at, "a foreign server is not asked");
+
+      await store.setOwnerSessionClosed("sess-z", false);
+      const closedPort = { FOLIO_AXI_STATE_DIR: elsewhere, FOLIO_AXI_PORT: "1" };
+      assert.deepEqual(await runHook("session-end", input, closedPort), { code: 0, output: "" });
+      assert.ok((await store.findByKey(session.key)).owner_closed_at, "no server at all");
+    } finally {
+      await rm(elsewhere, { recursive: true, force: true });
+    }
+  });
+});
+
+// Folio: the owner usually ends a review with Send & End, and the agent's answer to that last
+// batch used to be refused. It now lands in the transcript; the session stays ended.
+test("an agent reply lands on a session the user ended, and the session stays ended", async () => {
+  await withServer(async ({ base, dir, artifact, stateFile }) => {
+    const { key } = await open(base, artifact, "sess-a");
+    // A second open page keeps the server from stepping down when the first one ends.
+    const other = path.join(dir, "other.html");
+    await writeFile(other, "<!doctype html><html><body>other</body></html>");
+    await open(base, other, "sess-a");
+    await sendPrompt(base, key, "last words");
+    await fetch(`${base}/api/${key}/end`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: base },
+      body: "{}",
+    });
+    const reply = await fetch(`${base}/api/${key}/agent-reply`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "done, thanks" }),
+    });
+    assert.equal(reply.status, 200);
+    assert.deepEqual(await reply.json(), { status: "sent", session_ended: true, ended_by: "user" });
+    const session = await new SessionStore(stateFile).findByKey(key);
+    assert.equal(session.status, "ended");
+    assert.equal(session.ended_by, "user");
+    assert.equal(session.chat.at(-1).text, "done, thanks");
+    assert.equal(session.prompts.length, 1, "the undelivered batch is untouched");
+  });
+});

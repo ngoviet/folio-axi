@@ -8,6 +8,8 @@
 //   Stop              blocks the stop and hands over feedback that is still waiting, or asks
 //                     once for a background poll on an owned page nobody is polling.
 //   UserPromptSubmit  adds waiting feedback to the user's next chat turn.
+//   SessionEnd        tells the server this session is gone, so its pages say that nobody is
+//                     left to read what is sent. SessionStart takes it back on a resumed session.
 //
 // Hooks never fail the agent: every error degrades to "no output".
 import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
@@ -20,6 +22,7 @@ export const HOOK_EVENTS = Object.freeze({
   "session-start": "SessionStart",
   stop: "Stop",
   "prompt-submit": "UserPromptSubmit",
+  "session-end": "SessionEnd",
 });
 export const HOOK_CONTEXT_LIMIT = 1500;
 export const HOOK_FEEDBACK_LIMIT = 9000;
@@ -80,7 +83,9 @@ export function createSessionStartContext({ sessions, cwd, sessionId }) {
       ? "no owner"
       : session.owner_session_id === sessionId
         ? "this session"
-        : "another session";
+        : session.owner_closed_at
+          ? "closed session"
+          : "another session";
     const waiting = pendingCount(session);
     const relative = path.relative(cwd, session.file) || session.file;
     const line = `- ${relative} · ${session.status}${waiting ? ` · ${waiting} waiting` : ""} · owner: ${owner}`;
@@ -217,6 +222,15 @@ async function pollReminder({ sessions, sessionId, stateDirectory, listeningKeys
   });
 }
 
+// Hooks never fail the agent, so a report the server did not take is simply dropped.
+async function reportAgentSession(setAgentSession, sessionId, state) {
+  try {
+    await setAgentSession?.(sessionId, state);
+  } catch {
+    // The page keeps its previous wording.
+  }
+}
+
 /**
  * Runs one hook event. `deps.pollOnce(file, sessionId)` takes feedback through the server with
  * ack mode; `deps.ack(key, deliveryId)` confirms it after the caller wrote the output.
@@ -228,12 +242,13 @@ async function pollReminder({ sessions, sessionId, stateDirectory, listeningKeys
  *   readSessions: () => Promise<any[]>,
  *   pollOnce: (file: string, sessionId: string) => Promise<any>,
  *   listeningKeys?: () => Promise<Set<string>>,
+ *   setAgentSession?: (sessionId: string, state: "closed" | "active") => Promise<unknown>,
  * }} options
  * @returns {Promise<{ output: string, acks: { key: string, deliveryId: string }[] }>}
  */
 export async function runHookEvent(
   event,
-  { input, env = process.env, stateDirectory, readSessions, pollOnce, listeningKeys },
+  { input, env = process.env, stateDirectory, readSessions, pollOnce, listeningKeys, setAgentSession },
 ) {
   const none = { output: "", acks: [] };
   const hookEventName = HOOK_EVENTS[event];
@@ -249,8 +264,13 @@ export async function runHookEvent(
         // Without the env file, `open`/`poll` still work; they just carry no session id.
       }
     }
+    const started = await readSessions();
+    // A resumed session keeps its id, and its pages were marked closed when it ended.
+    if (sessionId && started.some((session) => session?.owner_session_id === sessionId && session.owner_closed_at)) {
+      await reportAgentSession(setAgentSession, sessionId, "active");
+    }
     const context = createSessionStartContext({
-      sessions: await readSessions(),
+      sessions: started,
       cwd: await canonicalDirectory(cwd),
       sessionId,
     });
@@ -262,6 +282,17 @@ export async function runHookEvent(
   }
 
   if (!sessionId) return none;
+  if (hookEventName === "SessionEnd") {
+    // Only a page that is still open, or still holds feedback, has anything to tell the user.
+    const mine = (await readSessions()).filter(
+      (session) =>
+        session?.owner_session_id === sessionId &&
+        !session.owner_closed_at &&
+        (session.status !== "ended" || hasPending(session)),
+    );
+    if (mine.length > 0) await reportAgentSession(setAgentSession, sessionId, "closed");
+    return none;
+  }
   if (hookEventName === "Stop" && ["0", "off", "false"].includes(String(env.FOLIO_AXI_STOP_HOOK || "").toLowerCase())) {
     return none;
   }
@@ -338,6 +369,7 @@ export function folioHookEntries(command = "folio-axi") {
     SessionStart: { hooks: [{ type: "command", command: `${command} hook session-start`, timeout: 10 }] },
     Stop: { hooks: [{ type: "command", command: `${command} hook stop`, timeout: 30 }] },
     UserPromptSubmit: { hooks: [{ type: "command", command: `${command} hook prompt-submit`, timeout: 15 }] },
+    SessionEnd: { hooks: [{ type: "command", command: `${command} hook session-end`, timeout: 5 }] },
   };
 }
 
@@ -347,7 +379,9 @@ function isFolioHook(hook) {
   const token = "(?:\"[^\"]+\"|'[^']+'|[^\\s]+)";
   const match = hook.command
     .trim()
-    .match(new RegExp(`^(${token})(?:\\s+(${token}))?\\s+hook\\s+(session-start|stop|prompt-submit)\\s*$`, "i"));
+    .match(
+      new RegExp(`^(${token})(?:\\s+(${token}))?\\s+hook\\s+(session-start|stop|prompt-submit|session-end)\\s*$`, "i"),
+    );
   if (!match) return false;
   const executable = (value) =>
     value

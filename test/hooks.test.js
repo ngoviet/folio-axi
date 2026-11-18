@@ -383,3 +383,71 @@ test("the Stop switch also turns the poll reminder off", async () => {
     assert.equal(result.output, "");
   });
 });
+
+// Design item 6: SessionEnd tells the server that this agent session is gone, so its pages can
+// say so; SessionStart on the same id (a resumed session) takes that back.
+const sessionEvent = (event, sessions, { input = /** @type {any} */ (reminderInput), calls = [], env = {} } = {}) =>
+  runHookEvent(event, {
+    input,
+    env,
+    stateDirectory: tmpdir(),
+    readSessions: async () => sessions,
+    pollOnce: async () => assert.fail("session hooks never poll"),
+    setAgentSession: async (sessionId, state) => {
+      calls.push([sessionId, state]);
+    },
+  }).then((result) => ({ ...result, calls }));
+
+test("SessionEnd reports the session closed once, and only when it owns a page", async () => {
+  const closed = await sessionEvent("session-end", [ownedPage("a"), ownedPage("b", { owner_session_id: "other" })]);
+  assert.deepEqual(closed.calls, [["s1", "closed"]]);
+  assert.equal(closed.output, "", "SessionEnd prints nothing");
+  assert.deepEqual((await sessionEvent("session-end", [ownedPage("b", { owner_session_id: "other" })])).calls, []);
+  const already = [ownedPage("a", { owner_closed_at: new Date().toISOString() })];
+  assert.deepEqual((await sessionEvent("session-end", already)).calls, []);
+  assert.deepEqual((await sessionEvent("session-end", [ownedPage("a")], { input: { cwd } })).calls, []);
+});
+
+test("SessionEnd also marks an ended page that still holds feedback nobody read", async () => {
+  const ended = (extra) => ownedPage("a", { status: "ended", ...extra });
+  assert.deepEqual((await sessionEvent("session-end", [ended({})])).calls, []);
+  assert.deepEqual((await sessionEvent("session-end", [ended({ prompts: [{ prompt: "p" }] })])).calls, [
+    ["s1", "closed"],
+  ]);
+});
+
+test("SessionEnd never fails the agent when the report fails", async () => {
+  const result = await runHookEvent("session-end", {
+    input: reminderInput,
+    env: {},
+    stateDirectory: tmpdir(),
+    readSessions: async () => [ownedPage("a")],
+    pollOnce: async () => assert.fail("session hooks never poll"),
+    setAgentSession: async () => {
+      throw new Error("server is down");
+    },
+  });
+  assert.deepEqual(result, { output: "", acks: [] });
+});
+
+test("SessionStart on a resumed session reports it active again", async () => {
+  const closedAt = new Date().toISOString();
+  const resumed = await sessionEvent("session-start", [ownedPage("a", { owner_closed_at: closedAt })]);
+  assert.deepEqual(resumed.calls, [["s1", "active"]]);
+  assert.match(JSON.parse(resumed.output).hookSpecificOutput.additionalContext, /owner: this session/);
+  assert.deepEqual((await sessionEvent("session-start", [ownedPage("a")])).calls, []);
+});
+
+test("SessionStart names a page whose owning session has closed", () => {
+  const sessions = [page("a", { owner_session_id: "gone", owner_closed_at: new Date().toISOString() })];
+  const context = createSessionStartContext({ sessions, cwd, sessionId: "s1" });
+  assert.match(context, /owner: closed session/);
+  assert.match(context, /--takeover/);
+});
+
+test("hook setup installs and recognizes the SessionEnd hook", () => {
+  assert.match(folioHookEntries().SessionEnd.hooks[0].command, /^folio-axi hook session-end$/);
+  const stale = { hooks: [{ type: "command", command: "old/path/folio-axi hook session-end" }] };
+  const [updated] = computeClaudeHookUpdate({ hooks: { SessionEnd: [stale] } });
+  assert.deepEqual(updated.hooks.SessionEnd, [folioHookEntries().SessionEnd]);
+});

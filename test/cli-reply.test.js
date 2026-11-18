@@ -306,45 +306,67 @@ test("reply refuses a missing session, an unreachable server, and a non-success 
   }
 });
 
-test("reply refuses user-ended and agent-ended sessions without changing the transcript", async () => {
-  for (const endedBy of ["user", "agent"]) {
-    await withArtifact(async ({ artifact, env, base, key }) => {
-      const live = await openLiveEvents(base, key);
-      try {
-        if (endedBy === "user") {
-          const ended = await fetch(`${base}/api/${key}/end`, {
-            method: "POST",
-            headers: { "content-type": "application/json", origin: base },
-            body: "{}",
-          });
-          assert.equal(ended.status, 200);
-        } else {
-          const ended = await runCli(["end", artifact], { env });
-          assert.equal(ended.status, 0, ended.stderr || ended.stdout);
-        }
-        const before = chromeSessionData(await fetch(`${base}/session/${key}`).then((response) => response.text()));
-        const refused = await runCli(["reply", artifact, "--agent-reply", "Should not land."], { env });
-        assert.notEqual(refused.status, 0);
-        assert.match(refused.stdout, /SESSION_ENDED/);
-        assert.match(refused.stdout, /Stop polling/);
-        assert.match(refused.stdout, /directly in this conversation/);
-        if (endedBy === "user") assert.match(refused.stdout, /--reopen/);
-        else assert.doesNotMatch(refused.stdout, /--reopen/);
-        assert.doesNotMatch(refused.stdout, /status: sent/);
-        const after = chromeSessionData(await fetch(`${base}/session/${key}`).then((response) => response.text()));
-        assert.deepEqual(after.initialChat, before.initialChat);
+test("reply refuses an agent-ended session without changing the transcript", async () => {
+  await withArtifact(async ({ artifact, env, base, key }) => {
+    const live = await openLiveEvents(base, key);
+    try {
+      const ended = await runCli(["end", artifact], { env });
+      assert.equal(ended.status, 0, ended.stderr || ended.stdout);
+      const before = chromeSessionData(await fetch(`${base}/session/${key}`).then((response) => response.text()));
+      const refused = await runCli(["reply", artifact, "--agent-reply", "Should not land."], { env });
+      assert.notEqual(refused.status, 0);
+      assert.match(refused.stdout, /SESSION_ENDED/);
+      assert.match(refused.stdout, /Stop polling/);
+      assert.match(refused.stdout, /directly in this conversation/);
+      assert.doesNotMatch(refused.stdout, /--reopen/);
+      assert.doesNotMatch(refused.stdout, /status: sent/);
+      const after = chromeSessionData(await fetch(`${base}/session/${key}`).then((response) => response.text()));
+      assert.deepEqual(after.initialChat, before.initialChat);
 
-        const poll = await runCli(["poll", artifact, "--agent-reply", "Poll still posts.", "--timeout-ms", "0"], {
-          env,
-        });
-        assert.equal(poll.status, 0, poll.stderr || poll.stdout);
-        const polled = chromeSessionData(await fetch(`${base}/session/${key}`).then((response) => response.text()));
-        assert.equal(polled.initialChat.at(-1).text, "Poll still posts.");
-      } finally {
-        await live.close();
-      }
-    });
-  }
+      const poll = await runCli(["poll", artifact, "--agent-reply", "Poll still posts.", "--timeout-ms", "0"], {
+        env,
+      });
+      assert.equal(poll.status, 0, poll.stderr || poll.stdout);
+      const polled = chromeSessionData(await fetch(`${base}/session/${key}`).then((response) => response.text()));
+      assert.equal(polled.initialChat.at(-1).text, "Poll still posts.");
+    } finally {
+      await live.close();
+    }
+  });
+});
+
+// Folio: the user usually closes a review with Send & End. The answer to that last batch lands
+// on the ended page; the session is not reopened and the agent is told to answer in chat too.
+test("reply lands on a user-ended session, keeps it ended, and says to answer in chat as well", async () => {
+  await withArtifact(async ({ artifact, env, base, key }) => {
+    const live = await openLiveEvents(base, key);
+    try {
+      const ended = await fetch(`${base}/api/${key}/end`, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: base },
+        body: "{}",
+      });
+      assert.equal(ended.status, 200);
+      const replyPromise = runCli(["reply", artifact, "--agent-reply", "Applied your last notes."], { env });
+      const accepted = await live.nextMatching(
+        (message) => message.type === "agent-reply" && message.data.text === "Applied your last notes.",
+        "agent-reply event on an ended session",
+      );
+      assert.match(accepted.data.html, /Applied your last notes\./);
+      const reply = await replyPromise;
+      assert.equal(reply.status, 0, reply.stderr || reply.stdout);
+      assert.match(reply.stdout, /status: sent/);
+      assert.match(reply.stdout, /session_ended: true/);
+      assert.match(reply.stdout, /stays ended/);
+      assert.match(reply.stdout, /in this conversation/);
+      assert.doesNotMatch(reply.stdout, /folio-axi poll/, "an ended session is not polled again");
+      const after = chromeSessionData(await fetch(`${base}/session/${key}`).then((response) => response.text()));
+      assert.equal(after.initialEnded, true);
+      assert.equal(after.initialChat.at(-1).text, "Applied your last notes.");
+    } finally {
+      await live.close();
+    }
+  });
 });
 
 test("reply rejects missing, conflicting, empty, and unreadable reply input", async () => {

@@ -742,7 +742,40 @@ export class SessionStore {
       if (!session) return null;
       if (session.owner_session_id === owner) return session;
       session.owner_session_id = owner;
+      delete session.owner_closed_at;
       session.updated_at = new Date().toISOString();
+      await this.writeState(state);
+      return session;
+    });
+  }
+
+  // Folio: the SessionEnd hook reports that an agent session is gone, so its pages can say that
+  // nobody is going to read what is sent. `updated_at` is left alone: this is not page activity,
+  // and it must not keep an ended page from being pruned. Returns the sessions that changed.
+  async setOwnerSessionClosed(ownerSessionId, closed) {
+    const owner = normalizeOwnerSessionId(ownerSessionId);
+    if (!owner) return [];
+    return this.runExclusive(async () => {
+      const state = await this.readState();
+      const changed = [];
+      for (const session of Object.values(state.sessions)) {
+        if (session?.owner_session_id !== owner || Boolean(session.owner_closed_at) === Boolean(closed)) continue;
+        if (closed) session.owner_closed_at = new Date().toISOString();
+        else delete session.owner_closed_at;
+        changed.push(session);
+      }
+      if (changed.length > 0) await this.writeState(state);
+      return changed;
+    });
+  }
+
+  // The owner is back on this page (it polled or opened it). Returns null when nothing changed.
+  async clearOwnerClosed(key) {
+    return this.runExclusive(async () => {
+      const state = await this.readState();
+      const session = state.sessions[key];
+      if (!session?.owner_closed_at) return null;
+      delete session.owner_closed_at;
       await this.writeState(state);
       return session;
     });
@@ -812,6 +845,8 @@ export class SessionStore {
       // write as the reply, with the reply's own time, and never on an entry no poll has delivered.
       stampDone(session.chat, at, normalizeRevision(session.closed_delivery_seq));
       session.chat = [...(session.chat || []), { role: "agent", text: String(text || ""), at }];
+      // Folio: a reply proves an agent is on this page, whatever SessionEnd said earlier.
+      delete session.owner_closed_at;
       applyTranscriptBound(session);
       session.chat_revision = normalizeRevision(session.chat_revision) + 1;
       session.updated_at = at;

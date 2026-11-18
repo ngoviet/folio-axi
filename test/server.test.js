@@ -3557,6 +3557,8 @@ test("event WebSocket preserves initial state and named live-event semantics", a
       data: { chat: [], ack_ids: [], chat_revision: 0 },
     });
     assert.deepEqual(await nextMessage(), { type: "agent-presence", data: { state: "waiting" } });
+    // Folio: whether the owning agent session has ended is part of the initial snapshot too.
+    assert.deepEqual(await nextMessage(), { type: "agent-session", data: { closed: false } });
 
     const reply = await fetch(`${base}/api/${opened.key}/agent-reply`, {
       method: "POST",

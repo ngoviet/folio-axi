@@ -442,6 +442,7 @@ export async function serve({
   );
   events.on("layout-warnings", (key, warnings) => broadcastLiveEvent("layout-warnings", key, { warnings }));
   events.on("ended", (key, endedBy) => broadcastLiveEvent("ended", key, { ended_by: endedBy || null }));
+  events.on("agent-session", (key, closed) => broadcastLiveEvent("agent-session", key, { closed: Boolean(closed) }));
 
   function hasLiveEventClient(key) {
     for (const clientKey of liveEventClients.values()) {
@@ -498,6 +499,7 @@ export async function serve({
     client.sendEvent("chat-sync", serializeChatSync(session));
     const presence = computePresence(key, activePolls, deliveredFeedback);
     client.sendEvent("agent-presence", presenceEventData(key, presence, activePolls, deliveredFeedback));
+    client.sendEvent("agent-session", { closed: Boolean(session?.owner_closed_at) });
     // A connection that attaches after the live end event still needs the terminal snapshot.
     if (session?.status === "ended") client.sendEvent("ended", { ended_by: session.ended_by || null });
   }
@@ -894,6 +896,8 @@ export async function serve({
       if (existing?.status === "ended") {
         clearFeedbackDelivery(key, activePolls, deliveredFeedback, events);
       }
+      // Opening is an agent's act, and `upsertSession` does not carry the closed mark over.
+      if (existing?.owner_closed_at) events.emit("agent-session", key, false);
       logEvent?.(`session opened key=${key} file=${file}`);
       await syncOutstandingRepairs(key);
       await watchSession(session, watchers, events, logEvent, reloadDebounceMs);
@@ -926,6 +930,7 @@ export async function serve({
     ])[0];
     events.emit("agent-reply", key, entry);
     events.emit("chat-sync", key, session);
+    events.emit("agent-session", key, false);
     // The reply concludes the delivered-feedback "working" state. Human sends remain available
     // while working because the server queues them for the next poll.
     clearFeedbackDelivery(key, activePolls, deliveredFeedback, events);
@@ -1025,6 +1030,11 @@ export async function serve({
             if (currentHolder && !takeover) return { conflict: listenerConflict(currentHolder, "LISTENER_ACTIVE") };
             if (pollSessionId && ownedSession && ownerSessionId !== pollSessionId)
               await store.setOwnerSession(key, pollSessionId);
+            // Folio: whoever owns the page now is polling it, so it is no longer a closed session's.
+            if (pollSessionId && ownedSession?.owner_closed_at) {
+              await store.clearOwnerClosed(key);
+              events.emit("agent-session", key, false);
+            }
           } else if (currentHolder && !takeover) {
             return { conflict: listenerConflict(currentHolder, "LISTENER_ACTIVE") };
           }
@@ -1459,18 +1469,54 @@ export async function serve({
 
   app.post("/api/:key/agent-reply", async (req, res, next) => {
     try {
+      // Folio: the user usually closes a review with Send & End, and the agent's answer to that
+      // last batch belongs in the transcript. The reply never reopens the session; a session the
+      // agent ended itself still refuses, as before.
+      const existing = await store.findByKey(req.params.key);
+      const userEnded = existing?.status === "ended" && existing.ended_by === "user";
       const session = await publishAgentReply(req.params.key, String(req.body?.text || ""), {
-        requireOpen: true,
+        requireOpen: !userEnded,
       });
       if (!session) {
         res.status(404).json({ error: "session not found" });
         return;
       }
-      if (session.status === "ended") {
+      if (session.status === "ended" && !userEnded) {
         res.status(409).json({ status: "ended", ended_by: session.ended_by });
         return;
       }
-      res.json({ status: "sent" });
+      res.json({
+        status: "sent",
+        ...(session.status === "ended" ? { session_ended: true, ended_by: session.ended_by } : {}),
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Folio: Claude Code's SessionEnd and SessionStart hooks say when an agent session ends or
+  // resumes. Pages it owns then tell the user whether anyone is left to read what they send.
+  app.post("/api/agent-session", async (req, res, next) => {
+    try {
+      if (hasPresentOriginOrReferer(req) && !isSameOriginRequest(req, allowedHostnames, allowAnyHostname)) {
+        res.status(403).json({ error: "cross-origin agent-session rejected" });
+        return;
+      }
+      // The hook finds this server by port alone, so it names the installation it belongs to. A
+      // server on another state file answers 409 and that hook writes its own state instead.
+      if (req.body?.state_id !== undefined && req.body.state_id !== serverStateId) {
+        res.status(409).json({ error: "this server belongs to another Folio installation" });
+        return;
+      }
+      const sessionId = normalizeOwnerSessionId(req.body?.session_id);
+      const state = req.body?.state;
+      if (!sessionId || (state !== "closed" && state !== "active")) {
+        res.status(400).json({ error: "agent-session needs a session_id and state closed or active" });
+        return;
+      }
+      const changed = await store.setOwnerSessionClosed(sessionId, state === "closed");
+      for (const session of changed) events.emit("agent-session", session.key, state === "closed");
+      res.json({ status: state, pages: changed.length });
     } catch (error) {
       next(error);
     }
@@ -3269,6 +3315,8 @@ export function createChromeHtml(
     // to send and gets refused (#171).
     initialEnded: session.status === "ended",
     initialEndedBy: session.ended_by || null,
+    // Folio: the agent session that owns this page has ended (reported by the SessionEnd hook).
+    initialOwnerClosed: Boolean(session.owner_closed_at),
     initialChat: serializeChat(session.chat || []),
     initialChatAckIds: serializeChatAckIds(session.chat_ack_ids),
     initialChatRevision:
@@ -3308,10 +3356,10 @@ ${faviconTag}
 </head>
 <body class="${bodyClass}">
 <div class="bar"><div class="brand"><span class="brand-mark">Folio</span><span class="brand-support">Editor</span></div><div class="spacer" aria-hidden="true"></div><div class="warnings-wrap" id="warningsWrap" hidden><button class="warnings-button" id="warningsButton" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="warningsDrawer">${chromeIcons.warning}<span class="warnings-count" id="warningsCount">0</span></button><div class="menu warnings-drawer" id="warningsDrawer" role="dialog" aria-labelledby="warningsTitle" aria-describedby="warningsSummary" hidden><div class="warnings-head"><h2 class="warnings-title" id="warningsTitle">Layout issues</h2><p class="warnings-summary" id="warningsSummary"></p></div><div class="warnings-toolbar"><label class="warnings-selectall"><input type="checkbox" id="warningsSelectAll"><span>Select all</span></label><span class="warnings-selected" id="warningsSelected" role="status" aria-live="polite"></span></div><div class="warnings-list" id="warningsList"></div><div class="warnings-foot"><p class="warnings-note">Queueing sends a repair request with your next feedback. An issue is marked resolved only after a newer artifact load and a complete check at the same viewport no longer finds it.</p><button class="button" id="warningsQueueButton" type="button" disabled>Queue selected fixes</button></div></div></div><div class="revisions-wrap" id="revisionsWrap" hidden><button class="revisions-button" id="revisionsButton" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="revisionsDrawer"><span class="revisions-button-text">Revisions</span><span class="revisions-count" id="revisionsCount">0</span></button><div class="menu revisions-drawer" id="revisionsDrawer" role="dialog" aria-labelledby="revisionsTitle" aria-describedby="revisionsSummary" hidden><div class="revisions-head"><h2 class="revisions-title" id="revisionsTitle">Revisions</h2><p class="revisions-summary" id="revisionsSummary"></p></div><div class="revisions-list" id="revisionsList"></div><div class="revisions-foot"><p class="revisions-note">The agent declares these in the artifact itself. Reveal flashes the next block it marked for that revision; nothing about the page is restyled, so the saved file still looks the way it does here.</p></div></div></div><button class="annotate-switch" id="annotation" type="button" aria-pressed="true" title="${escapeHtml(modeToggleHint)}"><span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span><span>Annotate</span></button><button class="sidebar-toggle" id="sidebarToggle" type="button" aria-controls="panel" aria-expanded="true" aria-label="Hide conversation" title="Hide conversation">${chromeIcons.sidebar}<span class="sidebar-toggle-count" id="sidebarToggleCount" aria-hidden="true" hidden></span></button><div class="more-wrap" id="moreWrap"><button class="more-button" id="moreButton" type="button" title="More" aria-haspopup="menu" aria-expanded="false">${chromeIcons.more}</button><div class="menu more-menu" id="moreMenu" hidden><div class="menu-head"><div class="menu-label">Editing</div><button class="menu-file" id="copyPath" type="button" title="Copy path · ${escapeHtml(session.file)}">${chromeIcons.file}<span class="menu-file-text"><span class="path-head">${escapeHtml(pathHead)}</span><span class="path-tail">${escapeHtml(pathTail)}</span></span><span class="copy-hint" id="copyHint"><span class="icon-copy">${chromeIcons.copy}</span><span class="icon-check">${chromeIcons.check}</span><span id="copyHintText">Copy</span></span></button></div><div class="menu-rule"></div><button class="menu-item" id="reloadArtifact" type="button">${chromeIcons.refresh}<span>Reload artifact</span></button><button class="menu-item" id="copySnapshot" type="button">${chromeIcons.camera}<span>Copy DOM snapshot</span></button><button class="menu-item" id="exportArtifact" type="button">${chromeIcons.download}<span>Export standalone HTML</span></button><button class="menu-item" id="shareArtifact" type="button">${chromeIcons.globe}<span>Publish link</span></button><button class="menu-item" id="languageToggle" type="button">${chromeIcons.languages}<span class="language-option" data-language-option="en" lang="en">English</span><span class="language-option" data-language-option="vi" lang="vi">Tiếng Việt</span></button><div class="menu-rule"></div><button class="menu-item danger" id="end" type="button">${chromeIcons.exit}<span>End session</span></button></div></div></div>
-<div class="layout"><div class="frame"><iframe id="artifact" sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads" data-artifact-src="/artifact/${session.key}/index.html" title="Page under review"></iframe><div class="artifact-silent" id="artifactSilentNotice" role="alert" hidden><div class="artifact-silent-title">Folio could not show this artifact.</div><p class="artifact-silent-copy" id="artifactSilentCopy"></p><code class="artifact-silent-url" id="artifactSilentUrl"></code><div class="artifact-silent-actions"><button class="button" id="artifactSilentCopyLink" type="button">Copy link</button><button class="button" id="artifactSilentDismiss" type="button">Show anyway</button></div></div></div><div class="panel-scrim" id="panelScrim"></div><aside class="panel" id="panel"><div class="panel-head" id="panelHead"><span class="panel-handle" aria-hidden="true"></span><div class="panel-head-row"><h2>Conversation</h2><span class="panel-summary" id="panelSummary" role="status" aria-live="polite"></span><button class="panel-toggle" id="panelToggle" type="button" aria-expanded="false" aria-controls="panel" aria-label="Show conversation">${chromeIcons.chevronUp}</button></div></div><div class="panel-scroll" id="panelScroll"><div class="chat" id="chatLog"></div><div class="chat chat-queued" id="queuedLog"></div></div><div class="composer" id="chatComposer"><div class="presence-banner handoff-banner" id="handoffBanner" hidden><span>This review is open in another Folio tab. Unsent answers stay in the tab or window where you entered them; taking over in another window does not bring them along.</span><button class="handoff-takeover" id="handoffTakeover" type="button">Take over here</button></div><div class="presence-banner handoff-banner" id="outdatedBanner" hidden><span id="outdatedText">The Folio server this page was connected to is no longer running. Reloading will work once it is running again.</span><span class="outdated-actions"><button class="handoff-takeover" id="outdatedReload" type="button">Check and reload</button><button class="handoff-takeover" id="outdatedDismiss" type="button">Dismiss</button></span></div><div class="presence-banner" id="presenceBanner" hidden>The agent session is not waiting on this page right now. What you send is saved and reaches it the next time it is active.</div><textarea id="chatInput" placeholder="Write a message for the agent..."></textarea><div class="chat-attachments" id="chatAttachments"></div><div class="chat-attachment-toolbar"><button class="chat-attach" id="chatAttach" type="button">Attach images</button><input id="chatAttachInput" type="file" accept="${escapeHtml(acceptedMime.join(","))}" multiple hidden><span class="chat-attachment-notice" id="chatAttachmentNotice" role="status"></span></div><div class="queued-hint" id="queuedHint" role="status" hidden>Not sent yet. Click Send to Agent to deliver it.</div><div class="send-hint" id="sendHint" hidden>Nothing queued in this tab. Unsent answers stay in the tab or window where you entered them; taking over in another window does not bring them along.</div><div class="actions" id="sendActions"><button class="button button-danger" id="sendAndEnd" type="button">${chromeIcons.exit}<span>Send &amp; End</span></button><button class="button" id="send">Send to Agent</button></div></div></aside></div>
+<div class="layout"><div class="frame"><iframe id="artifact" sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads" data-artifact-src="/artifact/${session.key}/index.html" title="Page under review"></iframe><div class="artifact-silent" id="artifactSilentNotice" role="alert" hidden><div class="artifact-silent-title">Folio could not show this artifact.</div><p class="artifact-silent-copy" id="artifactSilentCopy"></p><code class="artifact-silent-url" id="artifactSilentUrl"></code><div class="artifact-silent-actions"><button class="button" id="artifactSilentCopyLink" type="button">Copy link</button><button class="button" id="artifactSilentDismiss" type="button">Show anyway</button></div></div></div><div class="panel-scrim" id="panelScrim"></div><aside class="panel" id="panel"><div class="panel-head" id="panelHead"><span class="panel-handle" aria-hidden="true"></span><div class="panel-head-row"><h2>Conversation</h2><span class="panel-summary" id="panelSummary" role="status" aria-live="polite"></span><button class="panel-toggle" id="panelToggle" type="button" aria-expanded="false" aria-controls="panel" aria-label="Show conversation">${chromeIcons.chevronUp}</button></div></div><div class="panel-scroll" id="panelScroll"><div class="chat" id="chatLog"></div><div class="chat chat-queued" id="queuedLog"></div></div><div class="composer" id="chatComposer"><div class="presence-banner handoff-banner" id="handoffBanner" hidden><span>This review is open in another Folio tab. Unsent answers stay in the tab or window where you entered them; taking over in another window does not bring them along.</span><button class="handoff-takeover" id="handoffTakeover" type="button">Take over here</button></div><div class="presence-banner handoff-banner" id="outdatedBanner" hidden><span id="outdatedText">The Folio server this page was connected to is no longer running. Reloading will work once it is running again.</span><span class="outdated-actions"><button class="handoff-takeover" id="outdatedReload" type="button">Check and reload</button><button class="handoff-takeover" id="outdatedDismiss" type="button">Dismiss</button></span></div><div class="presence-banner handoff-banner" id="presenceBanner" hidden><span id="presenceText" role="status">The agent session is not waiting on this page right now. What you send is saved and reaches it the next time it is active.</span><button class="handoff-takeover" id="copyAnswers" type="button" hidden>Copy my answers</button></div><textarea id="chatInput" placeholder="Write a message for the agent..."></textarea><div class="chat-attachments" id="chatAttachments"></div><div class="chat-attachment-toolbar"><button class="chat-attach" id="chatAttach" type="button">Attach images</button><input id="chatAttachInput" type="file" accept="${escapeHtml(acceptedMime.join(","))}" multiple hidden><span class="chat-attachment-notice" id="chatAttachmentNotice" role="status"></span></div><div class="queued-hint" id="queuedHint" role="status" hidden>Not sent yet. Click Send to Agent to deliver it.</div><div class="send-hint" id="sendHint" hidden>Nothing queued in this tab. Unsent answers stay in the tab or window where you entered them; taking over in another window does not bring them along.</div><div class="actions" id="sendActions"><button class="button button-danger" id="sendAndEnd" type="button">${chromeIcons.exit}<span>Send &amp; End</span></button><button class="button" id="send">Send to Agent</button></div></div></aside></div>
 <div class="share-overlay" id="shareDialog" role="dialog" aria-modal="true" aria-labelledby="shareTitleText" hidden><form class="share-card" id="shareForm"><div class="share-head"><div><div class="share-kicker">Publish to <a class="share-link" href="https://ht-ml.app" target="_blank" rel="noopener noreferrer">ht-ml.app</a></div><h2 id="shareTitleText">Publish artifact</h2></div><button class="share-close" id="shareClose" type="button" aria-label="Close publish dialog"><svg width="14" height="14" viewBox="0 0 10 10" fill="none" aria-hidden="true" focusable="false"><path d="M1 1L9 9M9 1L1 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button></div><p class="share-note">ht-ml.app is a separate, third-party hosting service, not part of Folio. Publishing sends this artifact to its servers.</p><p class="share-copy">This uploads this artifact to ht-ml.app with local assets inlined. Without a password, the page is PUBLIC and anyone with the link can open it. With a password, the page is PRIVATE and viewers must supply the password to view.</p><p class="share-note">Do not publish secrets. The Folio annotation SDK is not included.</p><div class="share-grid"><label class="share-check"><input id="shareGenerate" type="checkbox"><span>Generate a password (makes this page private)</span></label><label>Password (optional)<input id="sharePassword" name="password" type="password" autocomplete="new-password" placeholder="Leave blank for a public page"></label></div><div class="share-status" id="shareStatus" role="status"></div><div class="share-result" id="shareResult" hidden><label id="shareUrlResult">Share URL<div class="share-copy-row"><input id="shareUrl" readonly><button class="share-copy-btn" id="copyShareUrl" type="button">Copy URL</button></div></label><label id="sharePasswordResult" hidden>Password (shared secret)<div class="share-copy-row"><input id="sharePasswordOut" readonly><button class="share-copy-btn" id="copySharePassword" type="button">Copy password</button></div></label><label id="shareSiteIdResult" hidden>Site ID<div class="share-copy-row"><input id="shareSiteId" readonly><button class="share-copy-btn" id="copyShareSiteId" type="button">Copy site ID</button></div></label><label id="shareUpdateKeyResult">Update key (secret)<div class="share-copy-row"><input id="shareUpdateKey" readonly><button class="share-copy-btn" id="copyUpdateKey" type="button">Copy key</button></div></label><p class="share-note" id="shareUpdateKeyNote">Keep the update key private. ht-ml.app returns it once and it is the only way to update this page later; the service has no delete. Republish this page&#39;s HTML with <code>folio-axi share &lt;file&gt; --site &lt;site id&gt; --update-key &lt;key&gt;</code>, and add <code>--private</code> to also lock it behind a new generated password.</p></div><div class="share-actions"><button class="share-cancel" id="shareCancel" type="button">Cancel</button><button class="button" id="sharePublish" type="submit">Publish</button></div></form></div>
 <div class="ended-overlay layout-gate-overlay" id="layoutGateOverlay"${layoutGateHidden}><div class="ended-card"><div class="ended-title" id="layoutGateTitle">Checking layout.<br>One moment.</div><p class="ended-copy" id="layoutGateCopy">Folio is waiting for fonts and final geometry before revealing this artifact.</p><button class="button ended-action" id="layoutGateAction" type="button">Show anyway</button><button class="button ended-action layout-gate-bypass" id="layoutGateBypass" type="button" hidden>Show anyway</button></div></div>
-<div class="ended-overlay" id="endedOverlay" hidden><div class="ended-card"><div class="ended-title">Session ended.<br>Return to your agent to continue.</div><p class="ended-copy">${escapeHtml(session.file)}</p></div></div>
+<div class="ended-overlay" id="endedOverlay" hidden><div class="ended-card"><div class="ended-title">Session ended.<br>Return to your agent to continue.</div><p class="ended-copy">${escapeHtml(session.file)}</p><p class="ended-note" id="endedNote" role="status" hidden></p><button class="button ended-action" id="endedCopyAnswers" type="button" hidden>Copy my answers</button><div class="ended-reply" id="endedReply" hidden><div class="ended-reply-label">Last reply from the agent</div><div class="ended-reply-body" id="endedReplyBody" tabindex="0" role="group" aria-label="Last reply from the agent"></div></div></div></div>
 <div class="whiteboard-overlay" id="whiteboardOverlay" hidden><div class="whiteboard-shell"><div class="whiteboard-error" id="whiteboardError" hidden></div><button class="whiteboard-close" id="whiteboardClose" type="button" aria-label="Close whiteboard"><svg width="14" height="14" viewBox="0 0 10 10" fill="none" aria-hidden="true" focusable="false"><path d="M1 1L9 9M9 1L1 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button><iframe id="whiteboardFrame" title="Excalidraw whiteboard" sandbox="allow-scripts allow-popups"></iframe></div></div>
 <script id="lavish-session" type="application/json">${sessionJson}</script>
 <script>${CHROME_BOOT_FAILSAFE_JS}</script>
