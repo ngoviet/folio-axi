@@ -111,6 +111,16 @@ export function findLibraryItem(libraries, ref) {
  */
 export function mermaidHeaderLine(source) {
   const lines = String(source || "").split(/\r?\n/);
+  const index = mermaidHeaderLineIndex(lines);
+  return index < 0 ? "" : lines[index].trim();
+}
+
+/**
+ * The index of the diagram header line among a Mermaid source's lines, past any
+ * leading YAML frontmatter and `%%` comment lines, or -1 when there is none.
+ * @param {string[]} lines
+ */
+export function mermaidHeaderLineIndex(lines) {
   let inFrontmatter = false;
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index].trim();
@@ -123,9 +133,9 @@ export function mermaidHeaderLine(source) {
       continue;
     }
     if (!line || line.startsWith("%%")) continue;
-    return line;
+    return index;
   }
-  return "";
+  return -1;
 }
 
 /**

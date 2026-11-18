@@ -7,7 +7,7 @@ import { createRoot } from "react-dom/client";
 import "@excalidraw/excalidraw/index.css";
 
 import {
-  libraryIconMermaidConfig,
+  libraryIconMermaidSource,
   placeLibraryIcons,
   prepareLibraryIconSkeletons,
   restoreMermaidLabelLineBreaks,
@@ -92,9 +92,8 @@ async function convert(source) {
     ...directive,
     item: findLibraryItem(libraries, directive.ref),
   }));
-  const parsed = await parseMermaidToExcalidraw(source, {
+  const parsed = await parseMermaidToExcalidraw(libraryIconMermaidSource(icons, source), {
     themeVariables: { fontSize: "16px" },
-    ...libraryIconMermaidConfig(icons, source),
   });
   const { skeletons, missing } = prepareLibraryIconSkeletons(restoreMermaidLabelLineBreaks(parsed.elements), icons, {
     labelFontSize: 16,
@@ -148,13 +147,23 @@ function checkIconNode(elements, layout) {
   const nodes = elements.filter(
     (element) => ["rectangle", "ellipse", "diamond"].includes(element.type) && !element.customData?.lavishLibraryRef,
   );
+  // The clear space between the closest two nodes (negative when they overlap).
+  let minGap = Infinity;
   for (const [index, a] of nodes.entries()) {
     for (const b of nodes.slice(index + 1)) {
       const overlaps = a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
       if (overlaps) throw new Error(`${layout}: nodes ${a.id} and ${b.id} overlap`);
+      const gapX = Math.max(b.x - (a.x + a.width), a.x - (b.x + b.width));
+      const gapY = Math.max(b.y - (a.y + a.height), a.y - (b.y + b.height));
+      minGap = Math.min(minGap, Math.max(gapX, gapY));
     }
   }
-  return { nodeHeight: Math.round(node.height), arrows: arrows.length, nodes: nodes.length };
+  return {
+    nodeHeight: Math.round(node.height),
+    arrows: arrows.length,
+    nodes: nodes.length,
+    minGap: Math.round(minGap),
+  };
 }
 
 async function insertFromLibraryPanel(elements) {

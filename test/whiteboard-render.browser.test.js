@@ -181,7 +181,39 @@ test("library icon nodes keep their arrows attached and panel inserts stay named
   assert.equal(result.tdNode.arrows, 3);
   assert.equal(result.lrNode.nodes, 4);
   assert.equal(result.tdNode.nodes, 4);
+  // Icon nodes grow after layout; the widened gap keeps their arrows readable rather
+  // than leaving neighbours touching (converter 3.x without it left 14px top-down).
+  t.diagnostic(`min gap between nodes: LR ${result.lrNode.minGap}px, TD ${result.tdNode.minGap}px`);
+  assert.ok(result.lrNode.minGap >= 30, `LR nodes crowd: ${result.lrNode.minGap}px`);
+  assert.ok(result.tdNode.minGap >= 30, `TD nodes crowd: ${result.tdNode.minGap}px`);
   assert.equal(result.panelItems, 1);
   assert.equal(result.dropped, 2);
   assert.match(result.summary, /^Added library item fixture\/Gear near \(/);
+});
+
+// The labels each probe diagram's Mermaid source spells out (whitespace removed, since
+// labels wrap inside narrow shapes). An image fallback carries none of them.
+const NATIVE_DIAGRAM_LABELS = {
+  flowchart: ["Start", "Check", "Ship", "Fix", "pass", "fail"],
+  subgraph: ["Backend", "Customer", "OrdersAPI", "Orderstable"],
+  sequence: ["Alice", "Bob", "HelloBob", "HiAlice"],
+  class: ["Animal", "Dog", "+Stringname", "+eat()"],
+  er: ["CUSTOMER", "ORDER", "LINE_ITEM", "places", "contains"],
+  state: ["Idle", "Running", "start", "stop"],
+};
+
+test("every natively converted Mermaid diagram type stays editable shapes", { timeout: 90_000 }, async (t) => {
+  const result = await runBrowserFixture(t, "excalidraw-native-conversion");
+  if (!result) return;
+  t.diagnostic(JSON.stringify(result.diagrams));
+  assert.deepEqual(Object.keys(result.diagrams).sort(), Object.keys(NATIVE_DIAGRAM_LABELS).sort());
+  for (const [name, expected] of Object.entries(NATIVE_DIAGRAM_LABELS)) {
+    const diagram = result.diagrams[name];
+    const detail = `${name}: ${JSON.stringify(diagram)}`;
+    assert.equal(diagram.error, undefined, detail);
+    assert.equal(diagram.imageFallback, false, detail);
+    assert.equal(diagram.files, 0, detail);
+    assert.equal(diagram.types.image, undefined, detail);
+    for (const label of expected) assert.ok(diagram.labels.includes(label), `${name} lost label ${label}: ${detail}`);
+  }
 });
