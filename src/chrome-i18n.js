@@ -72,6 +72,15 @@ const VI_EXACT = {
   "This review is already open in another tab.": "Trang review này đã mở ở một thẻ khác.",
   "The agent session is not waiting on this page right now. What you send is saved and reaches it the next time it is active.":
     "Phiên agent hiện không chờ trên trang này. Nội dung bạn gửi được lưu lại và sẽ tới phiên khi nó hoạt động trở lại.",
+  "The agent session that opened this page has closed. What you send is saved, and a new session in the same folder is told it is waiting.":
+    "Phiên agent đã mở trang này đã đóng. Nội dung bạn gửi vẫn được lưu, và phiên mới mở trong cùng thư mục sẽ được báo là có phản hồi đang chờ.",
+  "Copy my answers": "Chép câu trả lời",
+  "The agent session that opened this page closed before reading your last answers.":
+    "Phiên agent đã mở trang này đã đóng trước khi đọc các câu trả lời cuối của bạn.",
+  "The agent has not read your last answers yet.": "Agent chưa đọc các câu trả lời cuối của bạn.",
+  "Last reply from the agent": "Trả lời cuối của agent",
+  "Agent session closed": "Phiên agent đã đóng",
+  "Saved; the agent session has closed": "Đã lưu; phiên agent đã đóng",
   "Write a message for the agent...": "Viết tin nhắn cho agent...",
   "Attach images": "Đính kèm ảnh",
   "Send & End": "Gửi và kết thúc",

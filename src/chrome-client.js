@@ -158,6 +158,12 @@ const copyPathButton = /** @type {HTMLButtonElement} */ (document.getElementById
 const copyHint = /** @type {HTMLSpanElement} */ (document.getElementById("copyHint"));
 const copyHintText = /** @type {HTMLSpanElement} */ (document.getElementById("copyHintText"));
 const presenceBanner = /** @type {HTMLDivElement} */ (document.getElementById("presenceBanner"));
+const presenceText = /** @type {HTMLSpanElement} */ (document.getElementById("presenceText"));
+const copyAnswersButton = /** @type {HTMLButtonElement} */ (document.getElementById("copyAnswers"));
+const endedNote = /** @type {HTMLParagraphElement} */ (document.getElementById("endedNote"));
+const endedCopyAnswers = /** @type {HTMLButtonElement} */ (document.getElementById("endedCopyAnswers"));
+const endedReply = /** @type {HTMLDivElement} */ (document.getElementById("endedReply"));
+const endedReplyBody = /** @type {HTMLDivElement} */ (document.getElementById("endedReplyBody"));
 const handoffBanner = /** @type {HTMLDivElement} */ (document.getElementById("handoffBanner"));
 const handoffTakeoverButton = /** @type {HTMLButtonElement} */ (document.getElementById("handoffTakeover"));
 const outdatedBanner = /** @type {HTMLDivElement} */ (document.getElementById("outdatedBanner"));
@@ -206,6 +212,9 @@ let annotationOverridden = false;
 let annotationDefaultReceived = false;
 let ended = false;
 let agentPresence = "waiting";
+// Folio: the agent session that owns this page has ended (Claude Code's SessionEnd hook said so).
+// It is only what the server reports; a poll that is still attached outranks it.
+let ownerClosed = Boolean(sessionData.initialOwnerClosed);
 const layoutGateEnabled = sessionData.layoutGateEnabled !== false;
 const configuredLayoutGateMaxHoldMs = Number(sessionData.layoutGateMaxHoldMs);
 const layoutGateMaxHoldMs =
@@ -719,6 +728,7 @@ function render() {
   updateSendState();
   scrollPanelToBottom();
   renderSheetSummary();
+  renderAgentSession();
 }
 
 function updateSendState() {
@@ -973,6 +983,7 @@ function receiptStepHtml(label, at) {
 // that will take the note within milliseconds, and `working` or an external listener is an agent
 // whose next poll will take it.
 function receiptNoteText() {
+  if (agentPresence === "waiting" && ownerClosed) return "Saved; the agent session has closed";
   if (agentPresence === "waiting") return "Saved; delivered when the agent is next active";
   if (agentPresence === "listening") return "Delivering";
   return "Agent is busy; delivered on its next poll";
@@ -1146,6 +1157,7 @@ function syncChat(chat, revision) {
   for (const note of retiredDraftNodes) chatLog.appendChild(note);
   const anchor = retiredDraftNodes[retiredDraftNodes.length - 1] || workingBubble || lastChatBubble;
   if (anchor) scrollElementIntoView(anchor);
+  renderAgentSession();
   return true;
 }
 
@@ -1154,7 +1166,7 @@ function setAgentPresence(state) {
   updateSendState();
   renderSheetSummary();
   refreshUnseenReceipts();
-  if (presenceBanner) presenceBanner.hidden = ended || agentPresence !== "waiting";
+  renderAgentSession();
 
   // A supervisor-owned process-only listener is busy on the agent's behalf. It must not make the
   // composer look like an idle captain turn while the owning agent is offline.
@@ -1171,6 +1183,85 @@ function setAgentPresence(state) {
     chatLog.appendChild(workingBubble);
   }
   scrollElementIntoView(workingBubble);
+}
+
+// Folio: what the user wrote that no agent has read - notes the server holds with no Seen stamp,
+// then notes still queued in this tab. Derived on every call, never tracked.
+function unreadAnswers() {
+  const sent = displayedChat
+    .filter((entry) => entry && entry.role !== "agent" && hasReceipt(entry) && !entry.delivered_at)
+    .map((entry) => ({ anchor: entry.anchor, text: String(entry.text || attachmentOnlyText(entry)) }));
+  const unsent = queued.map((prompt) => ({
+    anchor: promptAnchor(prompt),
+    text: String(prompt.prompt || attachmentOnlyText(prompt)),
+  }));
+  return sent.concat(unsent);
+}
+
+// Plain text the user can paste into a new agent session. It is addressed to an agent, so it
+// stays English whatever language the page shows.
+function unreadAnswersText() {
+  const lines = ["My feedback on " + filePath + " (written on its Folio review page, not read by an agent yet):", ""];
+  unreadAnswers().forEach((answer, index) => {
+    const anchor = answer.anchor
+      ? "[" +
+        [answer.anchor.label, answer.anchor.excerpt ? "“" + answer.anchor.excerpt + "”" : ""]
+          .filter(Boolean)
+          .join(" ") +
+        "] "
+      : "";
+    lines.push(index + 1 + ". " + anchor + answer.text);
+  });
+  return lines.join("\n");
+}
+
+// The agent's replies since the user last wrote, for the ended card: the conversation panel is
+// read-only behind that card, and a reply to Send & End would otherwise go unseen. Only an agent
+// entry's server-rendered `html` is ever set as html, the same rule as `chatBubbleHtml`.
+function endedReplyHtml() {
+  const replies = [];
+  for (let i = displayedChat.length - 1; i >= 0 && displayedChat[i]?.role === "agent"; i -= 1) {
+    replies.unshift(displayedChat[i]);
+  }
+  return replies
+    .map((entry) =>
+      typeof entry.html === "string" && entry.html
+        ? '<div class="chat-md">' + entry.html + "</div>"
+        : '<div class="bubble-text">' + escapeHtml(entry.text) + "</div>",
+    )
+    .join("");
+}
+
+// One place decides what the page says about a closed agent session, so the banner beside the
+// composer and the ended card cannot disagree. Each line must be true where it is shown.
+function renderAgentSession() {
+  const unread = unreadAnswers().length;
+  const closed = ownerClosed && agentPresence === "waiting";
+  if (presenceBanner) presenceBanner.hidden = ended || agentPresence !== "waiting";
+  if (presenceText) {
+    presenceText.textContent = closed
+      ? "The agent session that opened this page has closed. What you send is saved, and a new session in the same folder is told it is waiting."
+      : "The agent session is not waiting on this page right now. What you send is saved and reaches it the next time it is active.";
+  }
+  if (copyAnswersButton) copyAnswersButton.hidden = !closed || unread === 0;
+  if (!ended) return;
+  if (endedNote) {
+    endedNote.hidden = unread === 0;
+    endedNote.textContent = closed
+      ? "The agent session that opened this page closed before reading your last answers."
+      : "The agent has not read your last answers yet.";
+  }
+  if (endedCopyAnswers) endedCopyAnswers.hidden = unread === 0;
+  const replyHtml = endedReplyHtml();
+  if (endedReply) endedReply.hidden = !replyHtml;
+  if (endedReplyBody && endedReplyBody.innerHTML !== replyHtml) endedReplyBody.innerHTML = replyHtml;
+}
+
+function setOwnerClosed(closed) {
+  ownerClosed = Boolean(closed);
+  refreshUnseenReceipts();
+  renderSheetSummary();
+  renderAgentSession();
 }
 
 function setHandoffSuperseded(visible) {
@@ -1379,6 +1470,7 @@ function sheetSummary() {
   if (agentPresence === "working") return { text: "Agent is working…", accent: false, unread: false };
   if (agentPresence === "external") return { text: "External listener active", accent: false, unread: false };
   if (agentPresence === "listening") return { text: "Agent listening", accent: false, unread: false };
+  if (ownerClosed) return { text: "Agent session closed", accent: false, unread: false };
   return { text: "Saved for the agent", accent: false, unread: false };
 }
 
@@ -3224,6 +3316,7 @@ function markSessionEnded() {
   layoutGateEscape?.end?.();
   postToFrame({ type: "lavish:setAnnotationMode", enabled: false });
   endedOverlay.hidden = false;
+  renderAgentSession();
 }
 
 function copyFilePath() {
@@ -4706,6 +4799,12 @@ chatInput.addEventListener("keydown", (event) => {
 chatInput.addEventListener("input", () => hideSendHint());
 copyPathButton.onclick = copyFilePath;
 reloadArtifactButton.onclick = reloadArtifact;
+if (copyAnswersButton) {
+  copyAnswersButton.onclick = () => copyToButton(unreadAnswersText(), copyAnswersButton, "Copy my answers");
+}
+if (endedCopyAnswers) {
+  endedCopyAnswers.onclick = () => copyToButton(unreadAnswersText(), endedCopyAnswers, "Copy my answers");
+}
 if (artifactSilentCopyLink) {
   artifactSilentCopyLink.onclick = () => copyToButton(location.href, artifactSilentCopyLink, "Copy link");
 }
@@ -4864,7 +4963,9 @@ events.set("agent-reply", (data) => {
   };
   if (addChat(entry)) displayedChat.push(entry);
   noteAgentReply(entry.text);
+  renderAgentSession();
 });
+events.set("agent-session", (data) => setOwnerClosed(data.closed === true));
 events.set("chat-sync", (data) => {
   rememberChatAckIds(data.ack_ids);
   syncChat(data.chat || [], data.chat_revision);

@@ -5,7 +5,7 @@
 import http from "node:http";
 
 import { HOOK_EVENTS, parseHookInput, runHookEvent } from "./hooks.js";
-import { defaultPort, LOOPBACK_HOST, stateDir, stateFile } from "./paths.js";
+import { defaultPort, LOOPBACK_HOST, stateDir, stateFile, stateId } from "./paths.js";
 import { SessionStore } from "./session-store.js";
 
 async function readAllStdin() {
@@ -59,6 +59,61 @@ export function listeningKeys() {
   });
 }
 
+const AGENT_SESSION_TIMEOUT_MS = 1500;
+
+// Whether this installation's server took the report: "taken", "absent" when nothing answers at
+// the port or the server there belongs to another installation, and "unknown" otherwise.
+function postAgentSession(sessionId, state) {
+  return new Promise((resolve) => {
+    let settled = false;
+    /** @type {import("node:http").ClientRequest | null} */
+    let request = null;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      request?.destroy();
+      resolve(result);
+    };
+    const timer = setTimeout(() => finish("unknown"), AGENT_SESSION_TIMEOUT_MS);
+    try {
+      const body = JSON.stringify({ session_id: sessionId, state, state_id: stateId() });
+      request = http.request(
+        {
+          host: LOOPBACK_HOST,
+          port: defaultPort(),
+          path: "/api/agent-session",
+          method: "POST",
+          agent: false,
+          headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) },
+        },
+        (response) => {
+          response.resume();
+          response.on("end", () =>
+            finish(response.statusCode === 200 ? "taken" : response.statusCode === 409 ? "absent" : "unknown"),
+          );
+          response.on("error", () => finish("unknown"));
+        },
+      );
+      request.on("error", (error) =>
+        finish(/** @type {NodeJS.ErrnoException} */ (error)?.code === "ECONNREFUSED" ? "absent" : "unknown"),
+      );
+      request.end(body);
+    } catch {
+      finish("unknown");
+    }
+  });
+}
+
+// Marks the agent session's pages closed or active. A running server does it, because it also
+// tells the open pages. With no server of ours there is no open page and no other writer, so the
+// mark goes straight into the state file for the next page load. An unclear answer writes nothing:
+// a server may be running, and two processes must not both rewrite state.json.
+export async function setAgentSession(sessionId, state) {
+  if ((await postAgentSession(sessionId, state)) !== "absent") return;
+  await new SessionStore(stateFile()).setOwnerSessionClosed(sessionId, state === "closed");
+}
+
 // Hooks print raw JSON for the harness, not AXI output, and must never fail it.
 export async function runHookCli(args) {
   const event = args[0] || "";
@@ -77,6 +132,7 @@ export async function runHookCli(args) {
       readSessions: () => new SessionStore(stateFile()).listSessions(),
       pollOnce: async (file, sessionId) => (await import("./cli.js")).hookPollOnce(file, sessionId),
       listeningKeys,
+      setAgentSession,
     });
     if (!output) return;
     await new Promise((resolve) => process.stdout.write(`${output}\n`, () => resolve(undefined)));

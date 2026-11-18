@@ -19,7 +19,7 @@ const servedChromeIds = new Set(
 
 const SERVED_TAB_ICON = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'/>";
 
-/** @typedef {{ key: string, file: string, layoutGateEnabled?: boolean, layoutGateMaxHoldMs?: number, modeToggleHotkeyKey?: string, initialChat?: any[], initialChatAckIds?: string[], initialChatRevision?: number, initialLayoutWarnings?: any[], chromeLoadToken?: string, initialArtifactRevision?: number, initialArtifactLoadToken?: string, initialArtifactLoadSequence?: number, attachmentMaxBytes?: number, attachmentMaxCount?: number, attachmentAcceptedMime?: string[], initialEnded?: boolean, initialEndedBy?: string | null, revisionPalette?: { hex: string, borderStyle: string, pattern: string }[] }} HarnessSessionData */
+/** @typedef {{ key: string, file: string, layoutGateEnabled?: boolean, layoutGateMaxHoldMs?: number, modeToggleHotkeyKey?: string, initialChat?: any[], initialChatAckIds?: string[], initialChatRevision?: number, initialLayoutWarnings?: any[], chromeLoadToken?: string, initialArtifactRevision?: number, initialArtifactLoadToken?: string, initialArtifactLoadSequence?: number, attachmentMaxBytes?: number, attachmentMaxCount?: number, attachmentAcceptedMime?: string[], initialEnded?: boolean, initialEndedBy?: string | null, initialOwnerClosed?: boolean, revisionPalette?: { hex: string, borderStyle: string, pattern: string }[] }} HarnessSessionData */
 /** @type {HarnessSessionData} */
 const defaultSessionData = {
   key: "abc",
@@ -9570,4 +9570,101 @@ test("a queued answer shows a reminder to send it until it is sent", async () =>
   await flushPromises();
   assert.equal(chrome.queued().length, 0);
   assert.equal(chrome.element("queuedHint").hidden, true);
+});
+
+// Folio (design item 6): the agent session that owns the page can be gone while the page is open.
+const liveEvent = (chrome, type, data) => chrome.eventSource().listeners.get(type)({ data: JSON.stringify(data) });
+const unreadNote = {
+  role: "user",
+  text: "Fix the title",
+  anchor: { kind: "element", label: "<h1>", excerpt: "Hello" },
+  at: "2026-11-18T01:00:00.000Z",
+};
+const readNote = {
+  role: "user",
+  text: "Already read",
+  at: "2026-11-18T00:00:00.000Z",
+  delivered_at: "2026-11-18T00:01:00.000Z",
+};
+
+test("a closed agent session is named beside the composer with the unread answers to copy", async () => {
+  const chrome = await createChromeHarness({
+    sessionData: { ...defaultSessionData, initialOwnerClosed: true, initialChat: [readNote, unreadNote] },
+    storedQueue: [{ prompt: "Not sent yet", tag: "message", prompt_id: "q1" }],
+  });
+
+  assert.equal(chrome.element("presenceBanner").hidden, false);
+  assert.match(chrome.element("presenceText").textContent, /agent session that opened this page has closed/);
+  assert.equal(chrome.element("copyAnswers").hidden, false);
+  assert.equal(chrome.element("panelSummary").textContent, "1 queued");
+
+  await chrome.element("copyAnswers").onclick();
+  assert.equal(chrome.clipboardWrites.length, 1);
+  const copied = chrome.clipboardWrites[0];
+  assert.match(copied, /\/tmp\/artifact\.html/);
+  assert.match(copied, /1\. \[<h1> “Hello”\] Fix the title/);
+  assert.match(copied, /2\. Not sent yet/);
+  assert.doesNotMatch(copied, /Already read/, "an answer the agent has read is not copied again");
+  assert.equal(chrome.element("copyAnswers").textContent, "Copied");
+
+  liveEvent(chrome, "agent-session", { closed: false });
+  assert.match(chrome.element("presenceText").textContent, /not waiting on this page right now/);
+  assert.equal(chrome.element("copyAnswers").hidden, true);
+
+  liveEvent(chrome, "agent-session", { closed: true });
+  liveEvent(chrome, "agent-presence", { state: "listening" });
+  assert.equal(chrome.element("presenceBanner").hidden, true, "a live poll outranks a stale closed mark");
+});
+
+test("a closed agent session with nothing unread offers no copy button and says so in the dock", async () => {
+  const chrome = await createChromeHarness({ sessionData: { ...defaultSessionData, initialChat: [readNote] } });
+  assert.equal(chrome.element("panelSummary").textContent, "Saved for the agent");
+  liveEvent(chrome, "agent-session", { closed: true });
+  assert.equal(chrome.element("panelSummary").textContent, "Agent session closed");
+  assert.match(chrome.element("presenceText").textContent, /has closed/);
+  assert.equal(chrome.element("copyAnswers").hidden, true);
+});
+
+test("the ended card offers unread answers to copy and shows the agent's reply", async () => {
+  const chrome = await createChromeHarness({
+    sessionData: { ...defaultSessionData, initialEnded: true, initialOwnerClosed: true, initialChat: [unreadNote] },
+  });
+  assert.equal(chrome.element("endedOverlay").hidden, false);
+  assert.equal(chrome.element("endedNote").hidden, false);
+  assert.match(chrome.element("endedNote").textContent, /closed before reading your last answers/);
+  assert.equal(chrome.element("endedCopyAnswers").hidden, false);
+  assert.equal(chrome.element("endedReply").hidden, true);
+
+  await chrome.element("endedCopyAnswers").onclick();
+  assert.match(chrome.clipboardWrites[0], /Fix the title/);
+
+  liveEvent(chrome, "agent-session", { closed: false });
+  assert.match(chrome.element("endedNote").textContent, /has not read your last answers yet/);
+
+  liveEvent(chrome, "chat-sync", {
+    chat: [{ ...unreadNote, delivered_at: "2026-11-18T01:05:00.000Z" }],
+    chat_revision: 1,
+  });
+  assert.equal(chrome.element("endedNote").hidden, true);
+  assert.equal(chrome.element("endedCopyAnswers").hidden, true);
+
+  liveEvent(chrome, "agent-reply", { text: "Applied <b>it</b>", html: "<p>Applied it</p>" });
+  assert.equal(chrome.element("endedReply").hidden, false);
+  assert.equal(chrome.element("endedReplyBody").innerHTML, '<div class="chat-md"><p>Applied it</p></div>');
+});
+
+test("the ended card escapes an agent reply that carries no rendered html", async () => {
+  const chrome = await createChromeHarness({
+    sessionData: {
+      ...defaultSessionData,
+      initialEnded: true,
+      initialChat: [readNote, { role: "agent", text: "<script>x</script>" }],
+    },
+  });
+  assert.equal(chrome.element("endedReply").hidden, false);
+  assert.equal(
+    chrome.element("endedReplyBody").innerHTML,
+    '<div class="bubble-text">&lt;script&gt;x&lt;/script&gt;</div>',
+  );
+  assert.equal(chrome.element("endedCopyAnswers").hidden, true);
 });
