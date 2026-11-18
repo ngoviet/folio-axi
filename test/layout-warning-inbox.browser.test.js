@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { run } from "./helpers/browser-driver.js";
 
 // The behavioral regression boundary for passive layout triage. Before this change the browser's
 // audit returned straight out of `folio-axi poll` with no user action, so several individually
@@ -15,18 +15,6 @@ import { fileURLToPath } from "node:url";
 const runBrowserE2e = process.env.FOLIO_AXI_BROWSER_E2E === "1";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const fixtures = path.join(repoRoot, "test/fixtures/layout-audit");
-
-function run(command, args, env, timeout = 45_000) {
-  const result = spawnSync(command, args, {
-    cwd: repoRoot,
-    env: { ...process.env, ...env },
-    encoding: "utf8",
-    timeout,
-  });
-  if (result.error) throw result.error;
-  assert.equal(result.status, 0, `${command} ${args.join(" ")}\n${result.stdout}\n${result.stderr}`);
-  return `${result.stdout || ""}${result.stderr || ""}`;
-}
 
 async function freePort() {
   const server = net.createServer();
@@ -144,6 +132,8 @@ test(
       const artifact = path.join(temp, "review.html");
       await copyFile(path.join(fixtures, "control-broken-clipping.html"), artifact);
       const url = openArtifact(artifact);
+      // chrome-devtools-axi refuses to emulate before any page is selected.
+      run("chrome-devtools-axi", ["open", "about:blank"], chromeEnv);
       run("chrome-devtools-axi", ["emulate", "--viewport", "1440x1000x1"], chromeEnv);
       openReview(url);
 
@@ -420,7 +410,7 @@ test(
     } finally {
       run(process.execPath, ["bin/folio-axi.js", "stop", "--port", String(port)], lavishEnv, 15_000);
       run("chrome-devtools-axi", ["stop"], chromeEnv);
-      await rm(temp, { recursive: true, force: true });
+      await rm(temp, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
     }
   },
 );
@@ -465,13 +455,15 @@ test("a live reload preserves the review context Folio owns", { skip: !runBrowse
     const output = run(process.execPath, ["bin/folio-axi.js", artifact, "--no-open"], lavishEnv);
     const url = output.match(/url:\s*"([^"]+)"/)?.[1];
     assert.ok(url, output);
+    run("chrome-devtools-axi", ["open", "about:blank"], chromeEnv);
     run("chrome-devtools-axi", ["emulate", "--viewport", "1440x1000x1"], chromeEnv);
     run("chrome-devtools-axi", ["open", url], chromeEnv);
     wait(4500);
 
     // Folio-owned answers: a radio and a checkbox inside a data-lavish-question scope.
-    click(/radio " Pro"/);
-    click(/checkbox " Include beta cohort"/);
+    // Newer Chrome trims the label's leading space from the accessible name.
+    click(/radio " ?Pro"/);
+    click(/checkbox " ?Include beta cohort"/);
     // Unsent annotation text on an element the reload will replace.
     click(/Annotate this paragraph/);
     wait(800);
@@ -479,15 +471,15 @@ test("a live reload preserves the review context Folio owns", { skip: !runBrowse
     wait(800);
 
     const before = snapshot();
-    assert.match(before, /radio " Pro" checked/);
-    assert.match(before, /checkbox " Include beta cohort" checked/);
+    assert.match(before, /radio " ?Pro" checked/);
+    assert.match(before, /checkbox " ?Include beta cohort" checked/);
 
     await writeFile(artifact, `${await readFile(artifact, "utf8")}\n<!-- revision -->\n`);
     wait(5000);
 
     const after = snapshot();
-    assert.match(after, /radio " Pro" checked/, "a Folio-owned answer survives the reload");
-    assert.match(after, /checkbox " Include beta cohort" checked/);
+    assert.match(after, /radio " ?Pro" checked/, "a Folio-owned answer survives the reload");
+    assert.match(after, /checkbox " ?Include beta cohort" checked/);
     assert.match(after, /Chú thích <p>/, "the open annotation card comes back");
 
     // Queueing the restored card proves the unsent text itself survived, not just the card.
@@ -501,7 +493,10 @@ test("a live reload preserves the review context Folio owns", { skip: !runBrowse
       ],
       chromeEnv,
     );
-    const geometry = JSON.parse(JSON.parse(queuedNote.match(/result:\s*("(?:[^"\\]|\\.)*")/s)[1]));
+    // Unwrap until it stops being encoded JSON: chrome-devtools-axi versions differ in how many
+    // times they encode the evaluated string, as `evaluate` in the test above notes.
+    let geometry = JSON.parse(queuedNote.match(/result:\s*("(?:[^"\\]|\\.)*")/s)[1]);
+    while (typeof geometry === "string") geometry = JSON.parse(geometry);
     assert.equal(geometry.text, "Shorten this to one sentence");
     assert.equal(geometry.borderStyle, "dashed");
     assert.equal(geometry.excerptWhiteSpace, "nowrap");
@@ -511,6 +506,6 @@ test("a live reload preserves the review context Folio owns", { skip: !runBrowse
   } finally {
     run(process.execPath, ["bin/folio-axi.js", "stop", "--port", String(port)], lavishEnv, 15_000);
     run("chrome-devtools-axi", ["stop"], chromeEnv);
-    await rm(temp, { recursive: true, force: true });
+    await rm(temp, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
   }
 });

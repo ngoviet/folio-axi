@@ -22,7 +22,11 @@ export const LANGUAGE_STORAGE_KEY = "folio-axi:language";
 // rule, and so does the attachment name the chip shows. Text and attributes inside these are never
 // translated, even when they match a table entry.
 export const FOREIGN_CONTENT_SELECTOR =
-  ".chat-md,.bubble-text,.anchor,.note-draft,.revision-label,.revision-time,.revision-summary,.menu-file-text,.panel-summary.is-unread,.chat-attachment-copy > strong";
+  ".chat-md,.bubble-text,.anchor,.note-draft,.revision-label,.revision-time,.revision-summary,.menu-file-text,.panel-summary.is-unread,.chat-attachment-copy > strong,img.bubble-attachment,#endedOverlay .ended-copy";
+
+// Elements whose own attributes are someone else's text while their text is Folio's: an expired
+// image says "Image expired" in the chrome's language, and its tooltip is the user's file name.
+export const FOREIGN_ATTRIBUTES_SELECTOR = ".bubble-attachment-expired";
 
 // In the annotation card, only the attachment's file name is someone else's text. Labels in the
 // heading are composed into one string, so the anchored card rules keep those verbatim instead.
@@ -503,7 +507,7 @@ export function localizeChromeText(text, table) {
 
 // Keeps everything under `root` (the chrome document, or the SDK's shadow root) in `initialLanguage`.
 // Stringified into both pages, so it may use only its arguments and browser globals.
-export function createDomLocalizer(localize, table, root, foreignSelector, initialLanguage) {
+export function createDomLocalizer(localize, table, root, foreignSelector, initialLanguage, foreignAttributesSelector) {
   const attributes = ["title", "aria-label", "placeholder"];
   const skippedTextParents = new Set(["SCRIPT", "STYLE", "TEXTAREA", "TITLE"]);
   const textState = new WeakMap();
@@ -525,6 +529,7 @@ export function createDomLocalizer(localize, table, root, foreignSelector, initi
   function syncAttribute(element, name) {
     const current = element.getAttribute(name);
     if (current === null || element.closest(foreignSelector)) return;
+    if (foreignAttributesSelector && element.matches(foreignAttributesSelector)) return;
     let states = attributeState.get(element);
     if (!states) attributeState.set(element, (states = new Map()));
     const state = states.get(name);
@@ -567,7 +572,15 @@ export function createDomLocalizer(localize, table, root, foreignSelector, initi
 }
 
 // Stringified into the page, so it may use only its arguments and browser globals.
-export function installChromeLocalizer(localize, compile, createLocalizer, rawTable, storageKey, foreignSelector) {
+export function installChromeLocalizer(
+  localize,
+  compile,
+  createLocalizer,
+  rawTable,
+  storageKey,
+  foreignSelector,
+  foreignAttributesSelector,
+) {
   const root = document.documentElement;
   const normalize = (value) => (value === "en" ? "en" : "vi");
   let language = "vi";
@@ -577,7 +590,14 @@ export function installChromeLocalizer(localize, compile, createLocalizer, rawTa
     // Storage can be blocked. The toggle still works for this page.
   }
 
-  const localizer = createLocalizer(localize, compile(rawTable), root, foreignSelector, language);
+  const localizer = createLocalizer(
+    localize,
+    compile(rawTable),
+    root,
+    foreignSelector,
+    language,
+    foreignAttributesSelector,
+  );
   root.lang = language;
 
   const artifactWindow = () => /** @type {any} */ (document.getElementById("artifact"))?.contentWindow;
@@ -611,6 +631,7 @@ export function createChromeLocalizerJs() {
     table,
     JSON.stringify(LANGUAGE_STORAGE_KEY),
     JSON.stringify(FOREIGN_CONTENT_SELECTOR),
+    JSON.stringify(FOREIGN_ATTRIBUTES_SELECTOR),
   ];
   return `try{(${installChromeLocalizer.toString()})(${args.join(",")});}catch(e){document.documentElement.lang="en";console.error(e);}`;
 }

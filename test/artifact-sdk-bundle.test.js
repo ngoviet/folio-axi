@@ -184,6 +184,7 @@ function bootSdk({
   revisionMarkElements = [],
   htmlAnnotate = null,
   platform = "Linux",
+  locationHref = undefined,
 } = {}) {
   const posted = [];
   const documentListeners = [];
@@ -233,11 +234,11 @@ function bootSdk({
         this.disconnected = true;
       }
     },
-    URL: {
-      createObjectURL() {
+    URL: class extends URL {
+      static createObjectURL() {
         return "blob:lavish-test";
-      },
-      revokeObjectURL() {},
+      }
+      static revokeObjectURL() {}
     },
     getComputedStyle: () => ({}),
     setTimeout: scheduleTimer,
@@ -276,7 +277,7 @@ function bootSdk({
     innerHeight: 800,
     scrollX: 0,
     scrollY: 0,
-    location: { origin: "http://127.0.0.1" },
+    location: { origin: "http://127.0.0.1", ...(locationHref ? { href: locationHref } : {}) },
     URL: sandbox.URL,
   };
   sandbox.globalThis = sandbox;
@@ -1033,6 +1034,29 @@ test("a card for anything but an http(s) link offers no Open link button", () =>
     sdk.click(build(sdk));
     assert.doesNotMatch(sdk.card().innerHTML, /lavish-open-link|lavish-link-hint/);
   }
+});
+
+// A link to a place in this page resolves to the artifact's own URL. Opening it in a tab loads a
+// second, disconnected copy of the review where queued notes never reach the chrome.
+test("a link to a place in this page offers no Open link button", () => {
+  const page = "http://127.0.0.1/artifact/abc/index.html?artifact_revision=1&artifact_load_token=t";
+  for (const [href, resolved] of [
+    ["#muc-2", `${page}#muc-2`],
+    ["#", `${page}#`],
+    [page, page],
+  ]) {
+    const sdk = bootSdk({ locationHref: `${page}#top` });
+    const { link } = buildLink(sdk, href);
+    link.href = resolved;
+    sdk.click(link);
+    assert.doesNotMatch(sdk.card().innerHTML, /lavish-open-link|lavish-link-hint/, href);
+  }
+
+  const sdk = bootSdk({ locationHref: page });
+  const { link } = buildLink(sdk, "other.html");
+  link.href = "http://127.0.0.1/artifact/abc/other.html";
+  sdk.click(link);
+  assert.match(sdk.card().innerHTML, /lavish-open-link/, "a sibling page still opens in a new tab");
 });
 
 test("a text selection inside a link annotates the text and offers no Open link button", () => {

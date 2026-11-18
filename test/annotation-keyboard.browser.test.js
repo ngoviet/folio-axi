@@ -1,26 +1,12 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { run } from "./helpers/browser-driver.js";
 
 const runBrowserE2e = process.env.FOLIO_AXI_BROWSER_E2E === "1";
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-
-function run(command, args, env, timeout = 45_000) {
-  const result = spawnSync(command, args, {
-    cwd: repoRoot,
-    env: { ...process.env, ...env },
-    encoding: "utf8",
-    timeout,
-  });
-  if (result.error) throw result.error;
-  assert.equal(result.status, 0, `${command} ${args.join(" ")}\n${result.stdout}\n${result.stderr}`);
-  return `${result.stdout || ""}${result.stderr || ""}`;
-}
 
 async function freePort() {
   const server = net.createServer();
@@ -104,7 +90,7 @@ test(
     } finally {
       run(process.execPath, ["bin/folio-axi.js", "stop", "--port", String(port)], lavishEnv, 15_000);
       run("chrome-devtools-axi", ["stop"], chromeEnv);
-      await rm(temp, { recursive: true, force: true });
+      await rm(temp, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
     }
   },
 );

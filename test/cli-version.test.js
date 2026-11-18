@@ -101,3 +101,22 @@ test("Folio sends no telemetry even when telemetry env is configured", async (t)
   assert.equal(telemetry.requests.length, 0, "Folio never sends telemetry");
   assert.equal(existsSync(stateDir), true);
 });
+
+// Folio is not on npm. The SDK's built-in self-updater would look the name `folio-axi` up on the
+// public registry and install whatever someone published under it, so `update` only says how to
+// update this checkout and never reaches the network.
+for (const args of [["update"], ["update", "--check"]]) {
+  test(`folio-axi ${args.join(" ")} explains the checkout update instead of using npm`, async (t) => {
+    const stateDir = await mkdtemp(path.join(tmpdir(), "folio-update-"));
+    t.after(() => rm(stateDir, { recursive: true, force: true }));
+    const { stdout } = await execFileAsync(process.execPath, [BIN, ...args], {
+      env: { ...process.env, FOLIO_AXI_STATE_DIR: stateDir, npm_config_registry: "http://127.0.0.1:9/" },
+      timeout: 15_000,
+    });
+    assert.match(stdout, /status: not_published/);
+    assert.ok(stdout.includes(VERSION), stdout);
+    assert.match(stdout, /git -C .* pull/);
+    assert.match(stdout, /pnpm run build/);
+    assert.doesNotMatch(stdout, /npm install/);
+  });
+}

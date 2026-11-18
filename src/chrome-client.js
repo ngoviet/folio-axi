@@ -3432,9 +3432,18 @@ function publishedVisibilityText(isPublic, rendered, publicText) {
   return rendered.password ? "behind the password below" : "behind the password you supplied";
 }
 
+// The publish dialog is modal: Tab must not walk into the top bar and review behind its scrim.
+function setShareDialogBackdropInert(inert) {
+  for (const selector of [".bar", ".layout"]) {
+    const region = /** @type {HTMLElement | null} */ (document.querySelector(selector));
+    if (region) region.inert = inert;
+  }
+}
+
 function openShareDialog() {
   closeMenus();
   shareDialog.hidden = false;
+  setShareDialogBackdropInert(true);
   shareStatus.textContent = "";
   shareStatus.classList.remove("error");
   renderShareResult();
@@ -3457,6 +3466,7 @@ function syncSharePasswordInput() {
 
 function closeShareDialog() {
   shareDialog.hidden = true;
+  setShareDialogBackdropInert(false);
 }
 
 async function copyToButton(value, button, label) {

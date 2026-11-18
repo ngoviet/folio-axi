@@ -1,5 +1,9 @@
 # folio-axi
 
+<!-- readme-axi type=tool -->
+
+**English** · [Tiếng Việt](README.vi.md)
+
 Folio opens agent-generated HTML pages in a local browser so you can point at elements, mark up text and diagrams, and send feedback that always reaches the Claude Code session that made the page.
 
 Folio is built on [lavish-axi](https://github.com/kunchenguid/lavish-axi) 0.1.96 by Kun Chen (MIT) and maintained by [ngoviet](https://github.com/ngoviet) for Claude Code on Windows. It is not published to npm. Background, plan and status (Vietnamese): [docs/folio/README.md](docs/folio/README.md).
@@ -12,15 +16,6 @@ What Folio changes compared with lavish-axi:
 - `folio-axi end <file>` works after the HTML file was deleted; eligible ended records are pruned at startup after 7 days (`FOLIO_AXI_ENDED_RETENTION_DAYS`); `state.json` is written atomically.
 - Windows: stale servers are found with `netstat`, the server starts without a console window, hooks use the Windows profile directory.
 - Runs beside lavish-axi: state in `~/.folio-axi`, port `4388`, environment variables `FOLIO_AXI_*`. No telemetry, no Agent Plugin, no Copilot/Codex/OpenCode hooks.
-
-Install from the checkout:
-
-```sh
-pnpm install
-npm link
-folio-axi setup hooks          # preview
-folio-axi setup hooks --write  # merge into ~/.claude/settings.json
-```
 
 The page SDK keeps lavish-axi's names, so artifacts written for Lavish work unchanged: `window.lavish.*`, `data-lavish-*` attributes, `%% lavish-icon` Mermaid comments and `lavish:*` messages.
 
@@ -43,20 +38,28 @@ Folio is an [AXI](https://axi.md), which means -
 - It's optimized for agent ergonomics. TOON output, long polling, and contextual disclosure making it highly token efficient.
 - The skill and hooks below only handle discovery; agents learn to use the AXI by using it.
 
-## Quick Start
+## Installation
 
-From the Folio checkout, install dependencies and link the local CLI:
+Folio is not published to npm. From the Folio checkout (Node 22 or later, pnpm), install dependencies and link the local CLI:
 
 ```sh
 pnpm install
 npm link
 folio-axi setup hooks          # preview
-folio-axi setup hooks --write  # merge Claude Code hooks into settings
+folio-axi setup hooks --write  # merge Claude Code hooks into ~/.claude/settings.json
 ```
 
-Restart the Claude Code session after installing hooks. They run this checkout's `bin/folio-axi.js` with `node` directly, skipping the npm shim (a path with shell-unsafe characters falls back to `folio-axi` on PATH), so re-run `folio-axi setup hooks --write` if you move the checkout. The repository's `skills/folio` skill directs agents to the CLI's current help, design guidance, and playbooks. You can also ask your agent to use `folio-axi` directly.
+Restart the Claude Code session after installing hooks. They run this checkout's `bin/folio-axi.js` with `node` directly, skipping the npm shim (a path with shell-unsafe characters falls back to `folio-axi` on PATH), so re-run `folio-axi setup hooks --write` if you move the checkout. `npm link` does not rebuild: after pulling new code, run `pnpm run build`. The repository's `skills/folio` skill directs agents to the CLI's current help, design guidance, and playbooks. You can also ask your agent to use `folio-axi` directly.
 
-## How It Works
+## Usage
+
+1. The agent writes an HTML page, by default under `.folio/` in the project.
+2. `folio-axi .folio/plan.html` opens it in the browser. Use Chrome or another regular browser: the Claude app's built-in browser blocks the sandboxed frame on a local address.
+3. The agent runs `folio-axi poll .folio/plan.html` as a tracked background task and ends its turn.
+4. You annotate elements or selected text, answer the page's questions, and press **Send to Agent**. The poll hands your notes to the session that opened the page.
+5. The agent answers with `folio-axi reply` (or `poll --agent-reply`) and polls again. **Send & End** in the browser, or `folio-axi end` from the agent, closes the review.
+
+## How it works
 
 ```
 ┌───────────────┐
@@ -141,7 +144,7 @@ Restart the Claude Code session after installing hooks. They run this checkout's
   While editing a queued note, Enter saves it, Shift+Enter inserts a newline, and Escape discards the edit.
   Cmd+I or Ctrl+I toggles between annotate and explore mode from either the browser chrome or the artifact iframe, including while focus is in a textarea or control.
   In annotate mode a plain click on a link annotates it; Ctrl+click (Cmd+click on macOS) follows the link instead, opening it in a new tab as the browser normally would, without leaving annotate mode. Off macOS, Meta+click (the Windows or Super key) annotates like a plain click. The annotation card of an http(s) link says so and has an **Open link** button that opens the link in a new tab; it also closes the card while the card holds no text or image.
-- **Agent presence** - The browser says when the agent session is not waiting on this page and that what you send is saved for its next active turn, and keeps human feedback actions available while the agent is working. Feedback accepted by **Send** is queued on the server for the next successful `folio-axi poll` delivery even across reloads; never-sent notes remain in the originating tab. An agent reply concludes delivered work and returns presence to waiting (see the CLI Reference for reply and poll commands). When Claude Code reports that the agent session that owns the page has ended, the banner beside the composer says so and offers **Copy my answers**: the notes no agent has read yet, as plain text to paste into a new session. A new session started in the same folder is told about waiting feedback by its SessionStart hook. The ended card offers the same button while an answer is still unread, and shows the agent's last reply. A supervisor-owned process listener is shown as an external listener rather than an idle captain turn.
+- **Agent presence** - The browser says when the agent session is not waiting on this page and that what you send is saved for its next active turn, and keeps human feedback actions available while the agent is working. Feedback accepted by **Send** is queued on the server for the next successful `folio-axi poll` delivery even across reloads; never-sent notes remain in the originating tab. An agent reply concludes delivered work and returns presence to waiting (see Commands for reply and poll commands). When Claude Code reports that the agent session that owns the page has ended, the banner beside the composer says so and offers **Copy my answers**: the notes no agent has read yet, as plain text to paste into a new session. A new session started in the same folder is told about waiting feedback by its SessionStart hook. The ended card offers the same button while an answer is still unread, and shows the agent's last reply. A supervisor-owned process listener is shown as an external listener rather than an idle captain turn.
 - **Delivery receipts** - Every note you have sent carries three emoji under it that light up in turn: 👀 **Seen** when a `folio-axi poll` has received the note, 🛠️ **Working** when the artifact file changes after that, and ✅ **Done** when the agent replies. A step that has not happened yet is the same emoji greyed out. All three come from what the server observes; the agent does nothing extra. Until 👀 lights, the row says what happens next: the note is saved and delivered when the agent is next active, or the agent is busy and takes it on its next poll. A note answered without touching the artifact goes Seen to Done with Working still grey. A reply marks every note the agent has seen as Done, not notes still waiting for a poll. Each emoji names its step and time on hover and to screen readers. Notes sent before receipts existed show no receipt row.
   A poll keeps waiting when the last review tab closes, a phone locks or a pane hides, because the poll is what wakes an idle agent session. Set `FOLIO_AXI_DISCONNECT_GRACE_MS` on the server to a millisecond budget to release it instead: it then returns `browser_disconnected` without ending the resumable session, and the agent asks whether to reopen or end it instead of acting uninvited.
   The no-timeout poll always writes an immediate stderr banner so it is visibly not hung; it adds the periodic stderr wait ticks only in an interactive terminal, so when stderr is piped (as under agent harnesses) the captured output carries no tick noise. Stdout always stays reserved for the final response; if the poll is interrupted or times out before feedback arrives, re-run it because feedback remains queued until delivery. Poll delivery consumes the response, so read the complete response before truncating or filtering it.
@@ -194,12 +197,12 @@ Restart the Claude Code session after installing hooks. They run this checkout's
 
 The review page and annotation card default to Vietnamese. **English** in the More menu (⋮) switches them in place, including an open card, and the item then offers **Tiếng Việt** to switch back. The browser remembers the choice in `localStorage` (`folio-axi:language`), and a draft is untouched by the switch. CLI output and Folio's messages sent to the agent stay in English. If the card cannot receive the language or its localizer fails, it stays in English.
 
-## CLI Reference
+## Commands
 
 | Command                        | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `folio-axi`                    | Show current sessions and usage guidance.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `folio-axi update`             | Check for or apply the latest npm release through the AXI SDK self-updater.                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `folio-axi update`             | Folio is not on npm, so it does not update itself: prints the checkout to update (`git pull`, then `pnpm run build`). It never contacts the npm registry.                                                                                                                                                                                                                                                                                                                                  |
 | `folio-axi <html-file>`        | Open or resume a Folio session, with the open-time layout gate enabled by default. Unresolved layout issues from earlier in the session are preserved. While its ended record exists, refuses to reopen a session the user explicitly ended from the browser unless `--reopen` is passed.                                                                                                                                                                                                  |
 | `folio-axi poll <html-file>`   | Long-poll until the user sends feedback, ends the session, or leaves every review disconnected past `FOLIO_AXI_DISCONNECT_GRACE_MS` when that is set; detected layout issues arrive only when queued. On `browser_disconnected`, ask before reopening or ending the still-resumable session. On `ended`, stop polling and do not reopen uninvited.                                                                                                                                         |
 | `folio-axi reply <html-file>`  | Post an agent reply and exit 0 only after the server accepts it, so the review page stops showing Working. Exits non-zero if the server does not confirm within 10 seconds. Use this when handing a result back without starting a long-poll. On a session the user ended (**Send & End**) the reply is added to the ended page and the session stays ended; a session the agent ended itself still refuses with `SESSION_ENDED`. `poll --agent-reply` still posts a reply and then waits. |
@@ -224,7 +227,6 @@ For flows, architecture, state, or sequence diagrams, open the diagram playbook 
 | `folio-axi <html-file>` | `--no-open`                 | Ensure the server/session exists without opening another browser window.                                                                                                                                                                                                                                                      |
 | `folio-axi <html-file>` | `--no-gate`                 | Skip the open-time layout curtain for this browser open.                                                                                                                                                                                                                                                                      |
 | `folio-axi <html-file>` | `--reopen`                  | Reopen a session the user explicitly ended from the browser; while the ended record exists, a plain open without it refuses and explains why.                                                                                                                                                                                 |
-| `folio-axi update`      | `--check`                   | Report current vs latest npm version without installing an update.                                                                                                                                                                                                                                                            |
 | `folio-axi export`      | `--out <path>`              | Write the export to a specific path instead of `<name>.export.html` next to the source.                                                                                                                                                                                                                                       |
 | `folio-axi share`       | `--private`                 | Make the page private behind a password Folio generates and returns once; hand it to viewers as a shared secret.                                                                                                                                                                                                              |
 | `folio-axi share`       | `--password <pw>`           | Make the third-party ht-ml.app page private with a password you supply; viewers must supply the password. An empty or whitespace-only value (an unquoted `$PW` that is unset) is refused rather than publishing a public page.                                                                                                |
@@ -258,3 +260,37 @@ pnpm run lint           # Run ESLint
 pnpm run format:check   # Check Prettier formatting
 pnpm run typecheck      # Run TypeScript checkJs validation
 ```
+
+<!-- prettier-ignore-start -->
+
+<!-- support:start -->
+## Support the project
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ngoviet/.github/main/assets/support/banner-v2.svg" width="560" alt="Built and maintained by one person in Việt Nam">
+</p>
+
+<p align="center">Free and open source. Your support pays for new device support, faster fixes and every release.</p>
+
+<p align="center">
+  <a href="https://buymeacoffee.com/ngoviet"><img src="https://raw.githubusercontent.com/ngoviet/.github/main/assets/support/btn-coffee.svg" height="56" alt="Buy me a coffee"></a>
+  &nbsp;
+  <a href="https://github.com/sponsors/ngoviet"><img src="https://raw.githubusercontent.com/ngoviet/.github/main/assets/support/btn-sponsors.svg" height="56" alt="GitHub Sponsors"></a>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ngoviet/.github/main/assets/support/vietqr-card.svg" width="300" alt="VietQR — MB Bank — NGO DUC VIET — 911051212">
+  &nbsp;
+  <img src="https://raw.githubusercontent.com/ngoviet/.github/main/assets/support/crypto-card.svg" width="300" alt="Crypto — BNB Smart Chain (BEP20) — 0xcbf0402b232cb24b4d998f09a4884f87b5f74750">
+</p>
+
+<p align="center"><b>Crypto wallet, BNB Smart Chain (BEP20) only:</b><br><code>0xcbf0402b232cb24b4d998f09a4884f87b5f74750</code></p>
+
+<p align="center">🇻🇳 VietQR: scan with any Vietnamese banking app, transfer note <code>Ung ho folio-axi</code>. Thank you for keeping this project alive!</p>
+<!-- support:end -->
+
+<!-- prettier-ignore-end -->
+
+## License
+
+[MIT](LICENSE) © 2026 Kun Chen (lavish-axi). Folio's changes by Ngô Đức Việt are released under the same license.

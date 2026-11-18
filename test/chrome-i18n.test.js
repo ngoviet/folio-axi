@@ -143,6 +143,107 @@ test("localizer initialization failure leaves an English page identified as Engl
   assert.equal(text.data, "Send to Agent");
 });
 
+// A tiny element: enough DOM for createDomLocalizer, matching `tag.class#id` selectors joined by
+// the descendant combinator.
+/**
+ * @param {string} tag
+ * @param {string} className
+ * @param {Record<string, string>} [attributes]
+ * @param {any[]} [children]
+ */
+function fakeElement(tag, className, attributes = {}, children = []) {
+  const element = {
+    nodeType: 1,
+    tagName: tag.toUpperCase(),
+    parentElement: null,
+    childNodes: [],
+    attributes: { ...attributes },
+    getAttribute: (name) => (name in element.attributes ? element.attributes[name] : null),
+    setAttribute: (name, value) => {
+      element.attributes[name] = value;
+    },
+    matchesCompound: (compound) => {
+      const wanted = /^[a-z]*/i.exec(compound)?.[0] ?? "";
+      const own = className.split(/\s+/);
+      const parts = compound.slice(wanted.length).match(/[.#][^.#]+/g) ?? [];
+      return (
+        (!wanted || wanted.toUpperCase() === element.tagName) &&
+        parts.every((part) => (part[0] === "#" ? element.attributes.id === part.slice(1) : own.includes(part.slice(1))))
+      );
+    },
+    matches: (selectors) =>
+      selectors.split(",").some((selector) => {
+        const ancestors = selector.trim().split(/\s+/);
+        if (!element.matchesCompound(ancestors.pop())) return false;
+        let node = element.parentElement;
+        for (const compound of ancestors.reverse()) {
+          while (node && !node.matchesCompound(compound)) node = node.parentElement;
+          if (!node) return false;
+          node = node.parentElement;
+        }
+        return true;
+      }),
+    closest: (selectors) => {
+      for (let node = element; node; node = node.parentElement) if (node.matches(selectors)) return node;
+      return null;
+    },
+  };
+  for (const child of children) {
+    const node = typeof child === "string" ? { nodeType: 3, data: child } : child;
+    node.parentElement = element;
+    element.childNodes.push(node);
+  }
+  return element;
+}
+
+// File names and paths are the user's words. Translating them made a thumbnail called
+// "Working draft.png" read "Đang làm draft.png" on hover.
+test("the Vietnamese chrome keeps the user's file names and paths verbatim", () => {
+  const thumbnail = fakeElement("img", "bubble-attachment", { alt: "Working draft.png", title: "Working draft.png" });
+  const expired = fakeElement("span", "bubble-attachment bubble-attachment-expired", { title: "Done state.png" }, [
+    "Image expired",
+  ]);
+  const ended = fakeElement("p", "ended-copy", {}, ["D:\\work\\3 revisions\\Layout failure.html"]);
+  const endedOverlay = fakeElement("div", "ended-overlay", { id: "endedOverlay" }, [
+    fakeElement("div", "ended-card", {}, [ended]),
+  ]);
+  const gateText = "Folio is waiting for fonts and final geometry before revealing this artifact.";
+  const gateCopy = fakeElement("p", "ended-copy", { id: "layoutGateCopy" }, [gateText]);
+  const gateOverlay = fakeElement("div", "ended-overlay layout-gate-overlay", { id: "layoutGateOverlay" }, [
+    fakeElement("div", "ended-card", {}, [gateCopy]),
+  ]);
+  const root = fakeElement("body", "", {}, [thumbnail, expired, endedOverlay, gateOverlay]);
+  const install = new Function(
+    "Node",
+    "MutationObserver",
+    "document",
+    "localStorage",
+    "window",
+    "console",
+    createChromeLocalizerJs(),
+  );
+  install(
+    { TEXT_NODE: 3, ELEMENT_NODE: 1 },
+    class {
+      observe() {}
+    },
+    { documentElement: root, addEventListener() {}, getElementById: () => null },
+    { getItem: () => null },
+    { addEventListener() {} },
+    {
+      error: (error) => {
+        throw error;
+      },
+    },
+  );
+  assert.equal(root.lang, "vi", "the localizer installed");
+  assert.equal(thumbnail.getAttribute("title"), "Working draft.png");
+  assert.equal(expired.getAttribute("title"), "Done state.png");
+  assert.notEqual(expired.childNodes[0].data, "Image expired", "Folio's own words are still translated");
+  assert.equal(ended.childNodes[0].data, "D:\\work\\3 revisions\\Layout failure.html");
+  assert.notEqual(gateCopy.childNodes[0].data, gateText, "the layout gate shares the class and is Folio's own copy");
+});
+
 test("the inlined localizer cannot close its own script tag", () => {
   assert.doesNotMatch(createChromeLocalizerJs(), /<\/script/i);
   assert.doesNotThrow(() => new Function(createChromeLocalizerJs()));

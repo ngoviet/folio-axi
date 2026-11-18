@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { run } from "./helpers/browser-driver.js";
 
 // The regression boundary for the attachment upload token break: the SDK once
 // sent lavish:uploadAttachment via a raw parent.postMessage with no
@@ -17,24 +16,11 @@ import { fileURLToPath } from "node:url";
 // artifact iframe, real chrome gate, real server - and requires an actual
 // image to land in the attachment store and ride a prompt back to the agent.
 const runBrowserE2e = process.env.FOLIO_AXI_BROWSER_E2E === "1";
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 // A 2x1 PNG (the same bytes the server attachment tests use).
 const PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR42mP8z8BQz0BkYGAAADAAA/8W1p0AAAAASUVORK5CYII=";
 const PNG_BYTES = Buffer.from(PNG_B64, "base64");
 const PNG_ID = `${createHash("sha256").update(PNG_BYTES).digest("hex")}.png`;
-
-function run(command, args, env, timeout = 45_000) {
-  const result = spawnSync(command, args, {
-    cwd: repoRoot,
-    env: { ...process.env, ...env },
-    encoding: "utf8",
-    timeout,
-  });
-  if (result.error) throw result.error;
-  assert.equal(result.status, 0, `${command} ${args.join(" ")}\n${result.stdout}\n${result.stderr}`);
-  return `${result.stdout || ""}${result.stderr || ""}`;
-}
 
 async function freePort() {
   const server = net.createServer();
@@ -300,7 +286,7 @@ test(
     } finally {
       run(process.execPath, ["bin/folio-axi.js", "stop", "--port", String(port)], lavishEnv, 15_000);
       run("chrome-devtools-axi", ["stop"], chromeEnv);
-      await rm(temp, { recursive: true, force: true });
+      await rm(temp, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
     }
   },
 );

@@ -983,7 +983,9 @@ export async function canonicalMissingPath(file) {
     } catch (error) {
       if (error?.code !== "ENOENT") throw error;
       const next = path.dirname(parent);
-      if (next === parent) throw error;
+      // Nothing resolves, not even the root: a drive or share that is gone. The absolute path is
+      // then as canonical as it gets, and matches the path stored when the page was open.
+      if (next === parent) return path.resolve(file);
       suffix.unshift(path.basename(parent));
       parent = next;
     }
