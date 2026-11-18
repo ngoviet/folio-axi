@@ -102,9 +102,14 @@ export function createSessionStartContext({ sessions, cwd, sessionId }) {
   return lines.join("\n").slice(0, HOOK_CONTEXT_LIMIT);
 }
 
+const SNAPSHOT_TRIMMED = "[snapshot trimmed]";
+
 /**
- * Turns one delivered poll response into plain text for a hook. The batch is acked only when
- * all of it fits; a cut batch stays unacked so `folio-axi poll` hands it out whole.
+ * Turns one delivered poll response into plain text for a hook. The batch is acked only when its
+ * prompts and failures fit whole; a cut batch stays unacked so `folio-axi poll` hands it out whole.
+ * The DOM snapshot is optional context with no size cap of its own (the server drops it too when a
+ * send is too large), so it is trimmed to the room left instead of cutting the batch: counting it
+ * whole left a big page's batch unacked and handed over again on every Stop and prompt.
  * @param {string} file
  * @param {any} response
  * @param {number} budget
@@ -113,20 +118,25 @@ export function formatHookFeedback(file, response, budget = HOOK_FEEDBACK_LIMIT)
   const quotedFile = `"${file.replace(/[\\"$`]/g, "\\$&")}"`;
   const prompts = Array.isArray(response?.prompts) ? response.prompts : [];
   const failures = Array.isArray(response?.artifact_failures) ? response.artifact_failures : [];
-  const lines = [`Feedback from the folio-axi review page ${file}:`];
-  lines.push(JSON.stringify({ prompts, artifact_failures: failures, dom_snapshot: response?.dom_snapshot || "" }));
-  if (response?.session_ended) {
-    lines.push(
-      response.ended_by === "user"
-        ? "The user ended this page with this feedback. Answer in the chat; do not reopen the page uninvited."
-        : "The page has ended.",
-    );
-  } else {
-    lines.push(
-      `Apply it to ${file}, then answer on the page with \`folio-axi reply ${quotedFile} --agent-reply "<message>"\` and keep \`folio-axi poll ${quotedFile}\` running as a tracked background task so the next message wakes this session.`,
-    );
+  const snapshot = typeof response?.dom_snapshot === "string" ? response.dom_snapshot : "";
+  const header = `Feedback from the folio-axi review page ${file}:`;
+  const footer = response?.session_ended
+    ? response.ended_by === "user"
+      ? "The user ended this page with this feedback. Answer in the chat; do not reopen the page uninvited."
+      : "The page has ended."
+    : `Apply it to ${file}, then answer on the page with \`folio-axi reply ${quotedFile} --agent-reply "<message>"\` and keep \`folio-axi poll ${quotedFile}\` running as a tracked background task so the next message wakes this session.`;
+  const render = (/** @type {string} */ domSnapshot) =>
+    [header, JSON.stringify({ prompts, artifact_failures: failures, dom_snapshot: domSnapshot }), footer].join("\n");
+  let text = render(snapshot);
+  if (text.length > budget && snapshot && render("").length + SNAPSHOT_TRIMMED.length + 2 <= budget) {
+    // JSON escaping makes the encoded snapshot longer than its characters, so shrink until it fits.
+    let keep = budget - render("").length - SNAPSHOT_TRIMMED.length;
+    do {
+      text = render(`${snapshot.slice(0, Math.max(0, keep))}${SNAPSHOT_TRIMMED}`);
+      keep -= text.length - budget + 16;
+    } while (text.length > budget && keep > 0);
+    if (text.length > budget) text = render(SNAPSHOT_TRIMMED);
   }
-  const text = lines.join("\n");
   if (text.length <= budget) return { text, complete: true };
   const recovery = `[cut] Run \`folio-axi poll ${quotedFile}\` to read the whole batch.`;
   if (recovery.length > budget) return { text: "[cut] Feedback remains queued.".slice(0, budget), complete: false };
@@ -337,7 +347,13 @@ export async function runHookEvent(
 
   if (hookEventName === "Stop") {
     counters[sessionId] = { count: Number(counters[sessionId]?.count || 0) + 1, at: Date.now() };
-    await writeStopCounters(stateDirectory, counters).catch(() => {});
+    // An unrecorded block would make MAX_CONSECUTIVE_STOP_BLOCKS unenforceable, so a failed write
+    // lets the agent stop and leaves the batch unacked for `folio-axi poll`.
+    const recorded = await writeStopCounters(stateDirectory, counters).then(
+      () => true,
+      () => false,
+    );
+    if (!recorded) return none;
     return {
       output: JSON.stringify({
         decision: "block",

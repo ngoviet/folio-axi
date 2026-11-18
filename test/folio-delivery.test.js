@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { connect as netConnect } from "node:net";
 import { tmpdir } from "node:os";
@@ -8,7 +9,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { serve } from "../src/server.js";
-import { ATTACHMENT_DELIVERY_GRACE_MS, SessionStore } from "../src/session-store.js";
+import { ATTACHMENT_DELIVERY_GRACE_MS, canonicalMissingPath, SessionStore } from "../src/session-store.js";
 
 test("a disconnected raw poll restores fresh feedback while preserving the unacked batch", async () => {
   await withServer(async ({ base, artifact, stateFile }) => {
@@ -39,7 +40,7 @@ test("a disconnected raw poll restores fresh feedback while preserving the unack
       const socket = await new Promise((resolve, reject) => {
         const client = netConnect(Number(new URL(base).port), "127.0.0.1", () => {
           client.write(
-            `GET /api/poll?file=${encodeURIComponent(artifact)} HTTP/1.1\r\nHost: ${new URL(base).host}\r\n\r\n`,
+            `GET /api/poll?file=${encodeURIComponent(artifact)}&session_id=sess-a HTTP/1.1\r\nHost: ${new URL(base).host}\r\n\r\n`,
           );
           resolve(client);
         });
@@ -353,6 +354,22 @@ test("ackable polls require the owner on owned pages but allow ownerless pages",
   });
 });
 
+// A raw poll consumes what it takes, so on an owned page it would remove the owner's feedback
+// without the owner ever seeing it. Only the owner (or an explicit takeover) may take it.
+test("raw polls without the owner's session are refused on owned pages", async () => {
+  await withServer(async ({ base, artifact }) => {
+    const { key } = await open(base, artifact, "sess-a");
+    await sendPrompt(base, key, "for A only");
+    for (const params of [{}, { session_id: "invalid id" }, { session_id: "sess-b" }]) {
+      const response = await poll(base, artifact, params);
+      assert.equal(response.status, 409, JSON.stringify(params));
+      assert.equal((await response.json()).code, "NOT_OWNER");
+    }
+    const owner = await poll(base, artifact, { ack: "1", session_id: "sess-a" }).then((res) => res.json());
+    assert.equal(owner.prompts[0].prompt, "for A only");
+  });
+});
+
 test("takeover of an owned page requires a valid session identity", async () => {
   await withServer(async ({ base, artifact, stateFile }) => {
     const { key } = await open(base, artifact, "sess-a");
@@ -506,6 +523,34 @@ test("end works by stored path after the HTML file was deleted (#373)", async ()
     assert.equal(res.status, 200);
     const session = await new SessionStore(stateFile).findByKey(key);
     assert.equal(session.status, "ended");
+  });
+});
+
+// A page on a USB stick or network drive that is gone has no resolvable ancestor at all, not even
+// the drive root. Poll and end must still find it by its stored path instead of failing with 500.
+test("poll and end find a page whose whole drive is gone", { skip: process.platform !== "win32" }, async () => {
+  const letter = "QRSTUVWXYZ".split("").find((candidate) => !existsSync(`${candidate}:\\`));
+  if (!letter) return;
+  const file = `${letter}:\\gone\\report.html`;
+  assert.equal(await canonicalMissingPath(file), file);
+  await withServer(async ({ base, artifact, stateFile }) => {
+    const { key } = await open(base, artifact);
+    const store = new SessionStore(stateFile);
+    const state = await store.readState();
+    state.sessions[key].file = file;
+    await store.writeState(state);
+    await sendPrompt(base, key, "still here");
+    const polled = await poll(base, `${letter.toLowerCase()}:\\gone\\report.html`, { ack: "1" });
+    assert.equal(polled.status, 200);
+    assert.equal((await polled.json()).prompts[0].prompt, "still here");
+    const missing = await poll(base, `${letter}:\\never\\opened.html`, {});
+    assert.equal(missing.status, 404);
+    const ended = await fetch(`${base}/api/end`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ file }),
+    });
+    assert.equal(ended.status, 200);
   });
 });
 

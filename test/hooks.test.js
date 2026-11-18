@@ -86,6 +86,31 @@ test("formatHookFeedback marks a batch that does not fit as incomplete", () => {
   assert.match(cut.text, /folio-axi poll "\/a\.html"/);
 });
 
+// The DOM snapshot is optional context with no size cap of its own. Counting it against the hook
+// budget left a big page's batch forever "cut", so it was never acked and every Stop and prompt
+// handed the same feedback over again.
+test("formatHookFeedback trims an oversized DOM snapshot and keeps the batch complete", () => {
+  const snapshot = `<main>${'<p class="row">"line"</p>\n'.repeat(800)}</main>`;
+  const response = {
+    status: "feedback",
+    prompts: [{ prompt: "make the header sticky", tag: "message" }],
+    artifact_failures: [{ kind: "asset", url: "logo.png" }],
+    dom_snapshot: snapshot,
+  };
+  const result = formatHookFeedback("/a.html", response, 9000);
+  assert.equal(result.complete, true);
+  assert.ok(result.text.length <= 9000, String(result.text.length));
+  const payload = JSON.parse(result.text.split("\n")[1]);
+  assert.deepEqual(payload.prompts, response.prompts);
+  assert.deepEqual(payload.artifact_failures, response.artifact_failures);
+  assert.ok(payload.dom_snapshot.length < snapshot.length);
+  assert.ok(payload.dom_snapshot.endsWith("[snapshot trimmed]"));
+  assert.match(result.text, /folio-axi reply "\/a\.html"/);
+
+  const prompts = formatHookFeedback("/a.html", { ...response, prompts: [{ prompt: "y".repeat(9000) }] }, 9000);
+  assert.equal(prompts.complete, false, "prompts themselves are never trimmed");
+});
+
 test("hook commands quote paths and retain the complete recovery line", () => {
   const file = `C:\\work\\${"long directory ".repeat(20)}my page.html`;
   const quoted = `"${file.replaceAll("\\", "\\\\")}"`;
@@ -144,6 +169,23 @@ test("Stop stops blocking after the consecutive limit and can be turned off", as
     assert.equal(counters.s1, undefined);
 
     assert.equal((await runHookEvent("stop", { ...options, env: { FOLIO_AXI_STOP_HOOK: "0" } })).output, "");
+  });
+});
+
+// Without a stored count the consecutive limit cannot hold, so an unwritable counter must let the
+// agent stop rather than block forever. The feedback stays queued for `folio-axi poll`.
+test("Stop does not block when it cannot record the block", async () => {
+  await withStateDir(async (stateDirectory) => {
+    await mkdir(path.join(stateDirectory, "hook-stop.json"));
+    const result = await runHookEvent("stop", {
+      input: { session_id: "s1", cwd },
+      env: {},
+      stateDirectory,
+      readSessions: async () => [page("mine", { owner_session_id: "s1", prompts: [{ prompt: "again" }] })],
+      pollOnce: async () => ({ status: "feedback", prompts: [{ prompt: "again" }], delivery_id: "d" }),
+    });
+    assert.equal(result.output, "");
+    assert.deepEqual(result.acks, [], "nothing is acked when nothing was shown");
   });
 });
 
@@ -303,7 +345,15 @@ test("hook preserves structured feedback and does not acknowledge a cut batch", 
     assert.ok(context.includes(JSON.stringify(response.artifact_failures)));
     assert.ok(context.includes("snapshot"));
     assert.equal(result.acks.length, 1);
+    // A huge snapshot is trimmed, so the batch still lands whole and is acked.
     response.dom_snapshot = "z".repeat(50000);
+    const trimmed = await runHookEvent("prompt-submit", options);
+    assert.ok(
+      JSON.parse(trimmed.output).hookSpecificOutput.additionalContext.includes(JSON.stringify(response.prompts)),
+    );
+    assert.equal(trimmed.acks.length, 1);
+    // Prompts are never trimmed: a batch whose prompts do not fit stays unacked for `poll`.
+    response.prompts[0].prompt = "x".repeat(20000);
     const cut = await runHookEvent("prompt-submit", options);
     assert.deepEqual(cut.acks, []);
   });

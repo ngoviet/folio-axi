@@ -1008,35 +1008,33 @@ export async function serve({
         return;
       }
       // Folio: feedback belongs to the agent session that opened the page. A poll from another
-      // session is refused unless it explicitly takes over, which also moves ownership.
+      // session, or one naming no session, is refused unless it explicitly takes over, which also
+      // moves ownership. That covers raw polls too: they consume what they take, so a sessionless
+      // raw poll would remove the owner's feedback without the owner ever seeing it.
       const ackable = req.query.ack === "1";
       const { holder, previousPresence, conflict, missing, invalidTakeover } = await pollOwnershipLock.runExclusive(
         async () => {
           const currentHolder = activePolls.get(key);
-          if (pollSessionId || ackable || takeover) {
-            const ownedSession = await store.findByKey(key);
-            const ownerSessionId = ownedSession?.owner_session_id || "";
-            if (takeover && !pollSessionId && ownerSessionId) return { invalidTakeover: true };
-            if (ownerSessionId && ownerSessionId !== pollSessionId && !takeover) {
-              return {
-                conflict: {
-                  status: "error",
-                  code: "NOT_OWNER",
-                  error: "this page belongs to another agent session",
-                  owner_session_id: ownerSessionId,
-                },
-              };
-            }
-            if (currentHolder && !takeover) return { conflict: listenerConflict(currentHolder, "LISTENER_ACTIVE") };
-            if (pollSessionId && ownedSession && ownerSessionId !== pollSessionId)
-              await store.setOwnerSession(key, pollSessionId);
-            // Folio: whoever owns the page now is polling it, so it is no longer a closed session's.
-            if (pollSessionId && ownedSession?.owner_closed_at) {
-              await store.clearOwnerClosed(key);
-              events.emit("agent-session", key, false);
-            }
-          } else if (currentHolder && !takeover) {
-            return { conflict: listenerConflict(currentHolder, "LISTENER_ACTIVE") };
+          const ownedSession = await store.findByKey(key);
+          const ownerSessionId = ownedSession?.owner_session_id || "";
+          if (takeover && !pollSessionId && ownerSessionId) return { invalidTakeover: true };
+          if (ownerSessionId && ownerSessionId !== pollSessionId && !takeover) {
+            return {
+              conflict: {
+                status: "error",
+                code: "NOT_OWNER",
+                error: "this page belongs to another agent session",
+                owner_session_id: ownerSessionId,
+              },
+            };
+          }
+          if (currentHolder && !takeover) return { conflict: listenerConflict(currentHolder, "LISTENER_ACTIVE") };
+          if (pollSessionId && ownedSession && ownerSessionId !== pollSessionId)
+            await store.setOwnerSession(key, pollSessionId);
+          // Folio: whoever owns the page now is polling it, so it is no longer a closed session's.
+          if (pollSessionId && ownedSession?.owner_closed_at) {
+            await store.clearOwnerClosed(key);
+            events.emit("agent-session", key, false);
           }
           const nextHolder = { key, owner, startedAt: Date.now(), replaced: false, replace: null };
           claimedHolder = nextHolder;
