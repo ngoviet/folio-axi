@@ -7,8 +7,6 @@ import {
   chromeViTable,
   compileChromeTable,
   createChromeLocalizerJs,
-  FOREIGN_ATTRIBUTES_SELECTOR,
-  FOREIGN_CONTENT_SELECTOR,
   localizeChromeText,
 } from "../src/chrome-i18n.js";
 import { createChromeHtml } from "../src/server.js";
@@ -382,7 +380,35 @@ test("only the artifact frame gets a language answer", () => {
 test("the project name and path are never localized", () => {
   const html = createChromeHtml({ key: "k", file: "/srv/Working draft/.folio/review.html", status: "active" });
   assert.match(html, /<span class="project-name">Working draft<\/span>/);
-  // Both selectors the localizer skips name the label: its text and its tooltip are values.
-  assert.ok(FOREIGN_CONTENT_SELECTOR.split(",").includes(".project-name"));
-  assert.ok(FOREIGN_ATTRIBUTES_SELECTOR.split(",").includes("#projectLabel"));
+  const name = fakeElement("span", "project-name", {}, ["Working draft"]);
+  const label = fakeElement("span", "project-label", { id: "projectLabel", title: "/srv/Working draft" }, [name]);
+  const expired = fakeElement("span", "bubble-attachment-expired", {}, ["Image expired"]);
+  const root = fakeElement("body", "", {}, [label, expired]);
+  const install = new Function(
+    "Node",
+    "MutationObserver",
+    "document",
+    "localStorage",
+    "window",
+    "console",
+    createChromeLocalizerJs(),
+  );
+  install(
+    { TEXT_NODE: 3, ELEMENT_NODE: 1 },
+    class {
+      observe() {}
+    },
+    { documentElement: root, addEventListener() {}, getElementById: () => null },
+    { getItem: () => null },
+    { addEventListener() {} },
+    {
+      error: (error) => {
+        throw error;
+      },
+    },
+  );
+  assert.equal(root.lang, "vi", "the localizer installed");
+  assert.notEqual(expired.childNodes[0].data, "Image expired", "Folio's own words are still translated");
+  assert.equal(name.childNodes[0].data, "Working draft");
+  assert.equal(label.getAttribute("title"), "/srv/Working draft");
 });

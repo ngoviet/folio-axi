@@ -1709,11 +1709,13 @@ export async function serve({
       // frame-ancestors expression can name.
       res.setHeader("x-frame-options", "DENY");
       res.setHeader("content-security-policy", "frame-ancestors 'none'");
+      const project = projectForFile(session.file);
       res.type("html").send(
         createChromeHtml(session, {
           layoutGateEnabled: shouldEnableLayoutGate(req.query || {}),
           faviconTag,
-          title: chromeTitle(title, projectForFile(session.file)),
+          title: chromeTitle(title, project),
+          project,
           artifactRevision: chromeLoad.artifact_revision,
           artifactLoadToken: chromeLoad.artifact_load_token,
           artifactLoadSequence: chromeLoad.artifact_load_sequence,
@@ -3335,11 +3337,10 @@ export function createChromeHtml(
     attachmentMaxBytes = 0,
     attachmentMaxCount = 0,
     attachmentAcceptedMime = ACCEPTED_IMAGE_MIME,
+    project = projectForFile(session.file),
   } = {},
 ) {
   const acceptedMime = attachmentAcceptedMime.map(String);
-  // Folio: name the project this page reports for, so pages from many projects stay apart.
-  const project = projectForFile(session.file);
   const sessionJson = jsonScript({
     key: session.key,
     file: session.file,

@@ -45,7 +45,7 @@ test("a git worktree (.git file) is its own project", async () => {
   }
 });
 
-test("without a git root the project is the page's folder, skipping .folio", async () => {
+test("without a git root the project is the page's folder, skipping .folio", async (t) => {
   const root = await tempTree();
   try {
     const folder = path.join(root, "notes");
@@ -54,12 +54,13 @@ test("without a git root the project is the page's folder, skipping .folio", asy
     const plain = path.join(folder, "b.html");
     await writeFile(inFolio, "<!doctype html>");
     await writeFile(plain, "<!doctype html>");
-    // tmpdir may itself sit inside a git checkout on some machines; only assert when it does not.
     const project = projectForFile(inFolio);
-    if (project.path === folder) {
-      assert.deepEqual(project, { name: "notes", path: folder });
-      assert.deepEqual(projectForFile(plain), { name: "notes", path: folder });
+    if (project.path !== folder) {
+      t.skip(`tmpdir sits inside the git checkout ${project.path}`);
+      return;
     }
+    assert.deepEqual(project, { name: "notes", path: folder });
+    assert.deepEqual(projectForFile(plain), { name: "notes", path: folder });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
