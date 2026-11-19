@@ -9,6 +9,12 @@
       "groupSlug": "whiteboard-pins",
       "automerge": false,
       "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Hold Node major upgrades for approval on the Dependency Dashboard: the setup-node `node-version` input in .github/workflows/ci.yml (dep name `node`, package actions/node-versions) and @types/node. PC1, which runs Folio, is on Node 24 (v24.21.0, measured 2026-11-19). Node 25+ no longer bundles corepack, which CI uses to get the pinned pnpm. The Renovate token has no Workflows permission, so a branch that edits ci.yml is rejected anyway (renovate/node-26.x, PR #16). Revisit when PC1 moves off Node 24 or CI stops relying on corepack.",
+      "matchDepNames": ["node", "@types/node"],
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
     }
   ]
 }
