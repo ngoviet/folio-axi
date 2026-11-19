@@ -50,7 +50,7 @@ agent writes page.html ──▶ folio-axi page.html ──▶ browser review pa
 agent reads feedback   ◀── folio-axi poll page.html ◀───┘ Send to Agent
 ```
 
-- **Identity** - A session is the canonical path of the HTML file; there are no opaque IDs. The top bar and the tab title name the project the page reports for (its git root), with the full path on hover. The page runs in a sandboxed iframe with a small injected SDK, so the saved file renders the same inside and outside Folio.
+- **Identity** - A session is the canonical path of the HTML file; there are no opaque IDs. The top bar and the tab title name the project the page reports for (its git root, or the folder with `CLAUDE.md`/`AGENTS.md`/`.claude`; a worktree shows its repository), with the full path on hover. The page runs in a sandboxed iframe with a small injected SDK, so the saved file renders the same inside and outside Folio.
 - **Review page** - Annotate elements, text selections, table cells and diagram nodes; attach images; edit Mermaid diagrams as Excalidraw whiteboards. Unsent notes stay in the tab where you wrote them; sent notes show 👀 Seen, 🛠️ Working and ✅ Done receipts.
 - **Agent replies** - Replies render a small Markdown subset: paragraphs, line breaks, headings as bold lead lines, bullet and numbered lists, fenced and inline code, bold, italic and http(s) links. Tables, images and raw HTML stay as written; your own messages are never parsed.
 - **Layout checks** - The page is revealed after a quick in-browser layout audit. Problems it proves go to a passive **Layout issues** inbox and reach the agent only when you queue them.

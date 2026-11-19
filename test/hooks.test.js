@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -248,9 +250,41 @@ test("SessionStart writes FOLIO_SESSION_ID to CLAUDE_ENV_FILE", async () => {
       pollOnce: async () => assert.fail("SessionStart never takes feedback"),
     });
     assert.equal(result.output, "");
-    assert.equal(await readFile(envFile, "utf8"), "export FOLIO_SESSION_ID=s9\n");
+    const written = await readFile(envFile, "utf8");
+    assert.match(written, /^export FOLIO_SESSION_ID=s9\n/);
+    // Folio: the session folder names the project of a page outside any project.
+    assert.match(written, /export FOLIO_SESSION_CWD=/);
   });
 });
+
+// On Windows `bash` on PATH can be WSL's launcher, which hangs here; use Git Bash, as Claude Code does.
+const GIT_BASH = "C:\\Program Files\\Git\\bin\\bash.exe";
+const BASH = process.platform === "win32" ? (existsSync(GIT_BASH) ? GIT_BASH : "") : "bash";
+
+test(
+  "SessionStart's FOLIO_SESSION_CWD survives the shell for any folder name",
+  { skip: !BASH && "no Git Bash" },
+  async () => {
+    await withStateDir(async (stateDirectory) => {
+      const envFile = path.join(stateDirectory, "env.sh");
+      const folder = path.join(stateDirectory, "it's a $HOME `x` folder");
+      await runHookEvent("session-start", {
+        input: { session_id: "s9", cwd: folder },
+        env: { CLAUDE_ENV_FILE: envFile },
+        stateDirectory,
+        readSessions: async () => [],
+        pollOnce: async () => assert.fail("SessionStart never takes feedback"),
+      });
+      // Claude Code sources this file in bash before each command.
+      const sourced = spawnSync(BASH, ["-c", 'source "$1" && printf %s "$FOLIO_SESSION_CWD"', "bash", envFile], {
+        encoding: "utf8",
+        timeout: 15_000,
+      });
+      assert.equal(sourced.status, 0, sourced.stderr);
+      assert.equal(sourced.stdout, folder);
+    });
+  },
+);
 
 test("computeClaudeHookUpdate replaces Folio hook commands only", () => {
   const mine = { hooks: [{ type: "command", command: "echo hi" }] };

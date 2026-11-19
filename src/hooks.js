@@ -269,7 +269,13 @@ export async function runHookEvent(
   if (hookEventName === "SessionStart") {
     if (sessionId && env.CLAUDE_ENV_FILE) {
       try {
-        await appendFile(env.CLAUDE_ENV_FILE, `export FOLIO_SESSION_ID=${sessionId}\n`);
+        // Folio: the session folder names the project of a page outside any project (a scratchpad).
+        // Single quotes keep every character literal when Claude Code sources this file in bash.
+        const quotedCwd = `'${String(cwd).replaceAll("'", "'\\''")}'`;
+        await appendFile(
+          env.CLAUDE_ENV_FILE,
+          `export FOLIO_SESSION_ID=${sessionId}\nexport FOLIO_SESSION_CWD=${quotedCwd}\n`,
+        );
       } catch {
         // Without the env file, `open`/`poll` still work; they just carry no session id.
       }

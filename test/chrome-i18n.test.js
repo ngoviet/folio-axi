@@ -25,6 +25,7 @@ function staticTextOf(html) {
     .replace(/<code>[\s\S]*?<\/code>/g, "<i>")
     .replace(/<span class="path-(head|tail)">[^<]*<\/span>/g, "")
     .replace(/<span class="project-name">[^<]*<\/span>/g, "")
+    .replace(/<span class="project-worktree">[^<]*<\/span>/g, "")
     .replace(/<p class="ended-copy">\/[^<]*<\/p>/g, "");
   return [...body.matchAll(/>([^<]+)</g)]
     .map((match) => match[1].replaceAll("&amp;", "&").replaceAll("&#39;", "'").trim())
