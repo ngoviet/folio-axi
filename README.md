@@ -60,22 +60,22 @@ agent reads feedback   ◀── folio-axi poll page.html ◀───┘ Send t
 
 ### Allowed hosts
 
-To defend against DNS rebinding, the server answers only `Host` headers it knows: loopback names, plus the Tailscale address and MagicDNS name when that listener is bound. Add any other name you use (a LAN hostname, a reverse proxy) to `FOLIO_AXI_ALLOWED_HOSTS`, whitespace-separated; `*` turns the check off, only behind your own authentication. Mutating routes also reject a foreign `Origin` or `Referer`.
+To defend against DNS rebinding, the server answers only `Host` headers it knows: loopback names, plus the Tailscale address and MagicDNS name when that listener is bound. Add any other name you use (a LAN hostname, a reverse proxy) to `FOLIO_AXI_ALLOWED_HOSTS`, whitespace-separated; `*` turns the check off, only behind your own authentication. Mutating routes also reject a foreign `Origin` or `Referer`. Proxy rules (`X-Forwarded-Host`, `X-Forwarded-Proto`) are in [docs/reference.md](docs/reference.md#allowed-hosts).
 
 ### Configuration
 
-| Variable                                 | Default               | Effect                                                                 |
-| ---------------------------------------- | --------------------- | ---------------------------------------------------------------------- |
-| `FOLIO_AXI_PORT`                         | `4388`                | Server port.                                                           |
-| `FOLIO_AXI_STATE_DIR`                    | `~/.folio-axi`        | Sessions, attachments, `server.log`.                                   |
-| `FOLIO_AXI_HOST` / `FOLIO_AXI_LINK_HOST` | Tailscale or loopback | Extra listen address / host used in review links. Never a wildcard.    |
-| `FOLIO_AXI_ALLOWED_HOSTS`                | loopback              | Extra `Host` names to accept (see above).                              |
-| `FOLIO_AXI_NO_OPEN`                      | off                   | `1` creates the session without launching a browser, like `--no-open`. |
-| `FOLIO_AXI_IDLE_TIMEOUT_MS`              | 30 min                | Idle self-shutdown; `0`/`off` disables.                                |
-| `FOLIO_AXI_DISCONNECT_GRACE_MS`          | off                   | Release a waiting poll after every review tab has been gone this long. |
-| `FOLIO_AXI_STOP_HOOK`                    | on                    | `0` turns off the Stop hook's blocks.                                  |
-| `FOLIO_AXI_ENDED_RETENTION_DAYS`         | 7                     | Prune ended sessions after this many days.                             |
-| `FOLIO_AXI_DIAGNOSTIC_VIEWPORTS`         | all                   | Viewport classes the layout inbox tracks.                              |
+| Variable                                 | Default               | Effect                                                                                                             |
+| ---------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `FOLIO_AXI_PORT`                         | `4388`                | Server port.                                                                                                       |
+| `FOLIO_AXI_STATE_DIR`                    | `~/.folio-axi`        | Sessions, attachments, `server.log`.                                                                               |
+| `FOLIO_AXI_HOST` / `FOLIO_AXI_LINK_HOST` | Tailscale or loopback | Listen address (replaces automatic Tailscale; loopback always kept) / host used in review links. Never a wildcard. |
+| `FOLIO_AXI_ALLOWED_HOSTS`                | loopback              | Extra `Host` names to accept (see above).                                                                          |
+| `FOLIO_AXI_NO_OPEN`                      | off                   | `1` creates the session without launching a browser, like `--no-open`.                                             |
+| `FOLIO_AXI_IDLE_TIMEOUT_MS`              | 30 min                | Idle self-shutdown; `0`/`off` disables.                                                                            |
+| `FOLIO_AXI_DISCONNECT_GRACE_MS`          | off                   | Release a waiting poll after every review tab has been gone this long.                                             |
+| `FOLIO_AXI_STOP_HOOK`                    | on                    | `0` turns off the Stop hook's blocks.                                                                              |
+| `FOLIO_AXI_ENDED_RETENTION_DAYS`         | 7                     | Prune ended sessions after this many days.                                                                         |
+| `FOLIO_AXI_DIAGNOSTIC_VIEWPORTS`         | all                   | Viewport classes the layout inbox tracks.                                                                          |
 
 Attachment, export and share limits, and every other detail of the review page and server, are in the [reference](docs/reference.md).
 

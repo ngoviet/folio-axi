@@ -97,7 +97,7 @@ export const POLL_SEND_AND_END_RULE =
 export const POLL_AGENT_REPLY_RULE =
   "Keep the reply concise. Only when a longer reply is genuinely necessary, use Markdown structure - blank-line paragraphs, `- ` / `1. ` lists, `## ` headings - so it renders scannably instead of a wall of text, and pass that body with `--agent-reply-file <path>` (`-` reads stdin) so newlines survive quoting.";
 const POLL_AGENT_REPLY_HELP_POINTER =
-  "The Conversation panel's Markdown subset is in README's Feedback controls bullet.";
+  "The Conversation panel's Markdown subset is in README's Agent replies bullet (How it works).";
 const POLL_AGENT_REPLY_NEXT_POINTER =
   "The Conversation panel's Markdown subset is in `folio-axi poll --help` and README.";
 const POLL_VALUE_FLAGS = ["--agent-reply", "--agent-reply-file", "--timeout-ms", "--owner"];

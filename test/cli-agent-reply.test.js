@@ -113,7 +113,7 @@ test("poll help documents --agent-reply-file for longer Markdown and points at R
   assert.match(help, /`## `/);
   assert.match(help, /`-` reads stdin|`--agent-reply-file -`/);
   assert.match(help, /README/);
-  assert.match(help, /Feedback controls/);
+  assert.match(help, /Agent replies bullet/);
   assert.doesNotMatch(help, /prefer multiline/i);
   assert.match(help, /folio-axi poll report\.html --agent-reply "Renamed the payment step\."/);
   assert.match(help, /folio-axi poll report\.html --agent-reply-file reply\.md/);

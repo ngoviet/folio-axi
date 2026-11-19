@@ -60,22 +60,22 @@ agent đọc phản hồi   ◀── folio-axi poll page.html ◀────�
 
 ### Máy chủ được phép
 
-Để chống DNS rebinding, server chỉ trả lời các header `Host` nó biết: tên loopback, cộng địa chỉ Tailscale và tên MagicDNS khi listener đó đã bind. Thêm tên khác bạn dùng (tên máy trong LAN, reverse proxy) vào `FOLIO_AXI_ALLOWED_HOSTS`, cách nhau bằng khoảng trắng; `*` tắt hẳn việc kiểm, chỉ dùng khi đã có xác thực riêng. Các route thay đổi dữ liệu còn từ chối `Origin` hoặc `Referer` lạ.
+Để chống DNS rebinding, server chỉ trả lời các header `Host` nó biết: tên loopback, cộng địa chỉ Tailscale và tên MagicDNS khi listener đó đã bind. Thêm tên khác bạn dùng (tên máy trong LAN, reverse proxy) vào `FOLIO_AXI_ALLOWED_HOSTS`, cách nhau bằng khoảng trắng; `*` tắt hẳn việc kiểm, chỉ dùng khi đã có xác thực riêng. Các route thay đổi dữ liệu còn từ chối `Origin` hoặc `Referer` lạ. Quy tắc khi đứng sau proxy (`X-Forwarded-Host`, `X-Forwarded-Proto`) nằm ở [docs/reference.md](docs/reference.md#allowed-hosts) (tiếng Anh).
 
 ### Cấu hình
 
-| Biến                                     | Mặc định                | Tác dụng                                                                               |
-| ---------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------- |
-| `FOLIO_AXI_PORT`                         | `4388`                  | Cổng server.                                                                           |
-| `FOLIO_AXI_STATE_DIR`                    | `~/.folio-axi`          | Phiên, ảnh đính kèm, `server.log`.                                                     |
-| `FOLIO_AXI_HOST` / `FOLIO_AXI_LINK_HOST` | Tailscale hoặc loopback | Địa chỉ nghe thêm / tên máy dùng trong link review. Không bao giờ là địa chỉ wildcard. |
-| `FOLIO_AXI_ALLOWED_HOSTS`                | loopback                | Tên `Host` được nhận thêm (xem trên).                                                  |
-| `FOLIO_AXI_NO_OPEN`                      | tắt                     | `1` tạo phiên mà không mở trình duyệt, như `--no-open`.                                |
-| `FOLIO_AXI_IDLE_TIMEOUT_MS`              | 30 phút                 | Tự tắt khi rảnh; `0`/`off` để tắt tính năng.                                           |
-| `FOLIO_AXI_DISCONNECT_GRACE_MS`          | tắt                     | Thả poll đang chờ khi mọi tab review đã đóng quá lâu như vậy.                          |
-| `FOLIO_AXI_STOP_HOOK`                    | bật                     | `0` tắt các lần chặn của hook Stop.                                                    |
-| `FOLIO_AXI_ENDED_RETENTION_DAYS`         | 7                       | Dọn phiên đã kết thúc sau từng ấy ngày.                                                |
-| `FOLIO_AXI_DIAGNOSTIC_VIEWPORTS`         | tất cả                  | Các cỡ màn hình hộp lỗi bố cục theo dõi.                                               |
+| Biến                                     | Mặc định                | Tác dụng                                                                                                                      |
+| ---------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `FOLIO_AXI_PORT`                         | `4388`                  | Cổng server.                                                                                                                  |
+| `FOLIO_AXI_STATE_DIR`                    | `~/.folio-axi`          | Phiên, ảnh đính kèm, `server.log`.                                                                                            |
+| `FOLIO_AXI_HOST` / `FOLIO_AXI_LINK_HOST` | Tailscale hoặc loopback | Địa chỉ nghe (thay Tailscale tự động; luôn giữ loopback) / tên máy dùng trong link review. Không bao giờ là địa chỉ wildcard. |
+| `FOLIO_AXI_ALLOWED_HOSTS`                | loopback                | Tên `Host` được nhận thêm (xem trên).                                                                                         |
+| `FOLIO_AXI_NO_OPEN`                      | tắt                     | `1` tạo phiên mà không mở trình duyệt, như `--no-open`.                                                                       |
+| `FOLIO_AXI_IDLE_TIMEOUT_MS`              | 30 phút                 | Tự tắt khi rảnh; `0`/`off` để tắt tính năng.                                                                                  |
+| `FOLIO_AXI_DISCONNECT_GRACE_MS`          | tắt                     | Thả poll đang chờ khi mọi tab review đã đóng quá lâu như vậy.                                                                 |
+| `FOLIO_AXI_STOP_HOOK`                    | bật                     | `0` tắt các lần chặn của hook Stop.                                                                                           |
+| `FOLIO_AXI_ENDED_RETENTION_DAYS`         | 7                       | Dọn phiên đã kết thúc sau từng ấy ngày.                                                                                       |
+| `FOLIO_AXI_DIAGNOSTIC_VIEWPORTS`         | tất cả                  | Các cỡ màn hình hộp lỗi bố cục theo dõi.                                                                                      |
 
 Giới hạn ảnh đính kèm, xuất và chia sẻ, cùng mọi chi tiết khác của trang review và server, có trong [tài liệu tham chiếu](docs/reference.md) (tiếng Anh).
 
