@@ -2,7 +2,7 @@
 
 This file is loaded every session. It keeps only rules that apply to almost every change. Detail lives in the doc that owns it.
 
-- [README.md](README.md) owns the user-facing contract: features, CLI flags, environment variables, keyboard shortcuts, export and share, and session-end etiquette.
+- [README.md](README.md) owns the short user-facing contract: install, usage, CLI commands and flags, the main environment variables, and Allowed hosts. [docs/reference.md](docs/reference.md) owns the detail it summarises: review-page behaviour, keyboard shortcuts, export and share, attachments, session-end etiquette and server/network behaviour. Keep the README short; put new detail in the reference. README.vi.md mirrors README.md (`readme_axi.py check`).
 - CLI output owns what agents are told while using Folio: `folio-axi --help`, `folio-axi design`, and `folio-axi playbook <id>` (`src/cli.js`, `src/design-reference.js`, `src/playbooks.js`). The generated skill (`src/skill.js` to `skills/folio/SKILL.md`) stays a stub that points at those commands. Do not copy CLI-owned instructions into the skill.
 - [VISION.md](VISION.md) owns the acceptance policy. Change it only through the author.
 - [docs/invariants.md](docs/invariants.md) owns architecture internals, security rationale, and easy-to-reintroduce failure modes. Read the section for the area you are editing before changing it.
