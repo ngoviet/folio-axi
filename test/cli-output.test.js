@@ -21,6 +21,7 @@ import {
   createHomeOutput,
   createLibrariesOutput,
   createOpenOutput,
+  probeCandidatesWithGrace,
   createPollOutput,
   createPlaybookOutput,
   createServerSpawnOptions,
@@ -3224,4 +3225,66 @@ test("design output owns the library icon directive and the diagram playbook poi
   assert.match(diagram, /whiteboard_tooling\.library_icons/);
   assert.doesNotMatch(diagram, /%% lavish-icon/, "the syntax has one owner surface");
   assert.doesNotMatch(JSON.stringify(createHomeOutput({ bin: "folio-axi", sessions: [] })), /lavish-icon|libraries/);
+});
+
+test("open output asks the agent to pass on a review link another device can open", () => {
+  // Folio: the owner often drives PC1 from another machine, where no browser window appears.
+  const lan = createOpenOutput({
+    file: "/tmp/artifact.html",
+    url: "http://192.168.12.71:4388/session/abc123",
+    status: "opened",
+  });
+  assert.match(lan.next_step, /Do not respond to the user just yet\. Now you must run/);
+  assert.match(lan.next_step, /include the review link http:\/\/192\.168\.12\.71:4388\/session\/abc123/);
+  assert.ok(
+    lan.next_step.indexOf("folio-axi poll") < lan.next_step.indexOf("include the review link"),
+    "polling comes first",
+  );
+
+  const local = createOpenOutput({
+    file: "/tmp/artifact.html",
+    url: "http://127.0.0.1:4388/session/abc123",
+    status: "opened",
+  });
+  assert.doesNotMatch(local.next_step, /include the review link/);
+
+  const notLaunched = createOpenOutput({
+    file: "/tmp/artifact.html",
+    url: "http://127.0.0.1:4388/session/abc123",
+    status: "ready",
+  });
+  assert.match(notLaunched.next_step, /no browser window opened/i);
+  assert.match(notLaunched.next_step, /http:\/\/127\.0\.0\.1:4388\/session\/abc123/);
+});
+
+test("probeCandidatesWithGrace stops waiting on silent addresses once a decisive answer arrives", async () => {
+  // Folio: on Windows a connection to an own interface address with no listener is dropped, not
+  // refused, so every CLI call waited the full probe timeout on each dead address.
+  const started = Date.now();
+  const results = await probeCandidatesWithGrace(
+    ["loopback", "lan-dup", "silent"],
+    (host, signal) =>
+      new Promise((resolve) => {
+        if (host === "loopback") setTimeout(() => resolve({ host, owned: true }), 5);
+        else if (host === "lan-dup") setTimeout(() => resolve({ host, owned: true }), 30);
+        else signal.addEventListener("abort", () => resolve(null), { once: true });
+      }),
+    (entry) => entry?.host === "loopback",
+    100,
+  );
+  assert.deepEqual(
+    results.map((entry) => entry?.host ?? null),
+    ["loopback", "lan-dup", null],
+  );
+  assert.ok(Date.now() - started < 400, "did not wait for the silent address");
+});
+
+test("probeCandidatesWithGrace waits for every probe when nothing decisive answers", async () => {
+  const results = await probeCandidatesWithGrace(
+    ["a", "b"],
+    (host) => new Promise((resolve) => setTimeout(() => resolve(host === "b" ? { host } : null), 40)),
+    () => false,
+    10,
+  );
+  assert.deepEqual(results, [null, { host: "b" }]);
 });

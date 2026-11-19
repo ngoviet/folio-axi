@@ -382,6 +382,9 @@ export async function serve({
   // Folio: ended pages used to pile up in state.json for ever; drop the ones ended long ago.
   void store.pruneEndedSessions(endedSessionRetentionMs()).catch(() => {});
   const events = new EventEmitter();
+  // Folio: every waiting poll adds one listener per event and removes it on exit, so more than ten
+  // pages waiting at once is normal use, not a leak (`server.log` filled with false warnings).
+  events.setMaxListeners(0);
   const watchers = new Map();
   const activePolls = new Map();
   const deliveredFeedback = new Set();
@@ -1028,7 +1031,20 @@ export async function serve({
               },
             };
           }
-          if (currentHolder && !takeover) return { conflict: listenerConflict(currentHolder, "LISTENER_ACTIVE") };
+          // Folio: a newer poll from the agent session already listening replaces its own older
+          // poll. The agent re-polls when it lost track of a background poll; refusing that left the
+          // page with a listener nobody would read once the older one ended.
+          // Only an indefinite poll does: a hook's one-shot take (`timeoutMs`) must keep relying on
+          // LISTENER_ACTIVE so it never displaces the session's waiting poll.
+          const sameSession = Boolean(
+            currentHolder &&
+            pollSessionId &&
+            currentHolder.sessionId === pollSessionId &&
+            req.query.timeoutMs === undefined,
+          );
+          if (currentHolder && !takeover && !sameSession) {
+            return { conflict: listenerConflict(currentHolder, "LISTENER_ACTIVE") };
+          }
           if (pollSessionId && ownedSession && ownerSessionId !== pollSessionId)
             await store.setOwnerSession(key, pollSessionId);
           // Folio: whoever owns the page now is polling it, so it is no longer a closed session's.
@@ -1036,13 +1052,22 @@ export async function serve({
             await store.clearOwnerClosed(key);
             events.emit("agent-session", key, false);
           }
-          const nextHolder = { key, owner, startedAt: Date.now(), replaced: false, replace: null };
+          const nextHolder = {
+            key,
+            owner,
+            sessionId: pollSessionId || "",
+            startedAt: Date.now(),
+            replaced: false,
+            sameSession: false,
+            replace: null,
+          };
           claimedHolder = nextHolder;
           const priorPresence = presenceSignature(key, activePolls, deliveredFeedback);
           if (currentHolder) {
             // Install the successor before releasing the old response so its cleanup cannot emit a
             // transient "waiting" state or clear the successor's listener ownership.
             currentHolder.replaced = true;
+            currentHolder.sameSession = sameSession;
             activePolls.set(key, nextHolder);
             currentHolder.replace?.();
           } else {
@@ -3042,6 +3067,7 @@ function listenerConflict(holder, code) {
     error:
       code === "LISTENER_ACTIVE" ? "Folio already has an active poll listener" : "Folio poll listener was replaced",
     holder: { label: listenerLabel(holder), age_ms: Math.max(0, Date.now() - holder.startedAt) },
+    ...(code === "LISTENER_REPLACED" && holder.sameSession ? { same_session: true } : {}),
   };
 }
 
