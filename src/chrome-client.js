@@ -4441,6 +4441,11 @@ const DOCUMENT_TITLE_MAX_CHARS = 120;
 const DOCUMENT_ICON_MAX_CHARS = 8192;
 const DOCUMENT_ICON_RE = /^data:image\/svg\+xml[;,]/i;
 const loadTimeTitle = document.title;
+// Folio: keep the project in the tab title when the artifact sets its own title.
+function documentTitleSuffix() {
+  const name = typeof sessionData.project?.name === "string" ? sessionData.project.name : "";
+  return name ? " · " + name + " · Folio" : " · Folio";
+}
 const loadTimeIconLink = document.querySelector?.('link[rel~="icon"]');
 const loadTimeIconHref = loadTimeIconLink ? loadTimeIconLink.getAttribute("href") : null;
 
@@ -4453,7 +4458,7 @@ function applyDocumentMeta(msg) {
       .trim()
       .slice(0, DOCUMENT_TITLE_MAX_CHARS)
       .trim();
-    document.title = title ? title + " · Folio" : loadTimeTitle;
+    document.title = title ? title + documentTitleSuffix() : loadTimeTitle;
   }
   if (msg.icon === null) setDocumentIcon(loadTimeIconHref);
   else if (

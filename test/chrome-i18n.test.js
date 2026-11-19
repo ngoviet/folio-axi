@@ -7,6 +7,8 @@ import {
   chromeViTable,
   compileChromeTable,
   createChromeLocalizerJs,
+  FOREIGN_ATTRIBUTES_SELECTOR,
+  FOREIGN_CONTENT_SELECTOR,
   localizeChromeText,
 } from "../src/chrome-i18n.js";
 import { createChromeHtml } from "../src/server.js";
@@ -24,6 +26,7 @@ function staticTextOf(html) {
     .replace(/<svg[\s\S]*?<\/svg>/g, "")
     .replace(/<code>[\s\S]*?<\/code>/g, "<i>")
     .replace(/<span class="path-(head|tail)">[^<]*<\/span>/g, "")
+    .replace(/<span class="project-name">[^<]*<\/span>/g, "")
     .replace(/<p class="ended-copy">\/[^<]*<\/p>/g, "");
   return [...body.matchAll(/>([^<]+)</g)]
     .map((match) => match[1].replaceAll("&amp;", "&").replaceAll("&#39;", "'").trim())
@@ -34,7 +37,9 @@ test("every static chrome string has a Vietnamese translation", () => {
   const html = createChromeHtml({ key: "k", file: "/tmp/review.html", status: "active" });
   const missing = staticTextOf(html).filter((text) => !STATIC_TEXT_KEPT.has(text) && vi(text) === text);
   assert.deepEqual(missing, []);
-  for (const match of html.matchAll(/ (?:title|aria-label|placeholder)="([^"]+)"/g)) {
+  // The project label's tooltip is the project path, a value declared in FOREIGN_ATTRIBUTES_SELECTOR.
+  const chromeAttributes = html.replace(/<span class="project-label" id="projectLabel" title="[^"]*">/g, "");
+  for (const match of chromeAttributes.matchAll(/ (?:title|aria-label|placeholder)="([^"]+)"/g)) {
     assert.notEqual(vi(match[1].replaceAll("&#39;", "'")), match[1], `untranslated attribute: ${match[1]}`);
   }
 });
@@ -372,4 +377,12 @@ test("only the artifact frame gets a language answer", () => {
   page.receive({ source: page.frame.contentWindow, data: { type: "lavish:annotationMode" } });
   page.receive({ source: page.frame.contentWindow, data: null });
   assert.deepEqual(page.posted, []);
+});
+
+test("the project name and path are never localized", () => {
+  const html = createChromeHtml({ key: "k", file: "/srv/Working draft/.folio/review.html", status: "active" });
+  assert.match(html, /<span class="project-name">Working draft<\/span>/);
+  // Both selectors the localizer skips name the label: its text and its tooltip are values.
+  assert.ok(FOREIGN_CONTENT_SELECTOR.split(",").includes(".project-name"));
+  assert.ok(FOREIGN_ATTRIBUTES_SELECTOR.split(",").includes("#projectLabel"));
 });
