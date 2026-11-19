@@ -26,7 +26,7 @@ export const FOREIGN_CONTENT_SELECTOR =
 
 // Elements whose own attributes are someone else's text while their text is Folio's: an expired
 // image says "Image expired" in the chrome's language, and its tooltip is the user's file name.
-export const FOREIGN_ATTRIBUTES_SELECTOR = ".bubble-attachment-expired,#projectLabel";
+export const FOREIGN_ATTRIBUTES_SELECTOR = ".bubble-attachment-expired,#projectLabel,#copyPath";
 
 // In the annotation card, only the attachment's file name is someone else's text. Labels in the
 // heading are composed into one string, so the anchored card rules keep those verbatim instead.
@@ -342,7 +342,6 @@ const VI_ATTACHMENT_RULES = [
 /** @type {[RegExp, string][]} */
 const VI_RULES = [
   [/^Toggle annotate\/explore mode \((.+)\)$/, "Bật/tắt chế độ chú thích (phím $1)"],
-  [/^Copy path · /, "Chép đường dẫn · "],
   [/^Not sent — (.+)\. Remove or fix the image, then send again\.$/, "Chưa gửi: $1. Hãy bỏ hoặc sửa ảnh rồi gửi lại."],
   [/images exceed the (.+?) per-prompt limit/, "ảnh vượt giới hạn $1 mỗi ghi chú"],
   [/more than (\d+) images on one prompt/, "hơn $1 ảnh trong một ghi chú"],

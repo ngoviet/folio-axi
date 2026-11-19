@@ -116,7 +116,10 @@ test("an ackable batch stays unseen through a closed poll and reads Seen after i
     assert.deepEqual(await seen(), [false]);
 
     const redelivered = await poll(base, artifact, { ack: "1", session_id: "sess-a" }).then((r) => r.json());
-    assert.equal(redelivered.redelivered, true);
+    assert.equal(redelivered.prompts[0].prompt, "delivered");
+    // Folio (18/11 review, left open): the closed poll never handed this batch to an agent, so
+    // this is its first delivery, not a redelivery.
+    assert.equal(redelivered.redelivered, undefined);
     assert.deepEqual(await seen(), [false]);
 
     await sendPrompt(base, key, "queued before the ack");
@@ -992,4 +995,67 @@ test("many waiting polls neither leak listeners nor trip MaxListenersExceededWar
   } finally {
     process.off("warning", onWarning);
   }
+});
+
+test("a batch an agent received but never acked is marked redelivered on the next poll", async () => {
+  await withServer(async ({ base, artifact }) => {
+    const { key } = await open(base, artifact, "sess-a");
+    await sendPrompt(base, key, "read but not acked");
+    const first = await poll(base, artifact, { ack: "1", session_id: "sess-a" }).then((r) => r.json());
+    assert.equal(first.prompts[0].prompt, "read but not acked");
+    assert.equal(first.redelivered, undefined);
+    const again = await poll(base, artifact, { ack: "1", session_id: "sess-a" }).then((r) => r.json());
+    assert.equal(again.delivery_id, first.delivery_id);
+    assert.equal(again.redelivered, true);
+  });
+});
+
+test("a received batch stays redelivered after a later redelivery's poll closes unanswered", async () => {
+  await withServer(async ({ base, artifact }) => {
+    const { key } = await open(base, artifact, "sess-a");
+    await sendPrompt(base, key, "received once");
+    const first = await poll(base, artifact, { ack: "1", session_id: "sess-a" }).then((r) => r.json());
+    assert.equal(first.redelivered, undefined);
+
+    const original = SessionStore.prototype.takeFeedback;
+    let release = () => {};
+    let started;
+    const taken = new Promise((resolve) => {
+      started = resolve;
+    });
+    /** @type {Promise<void>} */
+    const resume = new Promise((resolve) => {
+      release = resolve;
+    });
+    SessionStore.prototype.takeFeedback = async function (sessionKey, options) {
+      const result = await original.call(this, sessionKey, options);
+      if (sessionKey === key && options?.ackable && result.status === "feedback") {
+        started();
+        await resume;
+      }
+      return result;
+    };
+    try {
+      const query = new URLSearchParams({ file: artifact, ack: "1", session_id: "sess-a" });
+      const socket = await new Promise((resolve, reject) => {
+        const client = netConnect(Number(new URL(base).port), "127.0.0.1", () => {
+          client.write(`GET /api/poll?${query} HTTP/1.1\r\nHost: ${new URL(base).host}\r\n\r\n`);
+          resolve(client);
+        });
+        client.on("error", reject);
+      });
+      await taken;
+      socket.destroy();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    } finally {
+      release();
+      SessionStore.prototype.takeFeedback = original;
+    }
+
+    const again = await poll(base, artifact, { ack: "1", session_id: "sess-a" }).then((r) => r.json());
+    assert.equal(again.delivery_id, first.delivery_id);
+    assert.equal(again.redelivered, true);
+  });
 });

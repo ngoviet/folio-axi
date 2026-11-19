@@ -36,7 +36,9 @@ test("every static chrome string has a Vietnamese translation", () => {
   const missing = staticTextOf(html).filter((text) => !STATIC_TEXT_KEPT.has(text) && vi(text) === text);
   assert.deepEqual(missing, []);
   // The project label's tooltip is the project path, a value declared in FOREIGN_ATTRIBUTES_SELECTOR.
-  const chromeAttributes = html.replace(/<span class="project-label" id="projectLabel" title="[^"]*">/g, "");
+  const chromeAttributes = html
+    .replace(/<span class="project-label" id="projectLabel" title="[^"]*">/g, "")
+    .replace(/ id="copyPath" type="button" title="[^"]*"/g, "");
   for (const match of chromeAttributes.matchAll(/ (?:title|aria-label|placeholder)="([^"]+)"/g)) {
     assert.notEqual(vi(match[1].replaceAll("&#39;", "'")), match[1], `untranslated attribute: ${match[1]}`);
   }
@@ -59,7 +61,6 @@ test("composed strings translate with their values kept", () => {
     ["Reveal 2/5", "Chỉ chỗ 2/5"],
     ["Remove photo.png", "Bỏ photo.png"],
     ["2 revisions · 1 marked block", "2 phiên bản · 1 khối được đánh dấu"],
-    ["Copy path · /tmp/review.html", "Chép đường dẫn · /tmp/review.html"],
     ["Toggle annotate/explore mode (⌘E / Ctrl+E)", "Bật/tắt chế độ chú thích (phím ⌘E / Ctrl+E)"],
     ["Exported with 2 unresolved assets and 1 notice", "Đã xuất, kèm 2 tài nguyên chưa xử lý và 1 thông báo"],
     ["Select Page scrolls sideways on Mobile", "Chọn Trang cuộn ngang ở khổ di động"],
@@ -411,4 +412,39 @@ test("the project name and path are never localized", () => {
   assert.notEqual(expired.childNodes[0].data, "Image expired", "Folio's own words are still translated");
   assert.equal(name.childNodes[0].data, "Working draft");
   assert.equal(label.getAttribute("title"), "/srv/Working draft");
+});
+
+test("the Copy path tooltip keeps the user's path verbatim in Vietnamese", () => {
+  // Folio (18/11 review, left open): words inside the path were translated ("Hide conversation" ->
+  // "Ẩn hội thoại") because the tooltip mixed chrome copy with the user's path.
+  const html = createChromeHtml({ key: "k", file: "/srv/Hide conversation/review.html", status: "active" });
+  const title = html.match(/id="copyPath"[^>]*title="([^"]*)"/)?.[1];
+  assert.ok(title, "copy path button has a tooltip");
+  const button = fakeElement("button", "menu-file", { id: "copyPath", title }, []);
+  const root = fakeElement("body", "", {}, [button]);
+  const install = new Function(
+    "Node",
+    "MutationObserver",
+    "document",
+    "localStorage",
+    "window",
+    "console",
+    createChromeLocalizerJs(),
+  );
+  install(
+    { TEXT_NODE: 3, ELEMENT_NODE: 1 },
+    class {
+      observe() {}
+    },
+    { documentElement: root, addEventListener() {}, getElementById: () => null },
+    { getItem: () => null },
+    { addEventListener() {} },
+    {
+      error: (error) => {
+        throw error;
+      },
+    },
+  );
+  assert.equal(root.lang, "vi", "the localizer installed");
+  assert.match(button.getAttribute("title"), /\/srv\/Hide conversation\/review\.html/);
 });

@@ -876,7 +876,7 @@ test("overflow menu shows the artifact path with a copy affordance", async () =>
   const css = await chromeCssSource();
 
   assert.match(html, /class="menu-label">Editing</);
-  assert.match(html, /class="menu-file" id="copyPath"[^>]*title="Copy path · \/tmp\/artifact\/index\.html"/);
+  assert.match(html, /class="menu-file" id="copyPath"[^>]*title="\/tmp\/artifact\/index\.html"/);
   assert.match(html, /class="copy-hint"/);
   assert.match(css, /\.menu-file\{[^}]*font-family:var\(--font-mono\)/);
   assert.match(css, /\.copy-hint\.copied\{color:var\(--accent-hover\)/);
@@ -902,7 +902,7 @@ test("overflow menu path shortens the home directory to a tilde", () => {
   assert.match(html, /class="path-head">~\/projects\/demo\/</);
   assert.match(html, /class="path-tail">artifact\.html</);
   // The copy affordance still carries the absolute path.
-  assert.ok(html.includes(`title="Copy path · ${file}"`));
+  assert.ok(html.includes(`id="copyPath" type="button" title="${file}"`));
 });
 
 test("overflow menu path display tolerates Windows separators", () => {
