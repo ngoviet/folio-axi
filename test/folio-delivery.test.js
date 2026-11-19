@@ -116,7 +116,10 @@ test("an ackable batch stays unseen through a closed poll and reads Seen after i
     assert.deepEqual(await seen(), [false]);
 
     const redelivered = await poll(base, artifact, { ack: "1", session_id: "sess-a" }).then((r) => r.json());
-    assert.equal(redelivered.redelivered, true);
+    assert.equal(redelivered.prompts[0].prompt, "delivered");
+    // Folio (18/11 review, left open): the closed poll never handed this batch to an agent, so
+    // this is its first delivery, not a redelivery.
+    assert.equal(redelivered.redelivered, undefined);
     assert.deepEqual(await seen(), [false]);
 
     await sendPrompt(base, key, "queued before the ack");
@@ -992,4 +995,17 @@ test("many waiting polls neither leak listeners nor trip MaxListenersExceededWar
   } finally {
     process.off("warning", onWarning);
   }
+});
+
+test("a batch an agent received but never acked is marked redelivered on the next poll", async () => {
+  await withServer(async ({ base, artifact }) => {
+    const { key } = await open(base, artifact, "sess-a");
+    await sendPrompt(base, key, "read but not acked");
+    const first = await poll(base, artifact, { ack: "1", session_id: "sess-a" }).then((r) => r.json());
+    assert.equal(first.prompts[0].prompt, "read but not acked");
+    assert.equal(first.redelivered, undefined);
+    const again = await poll(base, artifact, { ack: "1", session_id: "sess-a" }).then((r) => r.json());
+    assert.equal(again.delivery_id, first.delivery_id);
+    assert.equal(again.redelivered, true);
+  });
 });

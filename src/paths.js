@@ -179,6 +179,18 @@ export function stateFile() {
 // the same port at a different address is never touched. Resolve the directory, not the state file:
 // state.json may not exist yet when the server first reports its identity.
 export function stateId(file = stateFile()) {
+  return hashStatePath(upperDriveLetter(canonicalStatePath(file)));
+}
+
+// Folio: every id one installation may be known by. Before 0.3.2 the id hashed the drive letter as
+// typed (`c:` and `C:` gave two ids), so a server started by such a release reports the legacy id;
+// it is still this installation.
+export function stateIds(file = stateFile()) {
+  const canonical = canonicalStatePath(file);
+  return [...new Set([hashStatePath(upperDriveLetter(canonical)), hashStatePath(canonical)])];
+}
+
+function canonicalStatePath(file) {
   const directory = path.dirname(path.resolve(file));
   let canonicalDirectory;
   try {
@@ -187,10 +199,16 @@ export function stateId(file = stateFile()) {
     if (error?.code !== "ENOENT") throw error;
     canonicalDirectory = directory;
   }
-  return createHash("sha256")
-    .update(path.join(canonicalDirectory, path.basename(file)))
-    .digest("hex")
-    .slice(0, 16);
+  return path.join(canonicalDirectory, path.basename(file));
+}
+
+// Windows drive letters are case-insensitive; one installation must hash to one id.
+function upperDriveLetter(filePath) {
+  return filePath.replace(/^([a-z]):/, (_, letter) => `${letter.toUpperCase()}:`);
+}
+
+function hashStatePath(filePath) {
+  return createHash("sha256").update(filePath).digest("hex").slice(0, 16);
 }
 
 export function serverLogFile() {

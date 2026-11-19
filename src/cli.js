@@ -7,6 +7,7 @@ import {
   openSync,
   readFileSync,
   renameSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
@@ -51,7 +52,7 @@ import {
   resolveConcreteListenHosts,
   serverLogFile,
   stateFile,
-  stateId,
+  stateIds,
 } from "./paths.js";
 import { findPlaybook, listPlaybooks, playbookIds, PLAYBOOK_ROUTER_HELP } from "./playbooks.js";
 import { analyzeSelfPaint, SELF_PAINT_WARNING } from "./self-paint.js";
@@ -313,6 +314,13 @@ export function createPlaybookOutput(args) {
   return { playbook };
 }
 
+// Folio: a path pasted into a suggested command must survive the shell. Quote it only when it
+// has whitespace or a shell metacharacter, so ordinary paths read exactly as before.
+export function cmdPath(filePath) {
+  const text = String(filePath);
+  return /[\s"'`$&|;<>()^%!*?]/.test(text) ? `"${text}"` : text;
+}
+
 export function createOpenOutput({
   file,
   url,
@@ -322,7 +330,7 @@ export function createOpenOutput({
   networkWarning = undefined,
 }) {
   const selfPaintPrefix = selfPaintWarning
-    ? `First fix the unpainted page surface flagged in self_paint_warning and save - Folio live-reloads the artifact automatically, so you do not need to re-run \`folio-axi ${file}\`. `
+    ? `First fix the unpainted page surface flagged in self_paint_warning and save - Folio live-reloads the artifact automatically, so you do not need to re-run \`folio-axi ${cmdPath(file)}\`. `
     : "";
   // A failed bind is invisible to the person holding a review link at that address - the page
   // simply does not load - so the agent is told to pass it on rather than leave it in a field.
@@ -333,7 +341,7 @@ export function createOpenOutput({
     session: { file, url, status },
     ...(networkWarning ? { network_warning: networkWarning } : {}),
     ...(selfPaintWarning ? { self_paint_warning: selfPaintWarning } : {}),
-    next_step: `${networkPrefix}${selfPaintPrefix}Do not respond to the user just yet. Now you must run \`folio-axi poll ${file}\`.${openLinkSentence(url, status)} This command long-polls until the user sends feedback or ends the session, and it stays silent the whole time - that is normal, never kill it. Layout issues the browser detects do not return this poll; they wait in the user's Layout issues inbox until the user queues them, then arrive as an ordinary tag "layout-warnings" prompt. Do not pass --timeout-ms during normal agent use. ${pollExecutionGuidance({ agent })} After applying feedback, run \`folio-axi poll ${file} --agent-reply "<message for the user>"\` without --timeout-ms to show a concise response in Folio and keep waiting for more feedback. If instead you are handing back a result without starting another long-poll, run \`folio-axi reply ${file} --agent-reply "<message for the user>"\` to get an acceptance receipt. ${POLL_AGENT_REPLY_RULE} ${POLL_AGENT_REPLY_NEXT_POINTER} If the user ends the session, stop polling and do not reopen it by re-running \`folio-axi ${file}\` unless the user asks for further review or something genuinely important needs their visual attention - deliver routine updates directly in this conversation instead. When reopening is warranted, run \`folio-axi ${file} --reopen\`.`,
+    next_step: `${networkPrefix}${selfPaintPrefix}Do not respond to the user just yet. Now you must run \`folio-axi poll ${cmdPath(file)}\`.${openLinkSentence(url, status)} This command long-polls until the user sends feedback or ends the session, and it stays silent the whole time - that is normal, never kill it. Layout issues the browser detects do not return this poll; they wait in the user's Layout issues inbox until the user queues them, then arrive as an ordinary tag "layout-warnings" prompt. Do not pass --timeout-ms during normal agent use. ${pollExecutionGuidance({ agent })} After applying feedback, run \`folio-axi poll ${cmdPath(file)} --agent-reply "<message for the user>"\` without --timeout-ms to show a concise response in Folio and keep waiting for more feedback. If instead you are handing back a result without starting another long-poll, run \`folio-axi reply ${cmdPath(file)} --agent-reply "<message for the user>"\` to get an acceptance receipt. ${POLL_AGENT_REPLY_RULE} ${POLL_AGENT_REPLY_NEXT_POINTER} If the user ends the session, stop polling and do not reopen it by re-running \`folio-axi ${cmdPath(file)}\` unless the user asks for further review or something genuinely important needs their visual attention - deliver routine updates directly in this conversation instead. When reopening is warranted, run \`folio-axi ${cmdPath(file)} --reopen\`.`,
   };
 }
 
@@ -372,7 +380,7 @@ export function createUserEndedOpenOutput({ file, url, networkWarning = undefine
   return {
     session: { file, url, status: "user-ended" },
     ...(networkWarning ? { network_warning: networkWarning } : {}),
-    next_step: `The user explicitly ended this Folio session from the browser, so \`folio-axi ${file}\` did not reopen it. Do not reopen unless the user asks for further review or something genuinely important needs their visual attention - deliver routine updates directly in this conversation instead. When reopening is warranted, run \`folio-axi ${file} --reopen\`.`,
+    next_step: `The user explicitly ended this Folio session from the browser, so \`folio-axi ${cmdPath(file)}\` did not reopen it. Do not reopen unless the user asks for further review or something genuinely important needs their visual attention - deliver routine updates directly in this conversation instead. When reopening is warranted, run \`folio-axi ${cmdPath(file)} --reopen\`.`,
   };
 }
 
@@ -542,7 +550,7 @@ async function pollCommand(args) {
     }
     if (response.code === "LISTENER_REPLACED") {
       throw new AxiError("Folio poll listener was replaced by a takeover", "LISTENER_REPLACED", [
-        `Re-run folio-axi poll ${absolute} only if you intend to take over listening`,
+        `Re-run folio-axi poll ${cmdPath(absolute)} only if you intend to take over listening`,
       ]);
     }
     return createPollOutput({ file: absolute, response, agent: detectInvokingAgent(process.env) });
@@ -580,7 +588,7 @@ export function pollReconnectText(file, attempt) {
 export function createPollSupersededOutput(file) {
   return {
     session: { file, status: "superseded" },
-    next_step: `A newer \`folio-axi poll ${file}\` from this same agent session is listening now, so this one stopped. Do nothing: the newer poll delivers the user's feedback.`,
+    next_step: `A newer \`folio-axi poll ${cmdPath(file)}\` from this same agent session is listening now, so this one stopped. Do nothing: the newer poll delivers the user's feedback.`,
   };
 }
 
@@ -626,7 +634,7 @@ function createReplyOutput(file, accepted = {}) {
   }
   return {
     reply: { file, status: "sent" },
-    next_step: `Folio accepted the reply for ${file} and is no longer showing Working. Run \`folio-axi poll ${file}\` when you are ready to wait for more feedback.`,
+    next_step: `Folio accepted the reply for ${file} and is no longer showing Working. Run \`folio-axi poll ${cmdPath(file)}\` when you are ready to wait for more feedback.`,
   };
 }
 
@@ -634,7 +642,7 @@ export function pollWaitBannerText(file) {
   return (
     `[folio-axi] Long-polling for user feedback on ${file}. This stays silent until the user sends feedback or ends the session - leave it running. ` +
     `Detected layout issues do NOT return this poll: they wait in the user's Layout issues inbox until the user queues them as ordinary feedback. ` +
-    `If it gets killed or times out before feedback arrives, re-run \`folio-axi poll ${file}\` - feedback remains queued until delivery. Poll delivery consumes the response, so read it completely.`
+    `If it gets killed or times out before feedback arrives, re-run \`folio-axi poll ${cmdPath(file)}\` - feedback remains queued until delivery. Poll delivery consumes the response, so read it completely.`
   );
 }
 
@@ -646,7 +654,7 @@ export function pollWaitTickText(elapsedMs) {
 export function pollInterruptedText(file) {
   return (
     `[folio-axi] Poll interrupted before user feedback arrived. The user may still be reviewing - ` +
-    `re-run \`folio-axi poll ${file}\` to keep waiting; feedback remains queued until delivery. Poll delivery consumes the response, so read it completely.`
+    `re-run \`folio-axi poll ${cmdPath(file)}\` to keep waiting; feedback remains queued until delivery. Poll delivery consumes the response, so read it completely.`
   );
 }
 
@@ -680,7 +688,9 @@ export function startPollWaitReporter({
  */
 export function createPollOutput({ file, response, agent = "generic" }) {
   if (response.status === "missing") {
-    throw new AxiError("No active Folio session for this file", "NOT_FOUND", [`Run \`folio-axi ${file}\` first`]);
+    throw new AxiError("No active Folio session for this file", "NOT_FOUND", [
+      `Run \`folio-axi ${cmdPath(file)}\` first`,
+    ]);
   }
   if (response.status === "feedback") {
     const artifactFailures = Array.isArray(response.artifact_failures) ? response.artifact_failures : [];
@@ -714,7 +724,7 @@ export function createPollOutput({ file, response, agent = "generic" }) {
   }
   return {
     session: { file, status: response.status || "waiting" },
-    next_step: `No user feedback arrived before the optional timeout. Run \`folio-axi poll ${file}\` without --timeout-ms to wait indefinitely - feedback remains queued until delivery, so re-running the poll is safe while waiting. Poll delivery consumes the response, so read it completely.`,
+    next_step: `No user feedback arrived before the optional timeout. Run \`folio-axi poll ${cmdPath(file)}\` without --timeout-ms to wait indefinitely - feedback remains queued until delivery, so re-running the poll is safe while waiting. Poll delivery consumes the response, so read it completely.`,
   };
 }
 
@@ -734,20 +744,20 @@ function createFeedbackNextStep(file, artifactFailures, sessionEnded, endedBy, p
       count > 0
         ? endedBy === "user"
           ? `${count} fatal artifact failure${count === 1 ? "" : "s"} arrived alongside this final feedback - the review surface itself could not be used. Repair ${file}, then open it directly and confirm it renders without reopening this ended Folio session. `
-          : `${count} fatal artifact failure${count === 1 ? "" : "s"} arrived alongside this final feedback - the review surface itself could not be used. Repair ${file}, then run \`folio-axi ${file}\` to open a fresh session. `
+          : `${count} fatal artifact failure${count === 1 ? "" : "s"} arrived alongside this final feedback - the review surface itself could not be used. Repair ${file}, then run \`folio-axi ${cmdPath(file)}\` to open a fresh session. `
         : "";
     if (endedBy === "user") {
       const reopenNote =
         count > 0
           ? ""
-          : ` Only run \`folio-axi ${file} --reopen\` if the user explicitly asks for further review or something genuinely important needs their visual attention.`;
-      return `${failureNote}${layoutNote}${whiteboardNote}${attachmentNote}This was the last feedback before the user ended the session. Stop polling ${file} and do not reopen it - deliver any remaining updates directly in this conversation instead. \`folio-axi reply ${file} --agent-reply "<message>"\` also adds your answer to the ended page without reopening it, for a user who still has it open.${reopenNote}`;
+          : ` Only run \`folio-axi ${cmdPath(file)} --reopen\` if the user explicitly asks for further review or something genuinely important needs their visual attention.`;
+      return `${failureNote}${layoutNote}${whiteboardNote}${attachmentNote}This was the last feedback before the user ended the session. Stop polling ${file} and do not reopen it - deliver any remaining updates directly in this conversation instead. \`folio-axi reply ${cmdPath(file)} --agent-reply "<message>"\` also adds your answer to the ended page without reopening it, for a user who still has it open.${reopenNote}`;
     }
-    return `${failureNote}${layoutNote}${whiteboardNote}${attachmentNote}This was the last feedback before the Folio session ended. Stop polling ${file}. Deliver any remaining updates directly in this conversation, or run \`folio-axi ${file}\` to open a fresh session if the user needs further visual review.`;
+    return `${failureNote}${layoutNote}${whiteboardNote}${attachmentNote}This was the last feedback before the Folio session ended. Stop polling ${file}. Deliver any remaining updates directly in this conversation, or run \`folio-axi ${cmdPath(file)}\` to open a fresh session if the user needs further visual review.`;
   }
   const prefix =
     count > 0 ? artifactFailuresPrefix(file, artifactFailures) : `Apply the requested changes to ${file}. `;
-  return `${prefix}${layoutNote}${whiteboardNote}${attachmentNote}Do not respond to the user just yet. If you are continuing to wait for feedback, run \`folio-axi poll ${file} --agent-reply "<message for the user>"\` without --timeout-ms to reply and keep polling. If instead you are handing back a result without starting another long-poll, run \`folio-axi reply ${file} --agent-reply "<message for the user>"\` to post it and receive an acceptance receipt. ${POLL_AGENT_REPLY_RULE} ${POLL_AGENT_REPLY_NEXT_POINTER} The poll waits silently until the user sends more feedback or ends the session, and only when FOLIO_AXI_DISCONNECT_GRACE_MS is set does it release after every review window stays disconnected past that grace period - never kill it. ${pollExecutionGuidance({ agent })}`;
+  return `${prefix}${layoutNote}${whiteboardNote}${attachmentNote}Do not respond to the user just yet. If you are continuing to wait for feedback, run \`folio-axi poll ${cmdPath(file)} --agent-reply "<message for the user>"\` without --timeout-ms to reply and keep polling. If instead you are handing back a result without starting another long-poll, run \`folio-axi reply ${cmdPath(file)} --agent-reply "<message for the user>"\` to post it and receive an acceptance receipt. ${POLL_AGENT_REPLY_RULE} ${POLL_AGENT_REPLY_NEXT_POINTER} The poll waits silently until the user sends more feedback or ends the session, and only when FOLIO_AXI_DISCONNECT_GRACE_MS is set does it release after every review window stays disconnected past that grace period - never kill it. ${pollExecutionGuidance({ agent })}`;
 }
 
 // The narrow fatal path. Ordinary layout findings never reach the poll: they wait in the user's
@@ -760,14 +770,14 @@ function artifactFailuresPrefix(file, artifactFailures) {
     .map((failure) => `${failure.kind}: ${failure.detail}`)
     .slice(0, 5)
     .join("; ");
-  return `${count} fatal artifact failure${plural} detected - the review surface could not be used (${details}). Repair ${file} so it renders with all of its local assets, then re-check in the browser. Folio live-reloads the artifact automatically after you save, so you do not need to re-run \`folio-axi ${file}\` for this. `;
+  return `${count} fatal artifact failure${plural} detected - the review surface could not be used (${details}). Repair ${file} so it renders with all of its local assets, then re-check in the browser. Folio live-reloads the artifact automatically after you save, so you do not need to re-run \`folio-axi ${cmdPath(file)}\` for this. `;
 }
 
 function createEndedNextStep(file, endedBy) {
   if (endedBy === "user") {
-    return `The user ended this Folio session. Stop polling ${file} - do not run \`folio-axi ${file}\` to reopen it. Deliver any remaining updates directly in this conversation instead. Only reopen with \`folio-axi ${file} --reopen\` if the user explicitly asks for further review or something genuinely important needs their visual attention.`;
+    return `The user ended this Folio session. Stop polling ${file} - do not run \`folio-axi ${cmdPath(file)}\` to reopen it. Deliver any remaining updates directly in this conversation instead. Only reopen with \`folio-axi ${cmdPath(file)} --reopen\` if the user explicitly asks for further review or something genuinely important needs their visual attention.`;
   }
-  return `This Folio session for ${file} has ended. Stop polling. Deliver any remaining updates directly in this conversation, or run \`folio-axi ${file}\` to open a fresh session if the user needs further visual review.`;
+  return `This Folio session for ${file} has ended. Stop polling. Deliver any remaining updates directly in this conversation, or run \`folio-axi ${cmdPath(file)}\` to open a fresh session if the user needs further visual review.`;
 }
 
 async function endCommand(args) {
@@ -801,7 +811,7 @@ async function canonicalExistingFile(file) {
     const stored = await new SessionStore(stateFile()).findByStoredFile(absolute);
     if (stored) return stored.file;
     throw new AxiError(`File not found: ${absolute}`, "NOT_FOUND", [
-      `Run \`folio-axi end ${absolute}\` to close a page whose HTML file was deleted`,
+      `Run \`folio-axi end ${cmdPath(absolute)}\` to close a page whose HTML file was deleted`,
     ]);
   }
 }
@@ -1647,7 +1657,7 @@ function serverBaseUrl(host, port) {
 // belong to another installation and is never adopted or stopped.
 function isOwnedServer(entry, controlHosts) {
   if (entry.health.app !== "folio-axi") return false;
-  if (typeof entry.health.state_id === "string") return entry.health.state_id === stateId();
+  if (typeof entry.health.state_id === "string") return stateIds().includes(entry.health.state_id);
   return controlHosts.has(entry.host);
 }
 
@@ -1806,6 +1816,8 @@ async function probeHealth(baseUrl, { reconcileNetwork, timeoutMs, signal }) {
 // reloads that chrome only; every other open review page is told it is outdated and left alone.
 async function ensureServer({ forceRestart = false, reloadKey = "" } = {}) {
   const port = defaultPort();
+  // Folio: what the detached server writes to server.log from here on explains a failed start.
+  const logOffset = serverLogSize();
   const requiredHosts = await requiredServerHosts();
   const { baseUrl, health: existing, duplicates, foreign } = await findRunningServer(port, { reconcileNetwork: true });
   if (foreign) throw otherInstallationError(port, foreign);
@@ -1897,8 +1909,48 @@ async function ensureServer({ forceRestart = false, reloadKey = "" } = {}) {
     await delay(100);
   }
   if (unidentified) throw unidentifiedListenerError(unidentified);
-  throw new AxiError("Folio server did not start", "SERVER_ERROR", [
-    `Run \`folio-axi server --port ${port}\` to inspect server startup`,
+  throw serverDidNotStartError(port, serverStartFailureReason(logOffset));
+}
+
+function serverLogSize() {
+  try {
+    return statSync(serverLogFile()).size;
+  } catch {
+    return 0;
+  }
+}
+
+// The last `error:` line the detached server appended to server.log since `offset`, if any.
+export function serverStartFailureReason(offset, file = serverLogFile()) {
+  let text;
+  try {
+    text = readFileSync(file).subarray(offset).toString("utf8");
+  } catch {
+    return "";
+  }
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\S+Z\s+/, "").trim())
+    .filter((line) => /^error:/i.test(line));
+  const last = lines.at(-1) || "";
+  return last
+    .replace(/^error:\s*/i, "")
+    .replace(/^"(.*)"$/, "$1")
+    .trim();
+}
+
+export function serverDidNotStartError(port, reason) {
+  if (!reason) {
+    return new AxiError("Folio server did not start", "SERVER_ERROR", [
+      `Run \`folio-axi server --port ${port}\` to inspect server startup`,
+    ]);
+  }
+  const portBusy = /already in use|EADDRINUSE/i.test(reason);
+  return new AxiError(`Folio server did not start on port ${port}: ${reason}`, "SERVER_ERROR", [
+    portBusy
+      ? `Another program holds port ${port}: stop it, or set FOLIO_AXI_PORT to a free port`
+      : `Run \`folio-axi server --port ${port}\` to inspect server startup`,
+    "The full log is in `~/.folio-axi/server.log` (`FOLIO_AXI_STATE_DIR/server.log` when set)",
   ]);
 }
 
@@ -2311,7 +2363,7 @@ export async function postAgentReply(url, text, file, { timeoutMs = AGENT_REPLY_
     if (signal.aborted) throw agentReplyReceiptTimeoutError(file, timeoutMs);
     throw new AxiError("Folio server connection failed", "SERVER_ERROR", [
       "Run `folio-axi server --verbose` or inspect `~/.folio-axi/server.log` (`FOLIO_AXI_STATE_DIR/server.log` when set) for server startup or crash diagnostics",
-      `Re-run \`folio-axi reply ${file} --agent-reply "<message>"\` after the server is reachable`,
+      `Re-run \`folio-axi reply ${cmdPath(file)} --agent-reply "<message>"\` after the server is reachable`,
     ]);
   }
   let payload = null;
@@ -2321,7 +2373,9 @@ export async function postAgentReply(url, text, file, { timeoutMs = AGENT_REPLY_
     if (signal.aborted) throw agentReplyReceiptTimeoutError(file, timeoutMs);
   }
   if (response.status === 404) {
-    throw new AxiError("No active Folio session for this file", "NOT_FOUND", [`Run \`folio-axi ${file}\` first`]);
+    throw new AxiError("No active Folio session for this file", "NOT_FOUND", [
+      `Run \`folio-axi ${cmdPath(file)}\` first`,
+    ]);
   }
   if (response.status === 409 && payload?.status === "ended") {
     throw new AxiError("Folio session has ended; reply was not sent", "SESSION_ENDED", [
@@ -2330,7 +2384,7 @@ export async function postAgentReply(url, text, file, { timeoutMs = AGENT_REPLY_
   }
   if (!response.ok || payload?.status !== "sent") {
     throw new AxiError(`Folio did not accept the agent reply (${response.status})`, "SERVER_ERROR", [
-      `Confirm the session is open with \`folio-axi ${file}\`, then re-run \`folio-axi reply ${file}\``,
+      `Confirm the session is open with \`folio-axi ${cmdPath(file)}\`, then re-run \`folio-axi reply ${cmdPath(file)}\``,
     ]);
   }
   return payload;
@@ -2342,7 +2396,7 @@ function agentReplyReceiptTimeoutError(file, timeoutMs) {
     "SERVER_ERROR",
     [
       "Run `folio-axi server --verbose` or inspect `~/.folio-axi/server.log` (`FOLIO_AXI_STATE_DIR/server.log` when set) for server diagnostics",
-      `Check the Folio conversation for the reply before re-running \`folio-axi reply ${file}\`, so it is not posted twice`,
+      `Check the Folio conversation for the reply before re-running \`folio-axi reply ${cmdPath(file)}\`, so it is not posted twice`,
     ],
   );
 }

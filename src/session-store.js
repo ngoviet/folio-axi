@@ -637,7 +637,15 @@ export class SessionStore {
       // Folio: an earlier batch nobody acked is handed out again, ahead of anything newer.
       const unacked = ackable && isUnackedDelivery(session.unacked_delivery) ? session.unacked_delivery : null;
       if (unacked) {
-        if (retainDeliveredAttachments(session, unacked.prompts, Date.now())) await this.writeState(state);
+        // Folio: only a batch an agent actually received is a redelivery. A take whose poll closed
+        // before the response was written is marked `unsent` and goes out now as a first delivery.
+        const neverSent = unacked.unsent === true;
+        let changed = retainDeliveredAttachments(session, unacked.prompts, Date.now());
+        if (neverSent) {
+          delete unacked.unsent;
+          changed = true;
+        }
+        if (changed) await this.writeState(state);
         const pending = (session.prompts || []).length > 0 || (session.artifact_failures || []).length > 0;
         const result = {
           status: "feedback",
@@ -646,7 +654,7 @@ export class SessionStore {
           ...(unacked.artifact_failures?.length ? { artifact_failures: unacked.artifact_failures } : {}),
           ...(session.status === "ended" && !pending ? { session_ended: true, ended_by: session.ended_by } : {}),
           delivery_id: unacked.id,
-          redelivered: true,
+          ...(neverSent ? {} : { redelivered: true }),
         };
         return result;
       }
@@ -715,6 +723,18 @@ export class SessionStore {
 
   // Folio: the agent has the batch. Only the delivery it names is cleared, so a late ack of an
   // older delivery never drops a newer one.
+  // Folio: the poll that took this batch closed before it got the response.
+  async markDeliveryUnsent(key, deliveryId) {
+    return this.runExclusive(async () => {
+      const state = await this.readState();
+      const delivery = state.sessions[key]?.unacked_delivery;
+      if (!delivery || delivery.id !== deliveryId) return false;
+      delivery.unsent = true;
+      await this.writeState(state);
+      return true;
+    });
+  }
+
   async ackDelivery(key, deliveryId) {
     return this.runExclusive(async () => {
       const state = await this.readState();
