@@ -404,6 +404,9 @@ async function openCommand(args) {
     noGate,
     reopen,
     ...(ownerSessionId ? { owner_session_id: ownerSessionId } : {}),
+    // Folio: the agent session's folder (from the SessionStart hook, else this process's) names
+    // the project of a page outside any project.
+    agent_cwd: process.env.FOLIO_SESSION_CWD || process.cwd(),
   });
   if (response.status === "user-ended") {
     return createUserEndedOpenOutput({

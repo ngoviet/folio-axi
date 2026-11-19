@@ -3165,7 +3165,8 @@ function renderRevisionLegend() {
   revisionsWrap.hidden = count === 0 || ended;
   if (revisionsWrap.hidden && revisionsDrawerOpen) setRevisionsDrawerOpen(false);
   revisionsCount.textContent = String(count);
-  revisionsButton.setAttribute("aria-label", count === 1 ? "1 revision" : count + " revisions");
+  // The button's name is its visible text ("Revisions 3"): a separate aria-label read the count
+  // first and broke WCAG 2.5.3 (label in name), so none is set.
   revisionsSummary.textContent =
     (count === 1 ? "1 revision" : count + " revisions") +
     " · " +

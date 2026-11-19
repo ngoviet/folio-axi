@@ -1,3 +1,4 @@
+import { normalizeAgentCwd } from "./project-info.js";
 import crypto from "node:crypto";
 import { readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -114,15 +115,15 @@ export class SessionStore {
     });
   }
 
-  async upsertSession(file, url, { ownerSessionId = "" } = {}) {
+  async upsertSession(file, url, { ownerSessionId = "", agentCwd = "" } = {}) {
     // `canonicalFile` (a realpath) does not touch state, so resolve it before
     // taking the lock and keep only the read-modify-write inside the critical
     // section.
     const absolute = await canonicalFile(file);
-    return this.lock.runExclusive(() => this.#upsertSessionLocked(absolute, url, ownerSessionId));
+    return this.lock.runExclusive(() => this.#upsertSessionLocked(absolute, url, ownerSessionId, agentCwd));
   }
 
-  async #upsertSessionLocked(absolute, url, ownerSessionId = "") {
+  async #upsertSessionLocked(absolute, url, ownerSessionId = "", agentCwd = "") {
     const key = sessionKey(absolute);
     const state = await this.readState();
     const existing = state.sessions[key] || {};
@@ -171,6 +172,11 @@ export class SessionStore {
       // Folio: a batch handed to an acking poll stays here until the agent acks it, so a poll
       // that dies after the server wrote the response still gets it again next time.
       ...(isUnackedDelivery(existing.unacked_delivery) ? { unacked_delivery: existing.unacked_delivery } : {}),
+      // Folio: the folder the opening agent session works in names the project of a page that
+      // sits outside any project (a scratchpad). The latest opener's folder wins, like ownership.
+      ...(normalizeAgentCwd(agentCwd) || normalizeAgentCwd(existing.agent_cwd)
+        ? { agent_cwd: normalizeAgentCwd(agentCwd) || normalizeAgentCwd(existing.agent_cwd) }
+        : {}),
       updated_at: new Date().toISOString(),
     };
     state.sessions[key] = session;

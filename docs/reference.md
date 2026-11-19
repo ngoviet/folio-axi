@@ -6,7 +6,7 @@ Detailed behaviour of the review page, the server and the CLI. The [README](../R
 
 Sessions are keyed by the canonical HTML file path, so agents do not need opaque IDs.
 
-The top bar names the project the page reports for, with the project path in its tooltip, and the tab title reads `<page title> · <project> · Folio` (also after the artifact sets its own title with `setDocumentMeta`). The project is the nearest folder above the page that holds `.git` (a git worktree's `.git` file counts, so a worktree is its own project); without one it is the page's folder, or the parent of a `.folio` folder. The project name and path are values and are never translated.
+The top bar names the project the page reports for, with the project path in its tooltip, and the tab title reads `<page title> · <project> · Folio` (also after the artifact sets its own title with `setDocumentMeta`). The project is found in this order: the nearest folder above the page that holds `.git` (so a nested repository wins); otherwise the nearest folder holding `CLAUDE.md`, `AGENTS.md` or `.claude`; otherwise the same search from the folder of the agent session that opened the page (recorded at open from the SessionStart hook's `FOLIO_SESSION_CWD`, else the CLI's working folder), which names a page kept in a scratchpad; otherwise the page's folder. A `.folio` folder anywhere in the path starts the search at its parent, and no search reaches the home folder (its `.claude` belongs to Claude Code). A git worktree is named after its main repository, with the worktree's name shown beside it. The project name and path are values and are never translated.
 
 ## Portable artifacts
 

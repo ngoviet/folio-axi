@@ -171,8 +171,10 @@ body.lavish {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex: 0 1 auto;
   min-width: 0;
-  max-width: 32ch;
+  max-width: 48ch;
+  overflow: hidden;
   padding: 2px 10px;
   border: var(--hairline-subtle);
   border-radius: 999px;
@@ -189,9 +191,23 @@ body.lavish {
   flex-shrink: 0;
 }
 .project-name {
+  flex: 0 1 auto;
+  min-width: 3ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* A worktree is shown after its main repository's name, quieter and first to shrink. */
+.project-worktree {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+  flex: 0 4 auto;
+}
+.project-worktree::before {
+  content: "· ";
 }
 .spacer {
   flex: 1;
@@ -1862,6 +1878,18 @@ iframe {
 body.layout-gate-active iframe#artifact {
   opacity: 0;
 }
+/* Folio: on a phone the project name needs the room the switch's word takes. The word stays in
+   the accessible name (visually hidden, not display:none) and in the button's tooltip. */
+@media (max-width: 420px) {
+  .annotate-switch > span:last-child {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
 /* Narrow chrome: the drawer stops hanging off the button and spans the viewport instead, so the
    list never overflows horizontally on a phone-width window. */
 @media (max-width: 640px) {
@@ -1873,10 +1901,11 @@ body.layout-gate-active iframe#artifact {
     display: none;
   }
   .project-label {
-    max-width: 16ch;
+    max-width: 22ch;
     padding: 2px 8px;
   }
-  .project-label svg {
+  .project-label svg,
+  .project-worktree {
     display: none;
   }
   .warnings-drawer {
