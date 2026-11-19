@@ -333,8 +333,35 @@ export function createOpenOutput({
     session: { file, url, status },
     ...(networkWarning ? { network_warning: networkWarning } : {}),
     ...(selfPaintWarning ? { self_paint_warning: selfPaintWarning } : {}),
-    next_step: `${networkPrefix}${selfPaintPrefix}Do not respond to the user just yet. Now you must run \`folio-axi poll ${file}\`. This command long-polls until the user sends feedback or ends the session, and it stays silent the whole time - that is normal, never kill it. Layout issues the browser detects do not return this poll; they wait in the user's Layout issues inbox until the user queues them, then arrive as an ordinary tag "layout-warnings" prompt. Do not pass --timeout-ms during normal agent use. ${pollExecutionGuidance({ agent })} After applying feedback, run \`folio-axi poll ${file} --agent-reply "<message for the user>"\` without --timeout-ms to show a concise response in Folio and keep waiting for more feedback. If instead you are handing back a result without starting another long-poll, run \`folio-axi reply ${file} --agent-reply "<message for the user>"\` to get an acceptance receipt. ${POLL_AGENT_REPLY_RULE} ${POLL_AGENT_REPLY_NEXT_POINTER} If the user ends the session, stop polling and do not reopen it by re-running \`folio-axi ${file}\` unless the user asks for further review or something genuinely important needs their visual attention - deliver routine updates directly in this conversation instead. When reopening is warranted, run \`folio-axi ${file} --reopen\`.`,
+    next_step: `${networkPrefix}${selfPaintPrefix}Do not respond to the user just yet. Now you must run \`folio-axi poll ${file}\`.${openLinkSentence(url, status)} This command long-polls until the user sends feedback or ends the session, and it stays silent the whole time - that is normal, never kill it. Layout issues the browser detects do not return this poll; they wait in the user's Layout issues inbox until the user queues them, then arrive as an ordinary tag "layout-warnings" prompt. Do not pass --timeout-ms during normal agent use. ${pollExecutionGuidance({ agent })} After applying feedback, run \`folio-axi poll ${file} --agent-reply "<message for the user>"\` without --timeout-ms to show a concise response in Folio and keep waiting for more feedback. If instead you are handing back a result without starting another long-poll, run \`folio-axi reply ${file} --agent-reply "<message for the user>"\` to get an acceptance receipt. ${POLL_AGENT_REPLY_RULE} ${POLL_AGENT_REPLY_NEXT_POINTER} If the user ends the session, stop polling and do not reopen it by re-running \`folio-axi ${file}\` unless the user asks for further review or something genuinely important needs their visual attention - deliver routine updates directly in this conversation instead. When reopening is warranted, run \`folio-axi ${file} --reopen\`.`,
   };
+}
+
+// Folio: the browser only opens on this machine. The owner often drives it from another device,
+// where nothing appears, so a link that device can open is passed on once the poll is running.
+// A loopback link is useless elsewhere and stays out, as upstream intended.
+function openLinkSentence(url, status) {
+  if (status === "ready") {
+    return ` Folio could not launch a browser, so no browser window opened: once the poll is running, give the user the review link ${url} in your message.`;
+  }
+  return isLoopbackUrl(url)
+    ? ""
+    : ` Once the poll is running, include the review link ${url} in your message to the user: they may be on another device, where no browser window opened.`;
+}
+
+export function isLoopbackUrl(url) {
+  let hostname;
+  try {
+    hostname = new URL(url).hostname.toLowerCase();
+  } catch {
+    return true;
+  }
+  return (
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    hostname === "[::1]" ||
+    /^127\.\d+\.\d+\.\d+$/.test(hostname)
+  );
 }
 
 // Shown when a plain `folio-axi <file>` targets a session the user explicitly ended from the
@@ -460,7 +487,7 @@ async function pollCommand(args) {
         narrateTicks: shouldNarratePollWaitTicks({ isTTY: process.stderr.isTTY }),
       });
   try {
-    const request =
+    let request =
       agentReply || takeover
         ? {
             method: "POST",
@@ -468,14 +495,41 @@ async function pollCommand(args) {
             body: JSON.stringify(agentReply ? { agent_reply: agentReply } : {}),
           }
         : {};
-    const response = await fetchJson(`${baseUrl}/api/poll?${query}`, {
-      ...request,
-      // Poll ownership is claimed before the response is available. Retrying a transport failure
-      // can leave the first claim alive and make the retry reject itself as LISTENER_ACTIVE.
-      retries: 0,
-    });
+    let pollBaseUrl = baseUrl;
+    let reconnects = 0;
+    let response;
+    for (;;) {
+      try {
+        response = await fetchJson(`${pollBaseUrl}/api/poll?${query}`, {
+          ...request,
+          // Poll ownership is claimed before the response is available. Retrying a transport failure
+          // can leave the first claim alive and make the retry reject itself as LISTENER_ACTIVE.
+          retries: 0,
+        });
+        break;
+      } catch (error) {
+        // Folio: a server restart (`folio-axi stop`, an upgrade, a new listen address) cuts every
+        // waiting poll at once. Feedback stays queued and ack-guarded on disk, so the poll waits for
+        // a server again and re-attaches instead of leaving the page with nobody listening.
+        if (!shouldReconnectPoll(error, { reconnects, indefinite: !timeoutMs })) throw error;
+        reconnects += 1;
+        process.stderr.write(`${pollReconnectText(absolute, reconnects)}\n`);
+        await delay(pollReconnectDelayMs(reconnects));
+        // The agent reply and an explicit takeover were already applied by the first request.
+        request = {};
+        query.delete("takeover");
+        try {
+          pollBaseUrl = await ensureServer();
+        } catch {
+          // Keep the last address; the next attempt reports or retries.
+        }
+      }
+    }
     if (typeof response.delivery_id === "string" && response.delivery_id) {
-      pendingAcks.push({ baseUrl, key: sessionKey(absolute), deliveryId: response.delivery_id });
+      pendingAcks.push({ baseUrl: pollBaseUrl, key: sessionKey(absolute), deliveryId: response.delivery_id });
+    }
+    if (response.code === "LISTENER_REPLACED" && response.same_session === true) {
+      return createPollSupersededOutput(absolute);
     }
     if (response.code === "LISTENER_REPLACED") {
       throw new AxiError("Folio poll listener was replaced by a takeover", "LISTENER_REPLACED", [
@@ -490,6 +544,33 @@ async function pollCommand(args) {
       process.off("SIGTERM", onPollSignal);
     }
   }
+}
+
+export const POLL_RECONNECT_ATTEMPTS = 10;
+
+// Reconnect after the stream broke (the server went away mid-wait) and, once reconnecting, after a
+// refused connection or a listener the dying server had not released yet. A failure on the very
+// first request is reported as before: nothing was waiting yet.
+export function shouldReconnectPoll(error, { reconnects, indefinite }) {
+  if (!indefinite || reconnects >= POLL_RECONNECT_ATTEMPTS) return false;
+  if (error?.pollInterrupted === true) return true;
+  if (reconnects === 0) return false;
+  return error?.connectionFailed === true || error?.code === "LISTENER_ACTIVE";
+}
+
+export function pollReconnectDelayMs(attempt, random = Math.random) {
+  return Math.min(500 * 2 ** Math.max(0, attempt - 1), 5000) + Math.floor(random() * 250);
+}
+
+export function pollReconnectText(file, attempt) {
+  return `[folio-axi] The Folio server went away while waiting on ${file}; reconnecting (attempt ${attempt}/${POLL_RECONNECT_ATTEMPTS}). Queued feedback is kept - leave this running.`;
+}
+
+export function createPollSupersededOutput(file) {
+  return {
+    session: { file, status: "superseded" },
+    next_step: `A newer \`folio-axi poll ${file}\` from this same agent session is listening now, so this one stopped. Do nothing: the newer poll delivers the user's feedback.`,
+  };
 }
 
 const REPLY_VALUE_FLAGS = ["--agent-reply", "--agent-reply-file"];
@@ -2199,17 +2280,19 @@ function agentReplyReceiptTimeoutError(file, timeoutMs) {
 }
 
 function serverConnectionError() {
-  return new AxiError("Folio server connection failed", "SERVER_ERROR", [
+  const error = new AxiError("Folio server connection failed", "SERVER_ERROR", [
     "Run `folio-axi server --verbose` or inspect `~/.folio-axi/server.log` (`FOLIO_AXI_STATE_DIR/server.log` when set) for server startup or crash diagnostics",
     "Re-run the last `folio-axi poll <html-file>` command after the server is healthy",
   ]);
+  return Object.assign(error, { connectionFailed: true });
 }
 
 function pollResponseInterruptedError() {
-  return new AxiError("Folio poll response was interrupted", "SERVER_ERROR", [
+  const error = new AxiError("Folio poll response was interrupted", "SERVER_ERROR", [
     "Run `folio-axi server --verbose` or inspect `~/.folio-axi/server.log` (`FOLIO_AXI_STATE_DIR/server.log` when set) for server startup or crash diagnostics",
     "Re-run the last `folio-axi poll <html-file>` command after the server is healthy",
   ]);
+  return Object.assign(error, { pollInterrupted: true });
 }
 
 function firstPositionalArg(args, valueFlags = []) {

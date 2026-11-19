@@ -3225,3 +3225,33 @@ test("design output owns the library icon directive and the diagram playbook poi
   assert.doesNotMatch(diagram, /%% lavish-icon/, "the syntax has one owner surface");
   assert.doesNotMatch(JSON.stringify(createHomeOutput({ bin: "folio-axi", sessions: [] })), /lavish-icon|libraries/);
 });
+
+test("open output asks the agent to pass on a review link another device can open", () => {
+  // Folio: the owner often drives PC1 from another machine, where no browser window appears.
+  const lan = createOpenOutput({
+    file: "/tmp/artifact.html",
+    url: "http://192.168.12.71:4388/session/abc123",
+    status: "opened",
+  });
+  assert.match(lan.next_step, /Do not respond to the user just yet\. Now you must run/);
+  assert.match(lan.next_step, /include the review link http:\/\/192\.168\.12\.71:4388\/session\/abc123/);
+  assert.ok(
+    lan.next_step.indexOf("folio-axi poll") < lan.next_step.indexOf("include the review link"),
+    "polling comes first",
+  );
+
+  const local = createOpenOutput({
+    file: "/tmp/artifact.html",
+    url: "http://127.0.0.1:4388/session/abc123",
+    status: "opened",
+  });
+  assert.doesNotMatch(local.next_step, /include the review link/);
+
+  const notLaunched = createOpenOutput({
+    file: "/tmp/artifact.html",
+    url: "http://127.0.0.1:4388/session/abc123",
+    status: "ready",
+  });
+  assert.match(notLaunched.next_step, /no browser window opened/i);
+  assert.match(notLaunched.next_step, /http:\/\/127\.0\.0\.1:4388\/session\/abc123/);
+});

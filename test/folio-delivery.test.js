@@ -901,3 +901,95 @@ test("an agent reply lands on a session the user ended, and the session stays en
     assert.equal(session.prompts.length, 1, "the undelivered batch is untouched");
   });
 });
+
+test("a second poll from the owning session supersedes its own older poll instead of LISTENER_ACTIVE", async () => {
+  await withServer(async ({ base, artifact }) => {
+    const { key } = await open(base, artifact, "sess-a");
+    const listen = (signal) =>
+      fetch(`${base}/api/poll?${new URLSearchParams({ file: artifact, ack: "1", session_id: "sess-a" })}`, { signal });
+    const first = await listen();
+    assert.equal(first.status, 200);
+    const firstBody = first.text();
+    const second = await listen();
+    assert.equal(second.status, 200, "same-session poll is accepted");
+    const superseded = JSON.parse(await firstBody);
+    assert.equal(superseded.code, "LISTENER_REPLACED");
+    assert.equal(superseded.same_session, true);
+    await sendPrompt(base, key, "to the newer poll");
+    const delivered = JSON.parse(await second.text());
+    assert.equal(delivered.status, "feedback");
+    assert.equal(delivered.prompts[0].prompt, "to the newer poll");
+  });
+});
+
+test("polls that name no session still get LISTENER_ACTIVE on an unowned page", async () => {
+  await withServer(async ({ base, artifact }) => {
+    await open(base, artifact);
+    const controller = new AbortController();
+    const first = await fetch(`${base}/api/poll?${new URLSearchParams({ file: artifact })}`, {
+      signal: controller.signal,
+    });
+    assert.equal(first.status, 200);
+    const other = await fetch(`${base}/api/poll?${new URLSearchParams({ file: artifact })}`);
+    assert.equal(other.status, 409);
+    assert.equal((await other.json()).code, "LISTENER_ACTIVE");
+    controller.abort();
+    await first.text().catch(() => {});
+  });
+});
+
+test("a hook's one-shot poll from the owning session never supersedes the session's waiting poll", async () => {
+  await withServer(async ({ base, artifact }) => {
+    await open(base, artifact, "sess-a");
+    const controller = new AbortController();
+    const waiting = await fetch(
+      `${base}/api/poll?${new URLSearchParams({ file: artifact, ack: "1", session_id: "sess-a" })}`,
+      {
+        signal: controller.signal,
+      },
+    );
+    assert.equal(waiting.status, 200);
+    const hookTake = await poll(base, artifact, { ack: "1", session_id: "sess-a" });
+    assert.equal(hookTake.status, 409);
+    assert.equal((await hookTake.json()).code, "LISTENER_ACTIVE");
+    const health = await fetch(`${base}/health`).then((res) => res.json());
+    assert.equal(health.listeners.length, 1);
+    controller.abort();
+    await waiting.text().catch(() => {});
+  });
+});
+
+test("many waiting polls neither leak listeners nor trip MaxListenersExceededWarning", async () => {
+  const warnings = [];
+  const onWarning = (warning) => warnings.push(warning.name);
+  process.on("warning", onWarning);
+  try {
+    await withServer(async ({ base, dir }) => {
+      const controllers = [];
+      const responses = [];
+      for (let index = 0; index < 12; index += 1) {
+        const file = path.join(dir, `page-${index}.html`);
+        await writeFile(file, "<!doctype html><html><body>x</body></html>");
+        await open(base, file, `sess-${index}`);
+        const controller = new AbortController();
+        controllers.push(controller);
+        const query = new URLSearchParams({ file, ack: "1", session_id: `sess-${index}` });
+        responses.push(await fetch(`${base}/api/poll?${query}`, { signal: controller.signal }));
+      }
+      const health = await fetch(`${base}/health`).then((res) => res.json());
+      assert.equal(health.listeners.length, 12);
+      for (const controller of controllers) controller.abort();
+      await Promise.all(responses.map((res) => res.text().catch(() => {})));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const after = await fetch(`${base}/health`).then((res) => res.json());
+      assert.equal(after.listeners.length, 0);
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(
+      warnings.filter((name) => name === "MaxListenersExceededWarning"),
+      [],
+    );
+  } finally {
+    process.off("warning", onWarning);
+  }
+});
