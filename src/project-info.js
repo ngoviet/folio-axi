@@ -86,3 +86,49 @@ function gitProject(dir) {
 function projectName(dir) {
   return path.basename(dir) || dir;
 }
+
+/**
+ * Folio: what the page-info strip states, read from disk only (never guessed): the branch checked
+ * out where the project lives, the page's path inside its project, this machine, and when the
+ * page file was last saved.
+ * @param {string} file absolute path of the artifact
+ * @param {{ path: string }} project from `projectForFile`
+ * @returns {{ branch: string, page: string, machine: string, saved_at: string }}
+ */
+export function pageInfoFor(file, project) {
+  const absolute = path.resolve(file);
+  const relative = path.relative(project.path, absolute);
+  const inside = relative && !relative.startsWith("..") && !path.isAbsolute(relative);
+  let savedAt = "";
+  try {
+    savedAt = statSync(absolute).mtime.toISOString();
+  } catch {
+    // A page whose file is gone still renders its strip; it just has no save time.
+  }
+  return {
+    branch: gitBranch(project.path),
+    page: inside ? relative.split(path.sep).join("/") : absolute,
+    machine: os.hostname(),
+    saved_at: savedAt,
+  };
+}
+
+// The branch of the checkout at `dir`: `.git/HEAD`, or a worktree's own HEAD through `gitdir:`.
+// A detached HEAD reads as its short commit; no git (or an unreadable one) is "".
+function gitBranch(dir) {
+  try {
+    const gitPath = path.join(dir, ".git");
+    let gitDir = gitPath;
+    if (statSync(gitPath).isFile()) {
+      const match = /^gitdir:\s*(.+)$/m.exec(readFileSync(gitPath, "utf8"));
+      if (!match) return "";
+      gitDir = path.resolve(dir, match[1].trim());
+    }
+    const head = readFileSync(path.join(gitDir, "HEAD"), "utf8").trim();
+    const ref = /^ref:\s*refs\/heads\/(.+)$/.exec(head);
+    if (ref) return ref[1];
+    return /^[0-9a-f]{7,64}$/i.test(head) ? head.slice(0, 7) : "";
+  } catch {
+    return "";
+  }
+}

@@ -26,6 +26,8 @@ function staticTextOf(html) {
     .replace(/<span class="path-(head|tail)">[^<]*<\/span>/g, "")
     .replace(/<span class="project-name">[^<]*<\/span>/g, "")
     .replace(/<span class="project-worktree">[^<]*<\/span>/g, "")
+    .replace(/<span class="project-branch">[^<]*<\/span>/g, "")
+    .replace(/<dd class="info-value"[^>]*>[\s\S]*?<\/dd>/g, "")
     .replace(/<p class="ended-copy">\/[^<]*<\/p>/g, "");
   return [...body.matchAll(/>([^<]+)</g)]
     .map((match) => match[1].replaceAll("&amp;", "&").replaceAll("&#39;", "'").trim())
@@ -38,7 +40,8 @@ test("every static chrome string has a Vietnamese translation", () => {
   assert.deepEqual(missing, []);
   // The project label's tooltip is the project path, a value declared in FOREIGN_ATTRIBUTES_SELECTOR.
   const chromeAttributes = html
-    .replace(/<span class="project-label" id="projectLabel" title="[^"]*">/g, "")
+    .replace(/<button class="project-label" id="projectLabel"[^>]*>/g, "")
+    .replace(/<dd class="info-value"[^>]*>/g, "")
     .replace(/ id="copyPath" type="button" title="[^"]*"/g, "");
   for (const match of chromeAttributes.matchAll(/ (?:title|aria-label|placeholder)="([^"]+)"/g)) {
     assert.notEqual(vi(match[1].replaceAll("&#39;", "'")), match[1], `untranslated attribute: ${match[1]}`);

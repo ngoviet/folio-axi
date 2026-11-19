@@ -155,6 +155,10 @@ const copyUpdateKeyButton = /** @type {HTMLButtonElement} */ (document.getElemen
 const copyShareSiteIdButton = /** @type {HTMLButtonElement} */ (document.getElementById("copyShareSiteId"));
 const endButton = /** @type {HTMLButtonElement} */ (document.getElementById("end"));
 const copyPathButton = /** @type {HTMLButtonElement} */ (document.getElementById("copyPath"));
+// Folio: the project chip shows or hides the page-info strip; this browser remembers the choice.
+const projectLabel = /** @type {HTMLButtonElement | null} */ (document.getElementById("projectLabel"));
+const pageSavedAt = /** @type {HTMLTimeElement | null} */ (document.getElementById("pageSavedAt"));
+const PAGE_INFO_STORAGE_KEY = "folio-axi:page-info";
 const copyHint = /** @type {HTMLSpanElement} */ (document.getElementById("copyHint"));
 const copyHintText = /** @type {HTMLSpanElement} */ (document.getElementById("copyHintText"));
 const presenceBanner = /** @type {HTMLDivElement} */ (document.getElementById("presenceBanner"));
@@ -4712,6 +4716,39 @@ annotationSwitch.onclick = toggleAnnotationMode;
 
 sendButton.onclick = () => sendQueued(false);
 sendAndEndButton.onclick = () => sendQueued(true);
+function setPageInfoOpen(open, remember) {
+  document.body?.classList?.toggle("page-info-open", open);
+  projectLabel?.setAttribute("aria-expanded", String(open));
+  if (!remember) return;
+  try {
+    localStorage.setItem(PAGE_INFO_STORAGE_KEY, open ? "open" : "closed");
+  } catch {
+    // Storage can be blocked; the strip still toggles for this page.
+  }
+}
+try {
+  if (localStorage.getItem(PAGE_INFO_STORAGE_KEY) === "closed") setPageInfoOpen(false, false);
+} catch {
+  // Without storage the strip starts open, as served.
+}
+if (projectLabel) {
+  projectLabel.onclick = () => setPageInfoOpen(projectLabel.getAttribute("aria-expanded") !== "true", true);
+}
+
+// Same "YYYY-MM-DD HH:MM" in this machine's time as the server renders.
+function markPageSaved(date) {
+  if (!pageSavedAt) return;
+  try {
+    const pad = (n) => String(n).padStart(2, "0");
+    const iso = date.toISOString();
+    pageSavedAt.setAttribute("datetime", iso);
+    pageSavedAt.setAttribute("data-saved-at", iso);
+    pageSavedAt.textContent = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  } catch {
+    // The strip keeps its previous time rather than disturb the review.
+  }
+}
+
 moreButton.onclick = () => {
   closeWarningsDrawer();
   closeRevisionsDrawer();
@@ -4965,6 +5002,9 @@ events.set("reload", () => {
   resetFrame().then((reloaded) => {
     if (reloaded) refreshWhiteboardSource();
   });
+  // The file was just saved: that is the page's new "last saved". Display only, after the reload
+  // has started, so it can never hold the reload back.
+  markPageSaved(new Date());
 });
 events.set("chrome-reload", (data) => reloadAfterServerRestart(String(data.reason || "")));
 // The replacement server serves a different artifact's review. This page keeps working against

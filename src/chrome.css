@@ -96,6 +96,8 @@
   --shadow-tooltip: 0 16px 44px rgba(0, 0, 0, 0.35);
   --shadow-floating: 0 20px 70px rgba(0, 0, 0, 0.35);
   --bar-h: 56px;
+  /* Folio: the page-info strip under the bar; 0 while it is hidden. */
+  --info-h: 0px;
   --bar-pad: var(--space-8);
   --panel-w: 360px;
   --ease: cubic-bezier(0.2, 0.6, 0.2, 1);
@@ -198,7 +200,8 @@ body.lavish {
   white-space: nowrap;
 }
 /* A worktree is shown after its main repository's name, quieter and first to shrink. */
-.project-worktree {
+.project-worktree,
+.project-branch {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -206,11 +209,67 @@ body.lavish {
   font-weight: 400;
   flex: 0 4 auto;
 }
-.project-worktree::before {
+.project-worktree::before,
+.project-branch::before {
   content: "· ";
 }
 .spacer {
   flex: 1;
+}
+/* Folio: the project chip is the page-info strip's show/hide button. */
+button.project-label {
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+button.project-label:hover,
+button.project-label[aria-expanded="true"] {
+  color: var(--fg);
+  border-color: var(--fg-muted);
+}
+body.page-info-open {
+  --info-h: 30px;
+}
+.page-info {
+  display: none;
+}
+body.page-info-open .page-info {
+  display: flex;
+  align-items: center;
+  height: var(--info-h);
+  padding: 0 var(--bar-pad, 16px);
+  box-sizing: border-box;
+  background: var(--bg-bar);
+  border-bottom: var(--hairline-subtle);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--fg-muted);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.page-info dl {
+  display: flex;
+  gap: 18px;
+  margin: 0;
+}
+.info-item {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+.info-item dt {
+  font-weight: 600;
+}
+.info-item dd {
+  margin: 0;
+  color: var(--fg);
+  max-width: 48ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .annotate-switch {
   display: inline-flex;
@@ -1151,7 +1210,7 @@ html[lang="en"] .language-option[data-language-option="en"] {
   border-color: var(--border-strong);
 }
 .layout {
-  height: calc(100vh - var(--bar-h));
+  height: calc(100vh - var(--bar-h) - var(--info-h));
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--panel-w);
@@ -1786,7 +1845,7 @@ html[lang="vi"] .chat:empty::before {
 }
 .ended-overlay {
   position: fixed;
-  inset: var(--bar-h) 0 0 0;
+  inset: calc(var(--bar-h) + var(--info-h)) 0 0 0;
   background: rgba(15, 17, 21, 0.86);
   display: flex;
   align-items: center;
@@ -1905,7 +1964,8 @@ body.layout-gate-active iframe#artifact {
     padding: 2px 8px;
   }
   .project-label svg,
-  .project-worktree {
+  .project-worktree,
+  .project-branch {
     display: none;
   }
   .warnings-drawer {
@@ -1934,7 +1994,7 @@ body.layout-gate-active iframe#artifact {
     --composer-reserve: calc(
       1px + var(--space-4) + var(--composer-button-h) + var(--space-6) + env(safe-area-inset-bottom, 0px)
     );
-    --sheet-top: max(var(--bar-h) + var(--sheet-peek) - var(--vv-top, 0px), var(--sheet-peek));
+    --sheet-top: max(var(--bar-h) + var(--info-h) + var(--sheet-peek) - var(--vv-top, 0px), var(--sheet-peek));
   }
   .bar {
     padding-top: env(safe-area-inset-top, 0px);
@@ -1942,8 +2002,8 @@ body.layout-gate-active iframe#artifact {
     padding-left: calc(var(--bar-pad) + env(safe-area-inset-left, 0px));
   }
   .layout {
-    height: calc(100vh - var(--bar-h));
-    height: calc(100dvh - var(--bar-h));
+    height: calc(100vh - var(--bar-h) - var(--info-h));
+    height: calc(100dvh - var(--bar-h) - var(--info-h));
     grid-template-columns: minmax(0, 1fr);
     /* The second row only reserves the dock's footprint so the artifact is never underneath it;
        the panel itself is fixed. */
@@ -2114,7 +2174,7 @@ body.layout-gate-active iframe#artifact {
   .panel-scrim {
     display: block;
     position: fixed;
-    inset: var(--bar-h) 0 0 0;
+    inset: calc(var(--bar-h) + var(--info-h)) 0 0 0;
     z-index: 29;
     background: rgba(15, 17, 21, 0.72);
     opacity: 0;

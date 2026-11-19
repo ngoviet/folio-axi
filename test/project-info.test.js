@@ -156,7 +156,7 @@ test("the review page names the project in its top bar and tab title", async () 
     const data = JSON.parse(html.match(/<script id="lavish-session" type="application\/json">([\s\S]*?)<\/script>/)[1]);
     assert.equal(data.project.name, "bao-cao-app");
     assert.equal(path.resolve(data.project.path), path.resolve(repo));
-    const label = html.match(/<span class="project-label"[^>]*>[\s\S]*?<\/span><\/span>/);
+    const label = html.match(/<button class="project-label"[^>]*>[\s\S]*?<\/button>/);
     assert.ok(label, "top bar has a project label");
     assert.match(label[0], /bao-cao-app/);
     assert.match(label[0], new RegExp(`title="[^"]*${path.basename(repo)}`));
