@@ -24,6 +24,7 @@ function staticTextOf(html) {
     .replace(/<svg[\s\S]*?<\/svg>/g, "")
     .replace(/<code>[\s\S]*?<\/code>/g, "<i>")
     .replace(/<span class="path-(head|tail)">[^<]*<\/span>/g, "")
+    .replace(/<span class="project-name">[^<]*<\/span>/g, "")
     .replace(/<p class="ended-copy">\/[^<]*<\/p>/g, "");
   return [...body.matchAll(/>([^<]+)</g)]
     .map((match) => match[1].replaceAll("&amp;", "&").replaceAll("&#39;", "'").trim())
@@ -34,7 +35,9 @@ test("every static chrome string has a Vietnamese translation", () => {
   const html = createChromeHtml({ key: "k", file: "/tmp/review.html", status: "active" });
   const missing = staticTextOf(html).filter((text) => !STATIC_TEXT_KEPT.has(text) && vi(text) === text);
   assert.deepEqual(missing, []);
-  for (const match of html.matchAll(/ (?:title|aria-label|placeholder)="([^"]+)"/g)) {
+  // The project label's tooltip is the project path, a value declared in FOREIGN_ATTRIBUTES_SELECTOR.
+  const chromeAttributes = html.replace(/<span class="project-label" id="projectLabel" title="[^"]*">/g, "");
+  for (const match of chromeAttributes.matchAll(/ (?:title|aria-label|placeholder)="([^"]+)"/g)) {
     assert.notEqual(vi(match[1].replaceAll("&#39;", "'")), match[1], `untranslated attribute: ${match[1]}`);
   }
 });
@@ -372,4 +375,40 @@ test("only the artifact frame gets a language answer", () => {
   page.receive({ source: page.frame.contentWindow, data: { type: "lavish:annotationMode" } });
   page.receive({ source: page.frame.contentWindow, data: null });
   assert.deepEqual(page.posted, []);
+});
+
+test("the project name and path are never localized", () => {
+  const html = createChromeHtml({ key: "k", file: "/srv/Working draft/.folio/review.html", status: "active" });
+  assert.match(html, /<span class="project-name">Working draft<\/span>/);
+  const name = fakeElement("span", "project-name", {}, ["Working draft"]);
+  const label = fakeElement("span", "project-label", { id: "projectLabel", title: "/srv/Working draft" }, [name]);
+  const expired = fakeElement("span", "bubble-attachment-expired", {}, ["Image expired"]);
+  const root = fakeElement("body", "", {}, [label, expired]);
+  const install = new Function(
+    "Node",
+    "MutationObserver",
+    "document",
+    "localStorage",
+    "window",
+    "console",
+    createChromeLocalizerJs(),
+  );
+  install(
+    { TEXT_NODE: 3, ELEMENT_NODE: 1 },
+    class {
+      observe() {}
+    },
+    { documentElement: root, addEventListener() {}, getElementById: () => null },
+    { getItem: () => null },
+    { addEventListener() {} },
+    {
+      error: (error) => {
+        throw error;
+      },
+    },
+  );
+  assert.equal(root.lang, "vi", "the localizer installed");
+  assert.notEqual(expired.childNodes[0].data, "Image expired", "Folio's own words are still translated");
+  assert.equal(name.childNodes[0].data, "Working draft");
+  assert.equal(label.getAttribute("title"), "/srv/Working draft");
 });

@@ -6,6 +6,8 @@ Detailed behaviour of the review page, the server and the CLI. The [README](../R
 
 Sessions are keyed by the canonical HTML file path, so agents do not need opaque IDs.
 
+The top bar names the project the page reports for, with the project path in its tooltip, and the tab title reads `<page title> · <project> · Folio` (also after the artifact sets its own title with `setDocumentMeta`). The project is the nearest folder above the page that holds `.git` (a git worktree's `.git` file counts, so a worktree is its own project); without one it is the page's folder, or the parent of a `.folio` folder. The project name and path are values and are never translated.
+
 ## Portable artifacts
 
 The artifact runs in a sandboxed iframe while Folio injects a small SDK for annotations, snapshots, feedback controls, and render-time layout checks.
