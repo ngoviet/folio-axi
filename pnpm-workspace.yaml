@@ -12,6 +12,9 @@ blockExoticSubdeps: true
 # Excalidraw resolves the pinned converter.
 overrides:
   "@excalidraw/excalidraw>@excalidraw/mermaid-to-excalidraw": 3.6.0
+  # nanoid 3.3.3 (via Excalidraw) has 3 high advisories fixed in >=3.3.18; stay in 3.x.
+  # nanoid 4.0.2 (via mermaid-to-excalidraw) is only fixed in 5.x: left alone (major bump).
+  "nanoid@3": ^3.3.18
 minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
 minimumReleaseAgeExclude:
