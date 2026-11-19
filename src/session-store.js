@@ -721,8 +721,6 @@ export class SessionStore {
     });
   }
 
-  // Folio: the agent has the batch. Only the delivery it names is cleared, so a late ack of an
-  // older delivery never drops a newer one.
   // Folio: the poll that took this batch closed before it got the response.
   async markDeliveryUnsent(key, deliveryId) {
     return this.runExclusive(async () => {
@@ -735,6 +733,8 @@ export class SessionStore {
     });
   }
 
+  // Folio: the agent has the batch. Only the delivery it names is cleared, so a late ack of an
+  // older delivery never drops a newer one.
   async ackDelivery(key, deliveryId) {
     return this.runExclusive(async () => {
       const state = await this.readState();

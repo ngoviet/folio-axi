@@ -626,7 +626,7 @@ export async function serve({
     // hands out again. Re-queuing it as prompts too would deliver it twice, so only wake any
     // waiting poll.
     if (typeof result.delivery_id === "string" && result.delivery_id) {
-      await store.markDeliveryUnsent(key, result.delivery_id);
+      if (result.redelivered !== true) await store.markDeliveryUnsent(key, result.delivery_id);
       events.emit("feedback", key);
       return;
     }
