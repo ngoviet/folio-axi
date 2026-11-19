@@ -21,6 +21,7 @@ import {
   createHomeOutput,
   createLibrariesOutput,
   createOpenOutput,
+  probeCandidatesWithGrace,
   createPollOutput,
   createPlaybookOutput,
   createServerSpawnOptions,
@@ -3254,4 +3255,36 @@ test("open output asks the agent to pass on a review link another device can ope
   });
   assert.match(notLaunched.next_step, /no browser window opened/i);
   assert.match(notLaunched.next_step, /http:\/\/127\.0\.0\.1:4388\/session\/abc123/);
+});
+
+test("probeCandidatesWithGrace stops waiting on silent addresses once a decisive answer arrives", async () => {
+  // Folio: on Windows a connection to an own interface address with no listener is dropped, not
+  // refused, so every CLI call waited the full probe timeout on each dead address.
+  const started = Date.now();
+  const results = await probeCandidatesWithGrace(
+    ["loopback", "lan-dup", "silent"],
+    (host, signal) =>
+      new Promise((resolve) => {
+        if (host === "loopback") setTimeout(() => resolve({ host, owned: true }), 5);
+        else if (host === "lan-dup") setTimeout(() => resolve({ host, owned: true }), 30);
+        else signal.addEventListener("abort", () => resolve(null), { once: true });
+      }),
+    (entry) => entry?.host === "loopback",
+    100,
+  );
+  assert.deepEqual(
+    results.map((entry) => entry?.host ?? null),
+    ["loopback", "lan-dup", null],
+  );
+  assert.ok(Date.now() - started < 400, "did not wait for the silent address");
+});
+
+test("probeCandidatesWithGrace waits for every probe when nothing decisive answers", async () => {
+  const results = await probeCandidatesWithGrace(
+    ["a", "b"],
+    (host) => new Promise((resolve) => setTimeout(() => resolve(host === "b" ? { host } : null), 40)),
+    () => false,
+    10,
+  );
+  assert.deepEqual(results, [null, { host: "b" }]);
 });

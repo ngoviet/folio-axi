@@ -505,6 +505,10 @@ async function pollCommand(args) {
           // Poll ownership is claimed before the response is available. Retrying a transport failure
           // can leave the first claim alive and make the retry reject itself as LISTENER_ACTIVE.
           retries: 0,
+          // Listening again ends this outage: the attempt cap is per outage, not per poll lifetime.
+          onResponse: () => {
+            reconnects = 0;
+          },
         });
         break;
       } catch (error) {
@@ -518,10 +522,15 @@ async function pollCommand(args) {
         // The agent reply and an explicit takeover were already applied by the first request.
         request = {};
         query.delete("takeover");
-        try {
-          pollBaseUrl = await ensureServer();
-        } catch {
-          // Keep the last address; the next attempt reports or retries.
+        // Whoever restarted the server usually brings it back within seconds, with its own listen
+        // addresses. Only start one from this poll once that has not happened, so a stop with many
+        // polls attached does not end in a race of respawns from stale environments.
+        if (reconnects > POLL_RECONNECT_WAIT_ONLY_ATTEMPTS) {
+          try {
+            pollBaseUrl = await ensureServer();
+          } catch {
+            // Keep the last address; the next attempt reports or retries.
+          }
         }
       }
     }
@@ -547,6 +556,8 @@ async function pollCommand(args) {
 }
 
 export const POLL_RECONNECT_ATTEMPTS = 10;
+// Attempts 1-4 (about 7.5 seconds) only wait for a server to come back on the same port.
+export const POLL_RECONNECT_WAIT_ONLY_ATTEMPTS = 4;
 
 // Reconnect after the stream broke (the server went away mid-wait) and, once reconnecting, after a
 // refused connection or a listener the dying server had not released yet. A failure on the very
@@ -1577,6 +1588,41 @@ const MAX_HEALTH_BODY_BYTES = 256 * 1024;
 // A reconcile asks the server to re-detect Tailscale and retry any unbound address before
 // answering, which can take longer than a plain health read.
 const HEALTH_RECONCILE_TIMEOUT_MS = 3000;
+// Folio: how long the other candidate addresses still get once this installation's server answered
+// at a control address. A local address with a server on it answers in milliseconds; on Windows one
+// without a listener drops the connection instead of refusing it, and waiting the full probe timeout
+// on each such address cost every CLI call about 500 ms.
+const CANDIDATE_PROBE_GRACE_MS = 150;
+
+/**
+ * Probes every host in parallel. Once `isDecisive` accepts a result, the probes still running get
+ * `graceMs` more before their signal aborts them (they must then resolve, typically to null).
+ * Results keep the order of `hosts`.
+ * @template T
+ * @param {string[]} hosts
+ * @param {(host: string, signal: AbortSignal) => Promise<T>} probe
+ * @param {(entry: T) => boolean} isDecisive
+ * @param {number} graceMs
+ * @returns {Promise<T[]>}
+ */
+export async function probeCandidatesWithGrace(hosts, probe, isDecisive, graceMs) {
+  const controller = new AbortController();
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let graceTimer = null;
+  try {
+    return await Promise.all(
+      hosts.map(async (host) => {
+        const entry = await probe(host, controller.signal);
+        if (!graceTimer && !controller.signal.aborted && isDecisive(entry)) {
+          graceTimer = setTimeout(() => controller.abort(), graceMs);
+        }
+        return entry;
+      }),
+    );
+  } finally {
+    if (graceTimer) clearTimeout(graceTimer);
+  }
+}
 
 // Every address a Folio server on this port could be answering at, in preference order: the host
 // this CLI is configured for, loopback, then every other local interface address. Agents on one
@@ -1623,12 +1669,19 @@ function otherInstallationError(port, foreign) {
 // answers, the primary URL is still returned so callers have something to spawn against and report.
 async function findRunningServer(port, { reconcileNetwork = false } = {}) {
   const controlHosts = new Set([clientHost(), LOOPBACK_HOST]);
-  const probed = await Promise.all(
-    serverCandidateHosts().map(async (host) => {
+  const probed = await probeCandidatesWithGrace(
+    serverCandidateHosts(),
+    async (host, signal) => {
       const baseUrl = serverBaseUrl(host, port);
-      const health = await probeHealth(baseUrl, { reconcileNetwork: false, timeoutMs: HEALTH_PROBE_TIMEOUT_MS });
+      const health = await probeHealth(baseUrl, {
+        reconcileNetwork: false,
+        timeoutMs: HEALTH_PROBE_TIMEOUT_MS,
+        signal,
+      });
       return health ? { host, baseUrl, health } : null;
-    }),
+    },
+    (entry) => Boolean(entry && controlHosts.has(entry.host) && isOwnedServer(entry, controlHosts)),
+    CANDIDATE_PROBE_GRACE_MS,
   );
   const found = probed.filter((entry) => entry !== null);
   const owned = found.filter((entry) => isOwnedServer(entry, controlHosts));
@@ -1740,8 +1793,12 @@ function hostsToServe(requiredHosts, duplicates) {
   );
 }
 
-async function probeHealth(baseUrl, { reconcileNetwork, timeoutMs }) {
-  const health = await fetchHealth(baseUrl, { reconcileNetwork, timeoutMs });
+/**
+ * @param {string} baseUrl
+ * @param {{ reconcileNetwork: boolean, timeoutMs: number, signal?: AbortSignal }} options
+ */
+async function probeHealth(baseUrl, { reconcileNetwork, timeoutMs, signal }) {
+  const health = await fetchHealth(baseUrl, { reconcileNetwork, timeoutMs, signal });
   return health && typeof health === "object" ? health : null;
 }
 
@@ -1931,7 +1988,11 @@ async function canControlServerOnPort(baseUrl, healthBody, processMatchesLavish)
 // its TCP connect running, and discovery dials every local address - including a Tailscale IPv6
 // address that silently drops connections to itself - so each CLI invocation lingered for the OS
 // connect timeout (~10s) after printing its result.
-function fetchHealth(baseUrl, { reconcileNetwork = false, timeoutMs = DEFAULT_HEALTH_TIMEOUT_MS } = {}) {
+/**
+ * @param {string} baseUrl
+ * @param {{ reconcileNetwork?: boolean, timeoutMs?: number, signal?: AbortSignal }} [options]
+ */
+function fetchHealth(baseUrl, { reconcileNetwork = false, timeoutMs = DEFAULT_HEALTH_TIMEOUT_MS, signal } = {}) {
   return new Promise((resolve) => {
     let settled = false;
     /** @type {import("node:http").ClientRequest | null} */
@@ -1940,11 +2001,18 @@ function fetchHealth(baseUrl, { reconcileNetwork = false, timeoutMs = DEFAULT_HE
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
       request?.destroy();
       resolve(value);
     };
     const abort = () => finish(null);
     const timer = setTimeout(abort, timeoutMs);
+    // An aborted probe settles like a timed-out one: null, with its socket destroyed.
+    if (signal?.aborted) {
+      abort();
+      return;
+    }
+    signal?.addEventListener("abort", abort, { once: true });
     try {
       const url = new URL(`${baseUrl}/health${reconcileNetwork ? "?reconcile_network=1" : ""}`);
       request = httpGet(url, { agent: false }, (response) => {
@@ -2505,7 +2573,7 @@ function createCommandHelp({ agent = "generic" } = {}) {
     end: `Usage: folio-axi end <html-file>\n\nEnd a Folio session as the agent. A session ended this way still reopens normally on the next \`folio-axi <html-file>\`, unlike a user ending it from the browser, which requires --reopen while the ended record exists. Eligible records are pruned at startup after FOLIO_AXI_ENDED_RETENTION_DAYS (default 7 days), after which a plain open starts a fresh session.\n`,
     export: `Usage: folio-axi export <html-file> [--out <path>]\n\nWrite a portable copy of an artifact: one HTML file with its LOCAL assets inlined (relative-path stylesheets, scripts, images, and fonts become inline <style>/<script> blocks and data URIs). Remote CDN/font references (https URLs) are left as links for the browser to load, so the file needs network to render those. Folio makes no outbound requests - it only reads local files, confined to the artifact's directory. Defaults to writing <name>.export.html next to the source; pass --out to choose a path. The Folio annotation SDK is never included in an export.\n`,
     share: `Usage:\n  folio-axi share <html-file> [--private | --password <pw>] [--token <t>]\n  folio-axi share <html-file> --site <site_id> --update-key <key> [--private | --password <pw>]\n  folio-axi share --unpublish --site <site_id> --update-key <key>\n\nPublish the artifact on ht-ml.app (https://ht-ml.app), a third-party hosting service not part of Folio, and print a visitable URL. Shares are PUBLIC by default: anyone with the link can open the page, and it may be indexed or scraped. Pass --private to publish a PRIVATE page behind a generated password, returned once in the output - give it to the user with the URL and tell them it is a shared secret. Pass --password <pw> instead when the user chose the password; it is never echoed back. Builds the same local-inlined HTML as 'export' (local assets inlined; remote CDN/font URLs left as links and are not blocked by CSP on ht-ml.app, but still load over the viewer's network), then POSTs it to ht-ml.app's /v1 API. Creating a site needs no account or API key. The response includes the url plus a secret update_key (shown once) for changing the page later.\n\n--site <site_id> with --update-key <key> republishes an existing page in place: same URL, new HTML. On a republish the password is left alone unless you pass --private (rotate to a new generated one) or --password <pw> (set one). There is no way to make a private page public again: ht-ml.app accepts a request to clear a password and silently ignores it, so Folio does not offer one rather than reporting a page as public while it is still gated. Locking a page that was PUBLIC is also not instant at ht-ml.app's CDN: it was observed still answering uncredentialed requests for minutes after the password was set, so do not tell the user a newly gated page is unreachable right away (a page that was already private has no such cached copy).\n\n--unpublish takes the same credentials and no file. ht-ml.app has NO delete endpoint, so this replaces the page with a short placeholder and locks it behind a random password that is immediately discarded; the URL still resolves and the host still holds what was published. Say that to the user rather than calling it deleted. The update_key still works, so republishing with --private brings the page back behind a new password.\n\nA value flag given an empty or whitespace-only value is REFUSED rather than acted on: an unquoted shell variable that is unset makes \`--password $PW\` an empty password, which the host treats as none and would publish a PUBLIC page while you believed it was gated. Quote the value, or pass --private to have Folio generate one.\n\nSet FOLIO_AXI_HTML_APP_TOKEN (or pass --token) to attach an optional bearer token when CREATING a page; it is never required. A republish (--site/--update-key) or --unpublish rejects --token, because the update_key is what the Authorization header carries there. The annotation SDK is never included.\n`,
-    stop: `Usage: folio-axi stop [--port <port>]\n\nShut down the background Folio server. The server also stops itself when no browser or poll has been connected for a while (FOLIO_AXI_IDLE_TIMEOUT_MS, default 30m) and immediately when the last session ends with nothing connected.\n`,
+    stop: `Usage: folio-axi stop [--port <port>]\n\nShut down the background Folio server. Polls still waiting reconnect, and start it again after about 8 seconds if nothing else has. The server also stops itself when no browser or poll has been connected for a while (FOLIO_AXI_IDLE_TIMEOUT_MS, default 30m) and immediately when the last session ends with nothing connected.\n`,
     playbook: `Usage: folio-axi playbook [playbook_id]\n\nList focused artifact guidance playbooks, or show one playbook by ID. Known IDs: diagram, table, comparison, plan, code, input, explanation, slides.\n\n${PLAYBOOK_ROUTER_HELP}\n\nExamples:\n  folio-axi playbook\n  folio-axi playbook diagram\n  folio-axi playbook input\n`,
     libraries: `Usage: folio-axi libraries [--search <text>] [--library <id>]\n\nList the Excalidraw libraries (.excalidrawlib files) the user copied into ~/.folio-axi/excalidraw-libraries, or FOLIO_AXI_STATE_DIR/excalidraw-libraries when set. Their items appear in every whiteboard's library panel. --search lists item refs whose ref contains every search word; --library lists one library's item refs. Folio only reads this directory and never downloads libraries.\n\nExamples:\n  folio-axi libraries\n  folio-axi libraries --search lambda\n  folio-axi libraries --library aws-architecture-icons\n`,
     design: `Usage: folio-axi design\n\nShow a copy-pasteable CDN snippet for Tailwind CSS browser runtime v4 + DaisyUI v5 + themes, the whiteboard (Mermaid) opt-in snippet, a content-to-playbook router, an optional layout safety CSS snippet, plus technical reference for DaisyUI components. ${PLAYBOOK_ROUTER_HELP} Folio artifacts stay portable HTML. This CDN snippet is the design fallback, not the default: inspect the subject project before falling back, and paste the layout safety CSS only when useful for dense nested grid/flex layouts, badges, wide fonts, or local media. ${DESIGN_PRIORITY_RULE}\n`,
