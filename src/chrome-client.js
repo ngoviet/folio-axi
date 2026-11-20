@@ -4736,9 +4736,11 @@ if (projectLabel) {
 }
 
 // Same "YYYY-MM-DD HH:MM" in this machine's time as the server renders.
-function markPageSaved(date) {
-  if (!pageSavedAt) return;
+function markPageSaved(savedAt) {
+  if (!pageSavedAt || !savedAt) return;
   try {
+    const date = new Date(String(savedAt));
+    if (Number.isNaN(date.getTime())) return;
     const pad = (n) => String(n).padStart(2, "0");
     const iso = date.toISOString();
     pageSavedAt.setAttribute("datetime", iso);
@@ -4998,13 +5000,13 @@ function noteLiveEventsUnreachable() {
   setChromeOutdated(true, "");
 }
 
-events.set("reload", () => {
+events.set("reload", (data) => {
   resetFrame().then((reloaded) => {
     if (reloaded) refreshWhiteboardSource();
   });
-  // The file was just saved: that is the page's new "last saved". Display only, after the reload
-  // has started, so it can never hold the reload back.
-  markPageSaved(new Date());
+  // The server sends the page file's mtime; a sibling-asset reload leaves it unchanged. Display
+  // only, after the reload has started, so it can never hold the reload back.
+  markPageSaved(data?.saved_at);
 });
 events.set("chrome-reload", (data) => reloadAfterServerRestart(String(data.reason || "")));
 // The replacement server serves a different artifact's review. This page keeps working against

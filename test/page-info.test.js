@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { once } from "node:events";
+import { mkdir, mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+
+import WebSocket from "ws";
 
 import { pageInfoFor, projectForFile } from "../src/project-info.js";
 import { serve } from "../src/server.js";
@@ -100,6 +103,86 @@ test("the review page shows the page-info strip and the chip toggles it", async 
     assert.match(strip, new RegExp(`>${escapeRegExp(hostname())}<`));
     assert.match(strip, /data-saved-at="\d{4}-\d\d-\d\dT/);
     assert.match(html, /<body class="[^"]*page-info-open/);
+  } finally {
+    await server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+// Reload events carry the page file's modification time, so "Last saved" is the file's time even
+// when the reload came from a sibling asset in a directory-watched page.
+async function nextReloadAfter(base, key, change) {
+  const socket = new WebSocket(`${base.replace(/^http/, "ws")}/events/${key}`, { origin: base });
+  await once(socket, "open");
+  try {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const reload = new Promise((resolve) => {
+        const onMessage = (raw) => {
+          const message = JSON.parse(String(raw));
+          if (message.type === "reload") {
+            socket.off("message", onMessage);
+            resolve(message.data);
+          }
+        };
+        socket.on("message", onMessage);
+        setTimeout(() => {
+          socket.off("message", onMessage);
+          resolve(null);
+        }, 1500);
+      });
+      await change(attempt);
+      const data = await reload;
+      if (data) return data;
+    }
+    throw new Error("no reload event arrived");
+  } finally {
+    socket.close();
+  }
+}
+
+async function openPage(base, file) {
+  return fetch(`${base}/api/sessions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ file }),
+  }).then((res) => res.json());
+}
+
+test("a live reload carries the page file's modification time as saved_at", async () => {
+  const root = await tempTree();
+  const file = await page(path.join(root, "app", "report.html"));
+  const server = await serve({ port: 0, stateFile: path.join(root, "state.json"), version: "9.9.9-test" });
+  try {
+    const base = `http://127.0.0.1:${server.port}`;
+    const { key } = await openPage(base, file);
+    const savedAt = new Date("2026-03-04T05:06:07.000Z");
+    const data = await nextReloadAfter(base, key, async (attempt) => {
+      await writeFile(file, `<!doctype html><p>edit ${attempt}</p>`);
+      await utimes(file, savedAt, savedAt);
+    });
+    assert.equal(data.saved_at, savedAt.toISOString());
+  } finally {
+    await server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a sibling-asset reload keeps saved_at at the unchanged page file's time", async () => {
+  const root = await tempTree();
+  const dir = path.join(root, "site");
+  await mkdir(dir, { recursive: true });
+  const file = path.join(dir, "index.html");
+  await writeFile(file, '<!doctype html><html data-lavish-live-reload-root><link rel="stylesheet" href="style.css">');
+  const savedAt = new Date("2026-01-02T03:04:05.000Z");
+  await utimes(file, savedAt, savedAt);
+  const server = await serve({ port: 0, stateFile: path.join(root, "state.json"), version: "9.9.9-test" });
+  try {
+    const base = `http://127.0.0.1:${server.port}`;
+    const { key } = await openPage(base, file);
+    const data = await nextReloadAfter(base, key, (attempt) =>
+      writeFile(path.join(dir, "style.css"), `body { margin: ${attempt}px; }`),
+    );
+    assert.equal(data.saved_at, savedAt.toISOString());
   } finally {
     await server.close();
     await rm(root, { recursive: true, force: true });

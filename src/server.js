@@ -428,8 +428,8 @@ export async function serve({
   // One listener per event scales independently of the number of open review tabs and avoids the
   // EventEmitter listener warning the former one-listener-per-SSE-client design reached at only a
   // few boards.
-  events.on("reload", (key) => {
-    broadcastLiveEvent("reload", key);
+  events.on("reload", (key, savedAt) => {
+    broadcastLiveEvent("reload", key, savedAt ? { saved_at: savedAt } : {});
     // Working (docs/delivery-acks.md): a save after a delivery is the agent acting on what it was
     // handed. The store writes nothing when no delivered, unanswered note exists.
     store
@@ -3016,7 +3016,12 @@ async function watchSession(session, watchers, events, logEvent, reloadDebounceM
   watcher.on("all", (event, file) => {
     logEvent?.(`watch event=${event} session=${session.key} file=${file ?? ""}`);
     clearTimeout(timer);
-    timer = setTimeout(() => events.emit("reload", session.key), reloadDebounceMs(session.key));
+    timer = setTimeout(() => {
+      stat(session.file).then(
+        (stats) => events.emit("reload", session.key, stats.mtime.toISOString()),
+        () => events.emit("reload", session.key, ""),
+      );
+    }, reloadDebounceMs(session.key));
   });
   watcher.on("error", (error) => {
     const message = error instanceof Error ? error.message : String(error);
