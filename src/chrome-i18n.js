@@ -22,11 +22,11 @@ export const LANGUAGE_STORAGE_KEY = "folio-axi:language";
 // rule, and so does the attachment name the chip shows. Text and attributes inside these are never
 // translated, even when they match a table entry.
 export const FOREIGN_CONTENT_SELECTOR =
-  ".chat-md,.bubble-text,.anchor,.note-draft,.revision-label,.revision-time,.revision-summary,.menu-file-text,.project-name,.project-worktree,.panel-summary.is-unread,.chat-attachment-copy > strong,img.bubble-attachment,#endedOverlay .ended-copy";
+  ".chat-md,.bubble-text,.anchor,.note-draft,.revision-label,.revision-time,.revision-summary,.menu-file-text,.project-name,.project-worktree,.project-branch,.info-value,.panel-summary.is-unread,.chat-attachment-copy > strong,img.bubble-attachment,#endedOverlay .ended-copy";
 
 // Elements whose own attributes are someone else's text while their text is Folio's: an expired
 // image says "Image expired" in the chrome's language, and its tooltip is the user's file name.
-export const FOREIGN_ATTRIBUTES_SELECTOR = ".bubble-attachment-expired,#projectLabel,#copyPath";
+export const FOREIGN_ATTRIBUTES_SELECTOR = ".bubble-attachment-expired,#projectLabel,#copyPath,.info-value";
 
 // In the annotation card, only the attachment's file name is someone else's text. Labels in the
 // heading are composed into one string, so the anchored card rules keep those verbatim instead.
@@ -36,6 +36,12 @@ export const CARD_FOREIGN_CONTENT_SELECTOR = ".lavish-attachment-name";
 const VI_EXACT = {
   // Top bar and More menu
   Editor: "Biên tập",
+  "Page info": "Thông tin trang",
+  Project: "Dự án",
+  Branch: "Nhánh",
+  Page: "Trang",
+  Machine: "Máy",
+  "Last saved": "Lưu lúc",
   "Layout issues": "Lỗi bố cục",
   "Select all": "Chọn tất cả",
   "Queueing sends a repair request with your next feedback. An issue is marked resolved only after a newer artifact load and a complete check at the same viewport no longer finds it.":

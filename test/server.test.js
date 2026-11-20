@@ -1636,7 +1636,7 @@ test("session URLs can disable the layout gate for one open", async () => {
 
     assert.match(body.url, /[?&]no-gate=1/);
     const chrome = await (await fetch(body.url)).text();
-    assert.match(chrome, /<body class="lavish">/);
+    assert.match(chrome, /<body class="lavish page-info-open">/);
     assert.match(chrome, /id="layoutGateOverlay" hidden/);
     assert.match(chrome, /"layoutGateEnabled":false/);
   } finally {
@@ -6500,7 +6500,7 @@ test("ended session shows an overlay card over the dimmed chrome", async () => {
   assert.match(html, /Return to your agent to continue\./);
   assert.match(html, /class="ended-copy">\/tmp\/artifact\.html</);
   assert.doesNotMatch(html, /The agent polling loop can stop\./);
-  assert.match(css, /\.ended-overlay\{[^}]*inset:var\(--bar-h\) 0 0 0/);
+  assert.match(css, /\.ended-overlay\{[^}]*inset:calc\(var\(--bar-h\) \+ var\(--info-h\)\) 0 0 0/);
   assert.match(css, /\.ended-overlay\{[^}]*background:rgba\(15,17,21,.86\)/);
   assert.match(css, /\.ended-title\{[^}]*font-family:var\(--font-serif\)/);
   assert.match(js, /endedOverlay\.hidden = false/);
@@ -6514,7 +6514,7 @@ test("layout gate curtain reuses the ended overlay card styling", async () => {
   const js = await chromeClientSource();
   const css = await chromeCssSource();
 
-  assert.match(html, /<body class="lavish layout-gate-active">/);
+  assert.match(html, /<body class="lavish layout-gate-active page-info-open">/);
   assert.match(
     html,
     /<iframe id="artifact" sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads" data-artifact-src="\/artifact\/abc\/index\.html" title="Page under review"><\/iframe>/,
@@ -6527,7 +6527,7 @@ test("layout gate curtain reuses the ended overlay card styling", async () => {
   assert.match(css, /body\.layout-gate-active iframe#artifact\{[^}]*opacity:0/);
   assert.match(css, /\.ended-action\{[^}]*margin-top:var\(--space-8\)/);
   assert.match(js, /layoutGateAction\.onclick = \(\) => forceRevealLayoutGate\("manual"\)/);
-  assert.match(noGateHtml, /<body class="lavish">/);
+  assert.match(noGateHtml, /<body class="lavish page-info-open">/);
   assert.match(noGateHtml, /id="layoutGateOverlay" hidden/);
   assert.match(noGateHtml, /"layoutGateEnabled":false/);
 });
