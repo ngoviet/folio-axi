@@ -404,6 +404,10 @@ test("design output prints copy-pasteable CDN URLs so agents can opt in to Daisy
   // Folio (22/11): the owner reviews on wide screens; pages capped at ~1000px with 60ch text
   // columns left most of the frame empty. Use the width with columns, not empty margins.
   assert.match(output.design.page_width, /full width/i);
+  // Maximised on a 2560px screen a 1680px ceiling still left a third of the frame empty (22/11).
+  assert.match(output.design.page_width, /no `max-width` on `main` or `body`/);
+  assert.doesNotMatch(output.design.page_width, /min\(1680px/);
+  assert.match(output.design.page_width, /sections sit side by side/);
   assert.match(
     output.design.page_width,
     /grid-template-columns: repeat\(auto-fit, minmax\(min\(100%, \d+ch\), 1fr\)\)/,
