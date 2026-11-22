@@ -216,6 +216,10 @@ export function createDesignOutput() {
       layout_safety_snippet: LAYOUT_SAFETY_CSS_SNIPPET,
       layout_safety_note:
         "Optional copy-paste CSS for artifacts with dense nested grid/flex layouts, badges, wide monospace or pixel fonts, or local media. Paste it into the artifact yourself when useful. Folio never auto-injects it, so direct-open portability stays intact.",
+      // Folio (22/11): the owner reviews on wide screens; pages capped near 1000px with 60ch text
+      // columns left most of the frame empty.
+      page_width:
+        "Folio shows the artifact at the full width of the review frame, so use that width: do not cap the page container narrow (no `max-width` below about 1600px on `main` or `body`; `max-width: min(1680px, 100%)` is a good ceiling). Keep a readable line length (about 75ch at most) by placing text blocks in columns, not by leaving empty side margins: put lists of findings, cards, notes and side-by-side options in a grid such as `grid-template-columns: repeat(auto-fit, minmax(min(100%, 36ch), 1fr))`, and cap only the text inside a column. Let tables, figures and code span the full width. On a phone the same grid falls back to one column.",
       other_design_systems:
         "If the user asks for a different design system (Bootstrap, custom CSS, plain HTML, etc.), use that instead - Folio does not require DaisyUI.",
     },

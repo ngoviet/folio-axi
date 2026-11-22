@@ -401,6 +401,15 @@ test("design output prints copy-pasteable CDN URLs so agents can opt in to Daisy
   assert.match(output.design.layout_safety_snippet, /max-width: 100%/);
   assert.match(output.design.layout_safety_note, /Optional copy-paste CSS/);
   assert.match(output.design.layout_safety_note, /never auto-injects/);
+  // Folio (22/11): the owner reviews on wide screens; pages capped at ~1000px with 60ch text
+  // columns left most of the frame empty. Use the width with columns, not empty margins.
+  assert.match(output.design.page_width, /full width/i);
+  assert.match(
+    output.design.page_width,
+    /grid-template-columns: repeat\(auto-fit, minmax\(min\(100%, \d+ch\), 1fr\)\)/,
+  );
+  assert.match(output.design.page_width, /line length/i);
+  assert.match(output.design.page_width, /tables?/i);
   assert.match(
     output.design.cdn_urls.daisyui,
     /^https:\/\/cdn\.jsdelivr\.net\/npm\/daisyui@\d+\.\d+\.\d+\/daisyui\.css$/,

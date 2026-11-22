@@ -24,3 +24,4 @@ docs/folio/*.html
 # disagree on their markup (3.8.3 prints `</pre\n>`, 3.9.10 prints `</pre>` in real-editorial.html),
 # so no single formatting passes both and a prettier bump would fail format:check.
 test/fixtures/layout-audit/
+.design-kit
